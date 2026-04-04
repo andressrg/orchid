@@ -9,7 +9,7 @@ export default defineConfig({
     globalSetup: './__tests__/globalSetup.ts',
     env: {
       DATABASE_URL: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
-      API_KEY: 'test-api-key',
+      ORCHID_API_KEY: 'test-api-key',
     },
   },
   resolve: {
