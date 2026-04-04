@@ -1,5 +1,5 @@
 import * as path from "path";
-import { getConfig } from "../config";
+import { getConfig, getAuthHeaders } from "../config";
 
 function shortId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) + "..." : id;
@@ -43,13 +43,13 @@ function padRight(str: string, len: number): string {
 }
 
 async function fetchSessions(query?: string): Promise<Session[]> {
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
   let url = `${apiUrl.replace(/\/$/, "")}/sessions`;
   if (query) {
     url += `?q=${encodeURIComponent(query)}`;
   }
   const res = await fetch(url, {
-    headers: { "X-API-Key": apiKey },
+    headers: { ...getAuthHeaders() },
   });
   if (!res.ok) {
     const text = await res.text();
@@ -102,10 +102,10 @@ function printTable(sessions: Session[]): void {
 }
 
 async function fetchSession(sessionId: string): Promise<Session> {
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
   const url = `${apiUrl.replace(/\/$/, "")}/sessions/${encodeURIComponent(sessionId)}`;
   const res = await fetch(url, {
-    headers: { "X-API-Key": apiKey },
+    headers: { ...getAuthHeaders() },
   });
   if (res.status === 404) {
     throw new Error(`Session not found: ${sessionId}`);
@@ -314,14 +314,14 @@ async function dataSummary(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
   const url = `${apiUrl.replace(/\/$/, "")}/sessions/${encodeURIComponent(sessionId)}/summary`;
 
   console.log(`\x1b[35m🌸 Generating AI summary...\x1b[0m\n`);
 
   try {
     const res = await fetch(url, {
-      headers: { "X-API-Key": apiKey },
+      headers: { ...getAuthHeaders() },
     });
 
     if (res.status === 503) {
@@ -345,14 +345,14 @@ async function dataSummary(args: string[]): Promise<void> {
 
 async function dataDecisions(args: string[]): Promise<void> {
   const repo = args.find((a) => !a.startsWith("-"));
-  const { apiUrl, apiKey, webUrl } = getConfig();
+  const { apiUrl, webUrl } = getConfig();
   const url = repo
     ? `${apiUrl.replace(/\/$/, "")}/decisions?repo=${encodeURIComponent(repo)}`
     : `${apiUrl.replace(/\/$/, "")}/decisions`;
 
   console.log(`\x1b[35m🧠 Extracting architectural decisions${repo ? ` for "${repo}"` : ""}...\x1b[0m\n`);
 
-  const res = await fetch(url, { headers: { "X-API-Key": apiKey } });
+  const res = await fetch(url, { headers: { ...getAuthHeaders() } });
   if (!res.ok) throw new Error(`${res.status}: ${await res.text()}`);
 
   const data = (await res.json()) as {
@@ -400,7 +400,7 @@ async function dataAsk(args: string[]): Promise<void> {
   const questionParts = args.slice(1).filter((a) => !a.startsWith("-"));
   const question = questionParts.join(" ");
 
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
   const history: Array<{ role: string; content: string }> = [];
 
   async function askQuestion(q: string): Promise<string> {
@@ -408,7 +408,7 @@ async function dataAsk(args: string[]): Promise<void> {
     const res = await fetch(url, {
       method: "POST",
       headers: {
-        "X-API-Key": apiKey,
+        ...getAuthHeaders(),
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ question: q, history }),

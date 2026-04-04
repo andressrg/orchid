@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import { getConfig } from "../config";
+import { getConfig, getAuthHeaders } from "../config";
 
 interface Session {
   id: string;
@@ -59,7 +59,7 @@ Environment:
   console.log();
 
   // Search for related sessions
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
   console.log(`\x1b[90mSearching for related conversations...\x1b[0m`);
 
   let sessions: Session[] = [];
@@ -71,7 +71,7 @@ Environment:
       if (!term) continue;
       const res = await fetch(
         `${apiUrl.replace(/\/$/, "")}/sessions?q=${encodeURIComponent(term)}`,
-        { headers: { "X-API-Key": apiKey } }
+        { headers: { ...getAuthHeaders() } }
       );
       if (res.ok) {
         const results = (await res.json()) as Session[];
@@ -99,7 +99,7 @@ Environment:
     try {
       const res = await fetch(
         `${apiUrl.replace(/\/$/, "")}/sessions/${encodeURIComponent(s.id)}`,
-        { headers: { "X-API-Key": apiKey } }
+        { headers: { ...getAuthHeaders() } }
       );
       if (res.ok) {
         const full = (await res.json()) as Session;

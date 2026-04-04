@@ -7,6 +7,16 @@ export async function setup() {
     connectionString: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
   });
 
+  // Drop all tables for a clean slate
+  await pool.query(`
+    DO $$ DECLARE r RECORD;
+    BEGIN
+      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+        EXECUTE 'DROP TABLE IF EXISTS "' || r.tablename || '" CASCADE';
+      END LOOP;
+    END $$;
+  `);
+
   const migrationsDir = join(process.cwd(), 'migrations');
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith('.sql'))

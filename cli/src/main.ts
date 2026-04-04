@@ -3,6 +3,8 @@ import { runData } from "./commands/data";
 import { runReview } from "./commands/review";
 import { runExplain } from "./commands/explain";
 import { runConfig } from "./commands/config";
+import { runLogin } from "./commands/login";
+import { runLogout } from "./commands/logout";
 
 const VERSION = "0.1.0";
 
@@ -12,6 +14,8 @@ Usage:
   orchid <command> [options]
 
 Commands:
+  login     Authenticate with a Personal Access Token
+  logout    Remove stored credentials
   claude    Launch Claude Code and sync the conversation
   config    Set up CLI configuration (~/.orchid/config.json)
   data      Query stored sessions (list, show, search, summary)
@@ -40,6 +44,15 @@ function main() {
   const subArgs = args.slice(1);
 
   switch (command) {
+    case "login":
+      runLogin().catch((err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
+      break;
+    case "logout":
+      runLogout();
+      break;
     case "claude":
       runClaude(subArgs);
       break;

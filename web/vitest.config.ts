@@ -6,6 +6,8 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     fileParallelism: false,
+    include: ['__tests__/**/*.test.ts'],
+    exclude: ['e2e/**'],
     globalSetup: './__tests__/globalSetup.ts',
     env: {
       DATABASE_URL: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
