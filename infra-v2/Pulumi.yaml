@@ -1,6 +1,0 @@
-name: orchid
-description: Orchid infrastructure (Hetzner)
-runtime:
-  name: nodejs
-  options:
-    packagemanager: pnpm

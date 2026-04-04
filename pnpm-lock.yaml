@@ -34,22 +34,6 @@ importers:
         specifier: ^5.0.0
         version: 5.9.3
 
-  infra-v2:
-    dependencies:
-      '@pulumi/hcloud':
-        specifier: ^1
-        version: 1.32.1(typescript@5.9.3)
-      '@pulumi/pulumi':
-        specifier: ^3
-        version: 3.229.0(typescript@5.9.3)
-    devDependencies:
-      '@types/node':
-        specifier: ^22
-        version: 22.19.17
-      typescript:
-        specifier: ^5
-        version: 5.9.3
-
   server:
     dependencies:
       cors:
@@ -888,9 +872,6 @@ packages:
 
   '@pulumi/digitalocean@4.63.0':
     resolution: {integrity: sha512-TnXhoeNWq4aGT4lqUgptwU4eTGO8Trw25v+wfAk7bwW763E5RV9XCzRc8YWRXXAD0ZFqiLIN82I02e4rUiqOmA==}
-
-  '@pulumi/hcloud@1.32.1':
-    resolution: {integrity: sha512-BpsKKQ83Mt7l+0m07S97gSACT0p9dzehtJUyLvTwuOfFY8JKcG8hgfwt7IMjFqR3HfK4+EX12Qpb8H9gNkM/Kg==}
 
   '@pulumi/pulumi@3.229.0':
     resolution: {integrity: sha512-SoGAonHOrGP/NQQivq3gMz0nlebVUYOf6TgpsPHqvFARsHz4JIR+/fpFm/8JW+Ev5o6tvb6g04a+STmpdxoaOg==}
@@ -4358,14 +4339,6 @@ snapshots:
   '@protobufjs/utf8@1.1.0': {}
 
   '@pulumi/digitalocean@4.63.0(typescript@5.9.3)':
-    dependencies:
-      '@pulumi/pulumi': 3.229.0(typescript@5.9.3)
-    transitivePeerDependencies:
-      - supports-color
-      - ts-node
-      - typescript
-
-  '@pulumi/hcloud@1.32.1(typescript@5.9.3)':
     dependencies:
       '@pulumi/pulumi': 3.229.0(typescript@5.9.3)
     transitivePeerDependencies:
