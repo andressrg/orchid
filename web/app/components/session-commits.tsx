@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 interface CommitFile {
   filename: string;
@@ -165,7 +165,7 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
     async function load() {
       try {
         const res = await fetch(
-          `${API_URL}/sessions/${encodeURIComponent(sessionId)}/commits`,
+          `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/commits`,
           { headers: { "X-API-Key": API_KEY } }
         );
         if (!res.ok) throw new Error("Failed to fetch commits");

@@ -4,8 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { type Session, timeAgo } from "../../lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 function extractTitle(session: { working_dir?: string; branch?: string }): string {
   const branch = session.branch || "";
@@ -32,7 +32,7 @@ export default function SearchPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_URL}/sessions?q=${encodeURIComponent(query)}`,
+        `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
         { headers: { "X-API-Key": API_KEY } }
       );
       const data = await res.json();
@@ -167,7 +167,7 @@ export default function SearchPage() {
                         setLoading(true);
                         try {
                           const res = await fetch(
-                            `${API_URL}/sessions?q=${encodeURIComponent(term)}`,
+                            `${API_URL}/api/sessions?q=${encodeURIComponent(term)}`,
                             { headers: { "X-API-Key": API_KEY } }
                           );
                           const data = await res.json();

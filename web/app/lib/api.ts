@@ -1,5 +1,5 @@
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export interface Session {
   id: string;
@@ -25,12 +25,12 @@ export interface Stats {
 }
 
 async function apiFetch<T>(path: string, query?: string): Promise<T> {
-  let url = `${API_URL}${path}`;
+  let url = `${API_URL}/api${path}`;
   if (query) url += `?q=${encodeURIComponent(query)}`;
 
   const res = await fetch(url, {
-    headers: { "X-API-Key": API_KEY },
-    cache: "no-store",
+    headers: { 'X-API-Key': API_KEY },
+    cache: 'no-store',
   });
 
   if (!res.ok) {
@@ -41,7 +41,7 @@ async function apiFetch<T>(path: string, query?: string): Promise<T> {
 }
 
 export async function getSessions(query?: string): Promise<Session[]> {
-  return apiFetch<Session[]>("/sessions", query);
+  return apiFetch<Session[]>('/sessions', query);
 }
 
 export async function getSession(id: string): Promise<Session> {
@@ -49,61 +49,52 @@ export async function getSession(id: string): Promise<Session> {
 }
 
 export async function getStats(): Promise<Stats> {
-  return apiFetch<Stats>("/stats");
+  return apiFetch<Stats>('/stats');
 }
 
 export interface Turn {
-  role: "user" | "assistant" | "unknown";
+  role: 'user' | 'assistant' | 'unknown';
   text: string;
 }
 
 function extractTextContent(content: unknown): string {
-  if (typeof content === "string") return content;
+  if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
       .map((block: { type?: string; text?: string }) => {
-        if (typeof block === "string") return block;
-        if (block && block.type === "text" && typeof block.text === "string")
-          return block.text;
-        return "";
+        if (typeof block === 'string') return block;
+        if (block && block.type === 'text' && typeof block.text === 'string') return block.text;
+        return '';
       })
       .filter(Boolean)
-      .join("\n");
+      .join('\n');
   }
-  return "";
+  return '';
 }
 
 export function parseTranscript(transcript: string): Turn[] {
   const turns: Turn[] = [];
-  const lines = transcript.split("\n").filter((l) => l.trim());
+  const lines = transcript.split('\n').filter((l) => l.trim());
 
   for (const line of lines) {
     try {
       const obj = JSON.parse(line);
-      let role: "user" | "assistant" | "unknown" | undefined;
-      let text = "";
+      let role: 'user' | 'assistant' | 'unknown' | undefined;
+      let text = '';
 
-      if (
-        obj.type === "human" ||
-        obj.role === "human" ||
-        obj.role === "user"
-      ) {
-        role = "user";
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content)
-        );
-      } else if (obj.type === "assistant" || obj.role === "assistant") {
-        role = "assistant";
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content)
-        );
+      if (obj.type === 'human' || obj.role === 'human' || obj.role === 'user') {
+        role = 'user';
+        text = extractTextContent(obj.content || (obj.message && obj.message.content));
+      } else if (obj.type === 'assistant' || obj.role === 'assistant') {
+        role = 'assistant';
+        text = extractTextContent(obj.content || (obj.message && obj.message.content));
       } else if (obj.message) {
         role =
-          obj.message.role === "user" || obj.message.role === "human"
-            ? "user"
-            : obj.message.role === "assistant"
-              ? "assistant"
-              : "unknown";
+          obj.message.role === 'user' || obj.message.role === 'human'
+            ? 'user'
+            : obj.message.role === 'assistant'
+              ? 'assistant'
+              : 'unknown';
         text = extractTextContent(obj.message.content);
       }
 
@@ -156,11 +147,11 @@ export interface DecisionsResult {
 }
 
 export async function getDecisions(repo?: string): Promise<DecisionsResult> {
-  const path = repo ? `/decisions?repo=${encodeURIComponent(repo)}` : "/decisions";
+  const path = repo ? `/decisions?repo=${encodeURIComponent(repo)}` : '/decisions';
   return apiFetch<DecisionsResult>(path);
 }
 
 export function countMessages(transcript?: string): number {
   if (!transcript) return 0;
-  return transcript.split("\n").filter((l) => l.trim()).length;
+  return transcript.split('\n').filter((l) => l.trim()).length;
 }

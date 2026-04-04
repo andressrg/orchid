@@ -10,8 +10,8 @@ interface Session {
   status: string;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -54,7 +54,7 @@ export function CommandPalette() {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `${API_URL}/sessions?q=${encodeURIComponent(query)}`,
+          `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
           { headers: { "X-API-Key": API_KEY } }
         );
         if (res.ok) {
