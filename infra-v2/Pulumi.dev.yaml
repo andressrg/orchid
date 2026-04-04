@@ -8,3 +8,5 @@ config:
     secure: v1:SzNVLJwefBA60H8q:8Tn4DzhWJK+IzOCjcR1Lk54T2hI4UucYZMOc0xDuNNqLcPVEJypcilBsh65Q8vSN
   orchid:serverType: cx22
   orchid:location: nbg1
+  orchid:cloudflaredToken:
+    secure: v1:41YFuCQ4PDi5XrRE:SSEoFAe3485AND/ROGgnX5OnkgR5OXw7hGRh/ulJVhftF6CSmrgTKBJk+XZnWqaXeCULf17UmEK+K0j5TJB1EplBXLP0hLLU6+76eQ1wjierbc2IrjxEhsJuUcIWIJUCwMAKHzh6X1p+HntL7f+ZX4Fuvvo0Tv5AmPWc7Ye/Z1uuq4yu7zHCgjffdOvmEHf+azDj3ARTfKANlDnKbPAUbbkJF2+lGTIYRH2QnM2xm9g4WWdAnUB2nJfBtAC+RSLSBjZVLQ==
