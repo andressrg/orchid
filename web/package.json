@@ -13,6 +13,7 @@
     "check": "tsc --noEmit && eslint"
   },
   "dependencies": {
+    "hono": "^4.12.10",
     "next": "16.2.1",
     "pg": "^8.20.0",
     "react": "19.2.4",
