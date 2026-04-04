@@ -21,11 +21,23 @@ export function CommandPalette() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
+  const togglePalette = () => {
+    setOpen((prev) => {
+      if (!prev) {
+        setQuery("");
+        setResults([]);
+        setSelectedIndex(0);
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
+      return !prev;
+    });
+  };
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setOpen((prev) => !prev);
+        togglePalette();
       }
       if (e.key === "Escape") {
         setOpen(false);
@@ -36,17 +48,7 @@ export function CommandPalette() {
   }, []);
 
   useEffect(() => {
-    if (open) {
-      inputRef.current?.focus();
-      setQuery("");
-      setResults([]);
-      setSelectedIndex(0);
-    }
-  }, [open]);
-
-  useEffect(() => {
     if (!query.trim()) {
-      setResults([]);
       return;
     }
     const timer = setTimeout(async () => {

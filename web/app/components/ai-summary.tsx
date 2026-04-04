@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
