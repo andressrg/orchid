@@ -2,15 +2,15 @@
 set -e
 
 echo "=== CLI ==="
-(cd cli && npm run check)
+(cd cli && pnpm run check)
 
 echo ""
 echo "=== Server ==="
-(cd server && npm run check)
+(cd server && pnpm run check)
 
 echo ""
 echo "=== Web ==="
-(cd web && npm run check)
+(cd web && pnpm run check)
 
 echo ""
 echo "All checks passed."

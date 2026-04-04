@@ -1,9 +1,9 @@
-import express, { Request, Response, NextFunction } from "express";
+import express, { Express, Request, Response, NextFunction } from "express";
 import cors from "cors";
 import pool from "./db";
 import { runMigrations } from "./migrate";
 
-const app = express();
+const app: Express = express();
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const API_KEY = process.env.API_KEY;
 
