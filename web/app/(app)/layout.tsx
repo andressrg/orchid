@@ -1,10 +1,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '@/app/lib/auth';
-import { Sidebar } from '../components/sidebar';
-import { KeyboardNav } from '../components/keyboard-nav';
-import { CommandPalette } from '../components/command-palette';
-import { TitleUpdater } from '../components/title-updater';
+import pool from '@/app/lib/db';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -13,17 +10,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect('/login');
   }
 
-  return (
-    <div className="flex h-full">
-      <div className="hidden md:block">
-        <Sidebar user={session.user} />
-      </div>
-      <main className="flex-1 overflow-auto">
-        <KeyboardNav />
-        <CommandPalette />
-        <TitleUpdater />
-        {children}
-      </main>
-    </div>
+  // If we're at a non-team route, redirect to first team
+  const firstTeam = await pool.query(
+    `SELECT o.slug FROM organization o
+     INNER JOIN member m ON m.organization_id = o.id
+     WHERE m.user_id = $1 ORDER BY m.created_at LIMIT 1`,
+    [session.user.id],
   );
+
+  if (firstTeam.rows.length > 0) {
+    redirect(`/t/${firstTeam.rows[0].slug}/dashboard`);
+  }
+
+  return <>{children}</>;
 }

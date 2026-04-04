@@ -23,9 +23,15 @@ export interface Stats {
   last_activity: string;
 }
 
-async function apiFetch<T>(path: string, query?: string): Promise<T> {
-  let url = `${API_URL}/api${path}`;
-  if (query) url += `?q=${encodeURIComponent(query)}`;
+async function apiFetch<T>(
+  path: string,
+  opts: { query?: string; team?: string } = {},
+): Promise<T> {
+  const params = new URLSearchParams();
+  if (opts.query) params.set('q', opts.query);
+  if (opts.team) params.set('team', opts.team);
+  const qs = params.toString();
+  const url = `${API_URL}/api${path}${qs ? `?${qs}` : ''}`;
 
   const res = await fetch(url, {
     credentials: 'include',
@@ -39,16 +45,16 @@ async function apiFetch<T>(path: string, query?: string): Promise<T> {
   return res.json();
 }
 
-export async function getSessions(query?: string): Promise<Session[]> {
-  return apiFetch<Session[]>('/sessions', query);
+export async function getSessions(team?: string, query?: string): Promise<Session[]> {
+  return apiFetch<Session[]>('/sessions', { team, query });
 }
 
-export async function getSession(id: string): Promise<Session> {
-  return apiFetch<Session>(`/sessions/${encodeURIComponent(id)}`);
+export async function getSession(id: string, team?: string): Promise<Session> {
+  return apiFetch<Session>(`/sessions/${encodeURIComponent(id)}`, { team });
 }
 
-export async function getStats(): Promise<Stats> {
-  return apiFetch<Stats>('/stats');
+export async function getStats(team?: string): Promise<Stats> {
+  return apiFetch<Stats>('/stats', { team });
 }
 
 export interface Turn {
@@ -145,9 +151,12 @@ export interface DecisionsResult {
   sessions_analyzed: number;
 }
 
-export async function getDecisions(repo?: string): Promise<DecisionsResult> {
-  const path = repo ? `/decisions?repo=${encodeURIComponent(repo)}` : '/decisions';
-  return apiFetch<DecisionsResult>(path);
+export async function getDecisions(team?: string, repo?: string): Promise<DecisionsResult> {
+  const params = new URLSearchParams();
+  if (team) params.set('team', team);
+  if (repo) params.set('repo', repo);
+  const qs = params.toString();
+  return apiFetch<DecisionsResult>(`/decisions${qs ? `?${qs}` : ''}`);
 }
 
 export function countMessages(transcript?: string): number {

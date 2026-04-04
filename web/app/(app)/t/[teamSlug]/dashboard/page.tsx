@@ -1,6 +1,6 @@
-import Link from "next/link";
-import { getSessions, getStats, timeAgo } from "../../lib/api";
-import { LiveRefresh } from "../../components/live-refresh";
+import Link from 'next/link';
+import { getSessions, getStats, timeAgo } from '@/app/lib/api';
+import { LiveRefresh } from '@/app/components/live-refresh';
 
 function StatusBadge({ status }: { status: string }) {
   const isActive = status === "active";
@@ -60,18 +60,24 @@ function extractTitle(session: { working_dir?: string; branch?: string }): strin
 
 export const dynamic = "force-dynamic";
 
-export default async function SessionsPage() {
+export default async function SessionsPage({
+  params,
+}: {
+  params: Promise<{ teamSlug: string }>;
+}) {
+  const { teamSlug } = await params;
+
   let sessions: Awaited<ReturnType<typeof getSessions>> = [];
   let stats: Awaited<ReturnType<typeof getStats>> = {
-    total_sessions: "0",
-    active_sessions: "0",
-    unique_users: "0",
-    first_session: "",
-    last_activity: "",
+    total_sessions: '0',
+    active_sessions: '0',
+    unique_users: '0',
+    first_session: '',
+    last_activity: '',
   };
 
   try {
-    sessions = await getSessions();
+    sessions = await getSessions(teamSlug);
   } catch {
     return (
       <div className="flex items-center justify-center h-full">
@@ -86,7 +92,7 @@ export default async function SessionsPage() {
   }
 
   try {
-    stats = await getStats();
+    stats = await getStats(teamSlug);
   } catch {
     stats.total_sessions = String(sessions.length);
     stats.active_sessions = String(sessions.filter((s) => s.status === "active").length);
@@ -208,7 +214,7 @@ export default async function SessionsPage() {
                 </div>
               )}
               <Link
-                href={`/sessions/${encodeURIComponent(session.id)}`}
+                href={`/t/${teamSlug}/sessions/${encodeURIComponent(session.id)}`}
                 className="session-row flex items-center gap-4 px-3 py-3 -mx-3 rounded-lg transition-colors group"
                 style={{
                   borderBottom:

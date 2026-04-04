@@ -65,7 +65,19 @@ app.use('*', async (c, next) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (session) {
       c.set('userId', session.user.id);
-      c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);
+      // Resolve team from ?team= query param (slug) or fallback to active org
+      const teamSlug = c.req.query('team');
+      if (teamSlug) {
+        const teamResult = await pool.query(
+          `SELECT o.id FROM organization o
+           INNER JOIN member m ON m.organization_id = o.id
+           WHERE o.slug = $1 AND m.user_id = $2`,
+          [teamSlug, session.user.id],
+        );
+        c.set('teamId', teamResult.rows[0]?.id || null);
+      } else {
+        c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);
+      }
       c.set('authMethod', 'session');
       return next();
     }

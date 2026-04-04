@@ -1,24 +1,29 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { type Session, timeAgo } from "../../lib/api";
+import { use, useState } from 'react';
+import Link from 'next/link';
+import { type Session, timeAgo } from '@/app/lib/api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 function extractTitle(session: { working_dir?: string; branch?: string }): string {
-  const branch = session.branch || "";
-  if (branch && branch !== "main" && branch !== "master" && branch !== "detached") {
+  const branch = session.branch || '';
+  if (branch && branch !== 'main' && branch !== 'master' && branch !== 'detached') {
     return branch
-      .replace(/^(feature|fix|refactor|chore|feat)\//i, "")
-      .replace(/[-_]/g, " ")
+      .replace(/^(feature|fix|refactor|chore|feat)\//i, '')
+      .replace(/[-_]/g, ' ')
       .replace(/\b\w/g, (c) => c.toUpperCase());
   }
-  const dir = session.working_dir || "";
-  return dir.split("/").pop() || "Untitled Session";
+  const dir = session.working_dir || '';
+  return dir.split('/').pop() || 'Untitled Session';
 }
 
-export default function SearchPage() {
+export default function SearchPage({
+  params,
+}: {
+  params: Promise<{ teamSlug: string }>;
+}) {
+  const { teamSlug } = use(params);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Session[]>([]);
   const [searched, setSearched] = useState(false);
@@ -31,7 +36,7 @@ export default function SearchPage() {
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
+        `${API_URL}/api/sessions?q=${encodeURIComponent(query)}&team=${encodeURIComponent(teamSlug)}`,
         { credentials: 'include' }
       );
       const data = await res.json();
@@ -118,7 +123,7 @@ export default function SearchPage() {
                 {results.map((session) => (
                   <Link
                     key={session.id}
-                    href={`/sessions/${encodeURIComponent(session.id)}`}
+                    href={`/t/${teamSlug}/sessions/${encodeURIComponent(session.id)}`}
                     className="flex items-center gap-3 px-3 py-3 rounded-lg transition-colors"
                     style={{ background: "transparent" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--bg-hover)")}
@@ -166,7 +171,7 @@ export default function SearchPage() {
                         setLoading(true);
                         try {
                           const res = await fetch(
-                            `${API_URL}/api/sessions?q=${encodeURIComponent(term)}`,
+                            `${API_URL}/api/sessions?q=${encodeURIComponent(term)}&team=${encodeURIComponent(teamSlug)}`,
                             { credentials: 'include' }
                           );
                           const data = await res.json();
