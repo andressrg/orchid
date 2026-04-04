@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export function AISummary({ sessionId }: { sessionId: string }) {
   const [summary, setSummary] = useState<string | null>(null);
@@ -15,7 +15,7 @@ export function AISummary({ sessionId }: { sessionId: string }) {
     setError(false);
     try {
       const res = await fetch(
-        `${API_URL}/sessions/${encodeURIComponent(sessionId)}/summary`,
+        `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/summary`,
         { headers: { "X-API-Key": API_KEY } }
       );
       if (!res.ok) throw new Error("Failed");

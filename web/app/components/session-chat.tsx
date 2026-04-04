@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://24.144.97.81:3000";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "orchid-poc-api-key-2024";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -80,7 +80,7 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
 
     try {
       const res = await fetch(
-        `${API_URL}/sessions/${encodeURIComponent(sessionId)}/chat`,
+        `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/chat`,
         {
           method: "POST",
           headers: {
