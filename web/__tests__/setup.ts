@@ -6,7 +6,8 @@ const TEST_DB_URL =
 export const testPool = new Pool({ connectionString: TEST_DB_URL });
 
 export async function cleanTestDb() {
-  await testPool.query('DELETE FROM sessions');
+  await testPool.query('DELETE FROM api_keys');
+  await testPool.query('DELETE FROM orchid_sessions');
 }
 
 export async function insertTestSession(overrides: Record<string, unknown> = {}) {
@@ -26,7 +27,7 @@ export async function insertTestSession(overrides: Record<string, unknown> = {})
   const data = { ...defaults, ...overrides };
 
   await testPool.query(
-    `INSERT INTO sessions (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, updated_at)
+    `INSERT INTO orchid_sessions (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
     [
       data.id,

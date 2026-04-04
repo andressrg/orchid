@@ -1,28 +1,101 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import pool from './db';
+import { auth } from './auth';
+import { hashToken, generateToken } from './crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const API_KEY = process.env.ORCHID_API_KEY;
+const LEGACY_API_KEY = process.env.ORCHID_API_KEY;
 const WEB_UI_URL = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || 'http://localhost:3000';
 
-const app = new Hono().basePath('/api');
+type AuthContext = {
+  userId: string | null;
+  teamId: string | null;
+  authMethod: 'pat' | 'session' | 'legacy' | null;
+};
+
+const app = new Hono<{ Variables: AuthContext }>().basePath('/api');
 
 app.use('*', cors());
 
-// Auth middleware — skip for health and webhook
+// Better Auth handler — must be before auth middleware
+app.on(['POST', 'GET'], '/auth/*', (c) => {
+  return auth.handler(c.req.raw);
+});
+
+// Auth middleware — skip for health, webhook, and auth routes
 app.use('*', async (c, next) => {
   const path = c.req.path;
-  if (path === '/api/health' || path.startsWith('/api/webhook/')) {
+  if (path === '/api/health' || path.startsWith('/api/webhook/') || path.startsWith('/api/auth/')) {
+    c.set('userId', null);
+    c.set('teamId', null);
+    c.set('authMethod', null);
     return next();
   }
-  const key = c.req.header('x-api-key');
-  if (!API_KEY || key !== API_KEY) {
+
+  // 1. Bearer token (PAT)
+  const authHeader = c.req.header('authorization');
+  if (authHeader?.startsWith('Bearer orc_')) {
+    const token = authHeader.slice(7);
+    const hash = hashToken(token);
+    try {
+      const result = await pool.query(
+        `SELECT ak.user_id, ak.team_id FROM api_keys ak WHERE ak.key_hash = $1
+         AND (ak.expires_at IS NULL OR ak.expires_at > NOW())`,
+        [hash],
+      );
+      if (result.rows.length > 0) {
+        const { user_id, team_id } = result.rows[0];
+        // Update last_used
+        pool.query('UPDATE api_keys SET last_used = NOW() WHERE key_hash = $1', [hash]);
+        c.set('userId', user_id);
+        c.set('teamId', team_id);
+        c.set('authMethod', 'pat');
+        return next();
+      }
+    } catch (err) {
+      console.error('PAT auth error:', err);
+    }
     return c.json({ error: 'Unauthorized' }, 401);
   }
-  return next();
+
+  // 2. Cookie session (web)
+  try {
+    const session = await auth.api.getSession({ headers: c.req.raw.headers });
+    if (session) {
+      c.set('userId', session.user.id);
+      c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);
+      c.set('authMethod', 'session');
+      return next();
+    }
+  } catch {
+    // Session check failed, continue to legacy
+  }
+
+  // 3. Legacy X-API-Key
+  const key = c.req.header('x-api-key');
+  if (LEGACY_API_KEY && key === LEGACY_API_KEY) {
+    c.set('userId', null);
+    c.set('teamId', null);
+    c.set('authMethod', 'legacy');
+    return next();
+  }
+
+  return c.json({ error: 'Unauthorized' }, 401);
 });
+
+// Helper: build WHERE clause for team scoping
+function scopeClause(c: { get(key: string): string | null }, paramOffset: number): { where: string; params: string[] } {
+  const teamId = c.get('teamId');
+  const userId = c.get('userId');
+  const authMethod = c.get('authMethod');
+
+  if (authMethod === 'legacy') return { where: '', params: [] };
+  if (teamId) return { where: `AND team_id = $${paramOffset}`, params: [teamId] };
+  if (userId) return { where: `AND user_id = $${paramOffset}`, params: [userId] };
+  return { where: '', params: [] };
+}
 
 // Health
 app.get('/health', async (c) => {
@@ -37,18 +110,20 @@ app.get('/health', async (c) => {
 // Sessions list/search
 app.get('/sessions', async (c) => {
   const q = c.req.query('q');
+  const scope = scopeClause(c, q ? 2 : 1);
   try {
     let result;
     if (q) {
       result = await pool.query(
         `SELECT id, user_name, user_email, working_dir, git_remotes, branch, tool, started_at, updated_at, status, message_count
-         FROM sessions WHERE transcript ILIKE $1 ORDER BY started_at DESC`,
-        [`%${q}%`],
+         FROM orchid_sessions WHERE transcript ILIKE $1 ${scope.where} ORDER BY started_at DESC`,
+        [`%${q}%`, ...scope.params],
       );
     } else {
       result = await pool.query(
         `SELECT id, user_name, user_email, working_dir, git_remotes, branch, tool, started_at, updated_at, status, message_count
-         FROM sessions ORDER BY started_at DESC`,
+         FROM orchid_sessions WHERE 1=1 ${scope.where} ORDER BY started_at DESC`,
+        [...scope.params],
       );
     }
     return c.json(result.rows);
@@ -62,7 +137,7 @@ app.get('/sessions', async (c) => {
 app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
     if (result.rows.length === 0) {
       return c.json({ error: 'Session not found' }, 404);
     }
@@ -79,6 +154,9 @@ app.put('/sessions/:id', async (c) => {
   const { user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status } =
     await c.req.json();
 
+  const userId = c.get('userId');
+  const teamId = c.get('teamId');
+
   let messageCount = 0;
   if (transcript) {
     messageCount = (transcript as string).split('\n').filter((l: string) => l.trim()).length;
@@ -86,16 +164,19 @@ app.put('/sessions/:id', async (c) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO sessions (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+      `INSERT INTO orchid_sessions (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, user_id, team_id, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
        ON CONFLICT (id) DO UPDATE SET
          user_name = EXCLUDED.user_name, user_email = EXCLUDED.user_email,
          working_dir = EXCLUDED.working_dir, git_remotes = EXCLUDED.git_remotes,
          branch = EXCLUDED.branch, tool = EXCLUDED.tool,
          transcript = EXCLUDED.transcript, status = EXCLUDED.status,
-         message_count = EXCLUDED.message_count, updated_at = NOW()
+         message_count = EXCLUDED.message_count,
+         user_id = COALESCE(EXCLUDED.user_id, orchid_sessions.user_id),
+         team_id = COALESCE(EXCLUDED.team_id, orchid_sessions.team_id),
+         updated_at = NOW()
        RETURNING *`,
-      [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount],
+      [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount, userId, teamId],
     );
     return c.json(result.rows[0]);
   } catch (err) {
@@ -108,7 +189,7 @@ app.put('/sessions/:id', async (c) => {
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('DELETE FROM sessions WHERE id = $1 RETURNING id', [id]);
+    const result = await pool.query('DELETE FROM orchid_sessions WHERE id = $1 RETURNING id', [id]);
     if (result.rows.length === 0) {
       return c.json({ error: 'Session not found' }, 404);
     }
@@ -121,6 +202,7 @@ app.delete('/sessions/:id', async (c) => {
 
 // Stats
 app.get('/stats', async (c) => {
+  const scope = scopeClause(c, 1);
   try {
     const result = await pool.query(`
       SELECT
@@ -129,13 +211,80 @@ app.get('/stats', async (c) => {
         COUNT(DISTINCT user_name) as unique_users,
         MIN(started_at) as first_session,
         MAX(updated_at) as last_activity
-      FROM sessions
-    `);
+      FROM orchid_sessions WHERE 1=1 ${scope.where}
+    `, [...scope.params]);
     return c.json(result.rows[0]);
   } catch (err) {
     console.error('GET /api/stats error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
+});
+
+// PAT management
+app.post('/tokens', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'Requires user authentication' }, 403);
+
+  const { name } = await c.req.json();
+  if (!name) return c.json({ error: 'name is required' }, 400);
+
+  const teamId = c.get('teamId');
+  const { token, hash, prefix } = generateToken();
+
+  try {
+    const result = await pool.query(
+      `INSERT INTO api_keys (user_id, team_id, name, key_hash, key_prefix) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, key_prefix, created_at`,
+      [userId, teamId, name, hash, prefix],
+    );
+    return c.json({ ...result.rows[0], token });
+  } catch (err) {
+    console.error('POST /api/tokens error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+app.get('/tokens', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'Requires user authentication' }, 403);
+
+  try {
+    const result = await pool.query(
+      `SELECT id, name, key_prefix, last_used, expires_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId],
+    );
+    return c.json(result.rows);
+  } catch (err) {
+    console.error('GET /api/tokens error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+app.delete('/tokens/:id', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'Requires user authentication' }, 403);
+
+  const id = c.req.param('id');
+  try {
+    const result = await pool.query(
+      'DELETE FROM api_keys WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, userId],
+    );
+    if (result.rows.length === 0) return c.json({ error: 'Token not found' }, 404);
+    return c.json({ deleted: result.rows[0].id });
+  } catch (err) {
+    console.error('DELETE /api/tokens/:id error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Token validation (for CLI login)
+app.get('/tokens/validate', async (c) => {
+  const userId = c.get('userId');
+  const authMethod = c.get('authMethod');
+  if (!userId || authMethod !== 'pat') {
+    return c.json({ valid: false }, 401);
+  }
+  return c.json({ valid: true, userId });
 });
 
 // AI Summary
@@ -146,7 +295,7 @@ app.get('/sessions/:id/summary', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
     if (result.rows.length === 0) {
       return c.json({ error: 'Session not found' }, 404);
     }
@@ -211,7 +360,7 @@ app.post('/sessions/:id/chat', async (c) => {
   if (!question) return c.json({ error: 'question is required' }, 400);
 
   try {
-    const result = await pool.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
     if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
 
     const session = result.rows[0];
@@ -309,7 +458,7 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM sessions WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
     if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
 
     const session = result.rows[0];
@@ -387,16 +536,18 @@ app.get('/sessions/:id/commits', async (c) => {
 // Decisions
 app.get('/decisions', async (c) => {
   const repo = c.req.query('repo');
+  const scope = scopeClause(c, repo ? 2 : 1);
   try {
     let sessionsResult;
     if (repo) {
       sessionsResult = await pool.query(
-        `SELECT id, user_name, transcript FROM sessions WHERE git_remotes::text ILIKE $1 AND transcript IS NOT NULL ORDER BY started_at DESC LIMIT 20`,
-        [`%${repo}%`],
+        `SELECT id, user_name, transcript FROM orchid_sessions WHERE git_remotes::text ILIKE $1 AND transcript IS NOT NULL ${scope.where} ORDER BY started_at DESC LIMIT 20`,
+        [`%${repo}%`, ...scope.params],
       );
     } else {
       sessionsResult = await pool.query(
-        `SELECT id, user_name, transcript FROM sessions WHERE transcript IS NOT NULL ORDER BY started_at DESC LIMIT 10`,
+        `SELECT id, user_name, transcript FROM orchid_sessions WHERE transcript IS NOT NULL ${scope.where === '' ? '' : `AND 1=1 ${scope.where}`} ORDER BY started_at DESC LIMIT 10`,
+        [...scope.params],
       );
     }
 
@@ -483,7 +634,7 @@ app.post('/webhook/github', async (c) => {
     const branch = pull_request.head.ref;
     const result = await pool.query(
       `SELECT id, user_name, branch, started_at, updated_at, status, LENGTH(transcript) as transcript_length
-       FROM sessions WHERE (git_remotes::text ILIKE $1 OR branch = $2) ORDER BY updated_at DESC LIMIT 10`,
+       FROM orchid_sessions WHERE (git_remotes::text ILIKE $1 OR branch = $2) ORDER BY updated_at DESC LIMIT 10`,
       [`%${repository.full_name}%`, branch],
     );
 

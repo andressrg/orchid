@@ -10,6 +10,8 @@ export default defineConfig({
     env: {
       DATABASE_URL: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
       ORCHID_API_KEY: 'test-api-key',
+      BETTER_AUTH_SECRET: 'test-secret-at-least-32-characters-long',
+      BETTER_AUTH_URL: 'http://localhost:3000',
     },
   },
   resolve: {
