@@ -4,7 +4,7 @@ import pool from './db';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const API_KEY = process.env.API_KEY;
+const API_KEY = process.env.ORCHID_API_KEY;
 const WEB_UI_URL = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || 'http://localhost:3000';
 
 const app = new Hono().basePath('/api');
