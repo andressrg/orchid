@@ -1,5 +1,4 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export interface Session {
   id: string;
@@ -29,7 +28,7 @@ async function apiFetch<T>(path: string, query?: string): Promise<T> {
   if (query) url += `?q=${encodeURIComponent(query)}`;
 
   const res = await fetch(url, {
-    headers: { 'X-API-Key': API_KEY },
+    credentials: 'include',
     cache: 'no-store',
   });
 

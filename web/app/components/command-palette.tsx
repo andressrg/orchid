@@ -11,7 +11,6 @@ interface Session {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
@@ -55,7 +54,7 @@ export function CommandPalette() {
       try {
         const res = await fetch(
           `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
-          { headers: { "X-API-Key": API_KEY } }
+          { credentials: 'include' }
         );
         if (res.ok) {
           setResults((await res.json()) as Session[]);

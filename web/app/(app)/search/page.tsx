@@ -5,7 +5,6 @@ import Link from "next/link";
 import { type Session, timeAgo } from "../../lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 function extractTitle(session: { working_dir?: string; branch?: string }): string {
   const branch = session.branch || "";
@@ -33,7 +32,7 @@ export default function SearchPage() {
     try {
       const res = await fetch(
         `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
-        { headers: { "X-API-Key": API_KEY } }
+        { credentials: 'include' }
       );
       const data = await res.json();
       setResults(data);
@@ -168,7 +167,7 @@ export default function SearchPage() {
                         try {
                           const res = await fetch(
                             `${API_URL}/api/sessions?q=${encodeURIComponent(term)}`,
-                            { headers: { "X-API-Key": API_KEY } }
+                            { credentials: 'include' }
                           );
                           const data = await res.json();
                           setResults(data);

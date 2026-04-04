@@ -52,7 +52,11 @@ const navItems = [
   },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  user?: { name: string; email: string; image?: string | null };
+}
+
+export function Sidebar({ user }: SidebarProps = {}) {
   const pathname = usePathname();
 
   return (
@@ -168,18 +172,44 @@ export function Sidebar() {
         </code>
       </div>
 
-      {/* Footer */}
-      <div
-        className="px-4 py-3 text-[11px] border-t"
+      {/* Settings */}
+      <Link
+        href="/settings/tokens"
+        className="flex items-center gap-2.5 mx-2 mb-1 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors"
         style={{
-          color: "var(--text-tertiary)",
-          borderColor: "var(--border-subtle)",
+          background: pathname.startsWith("/settings") ? "var(--bg-active)" : "transparent",
+          color: pathname.startsWith("/settings") ? "var(--text-primary)" : "var(--text-secondary)",
         }}
       >
-        Code tells you what. Git tells you when.
-        <br />
-        <span style={{ color: "var(--orchid-pink)" }}>Orchid tells you why.</span>
-      </div>
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="8" cy="8" r="2" />
+          <path d="M8 2v2M8 12v2M2 8h2M12 8h2M3.8 3.8l1.4 1.4M10.8 10.8l1.4 1.4M3.8 12.2l1.4-1.4M10.8 5.2l1.4-1.4" />
+        </svg>
+        Settings
+      </Link>
+
+      {/* User */}
+      {user && (
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 border-t"
+          style={{ borderColor: "var(--border-subtle)" }}
+        >
+          <div
+            className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
+            style={{ background: "var(--orchid-pink-muted)", color: "var(--orchid-pink)" }}
+          >
+            {user.name?.[0]?.toUpperCase() || "?"}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[12px] font-medium truncate" style={{ color: "var(--text-primary)" }}>
+              {user.name}
+            </div>
+            <div className="text-[10px] truncate" style={{ color: "var(--text-tertiary)" }}>
+              {user.email}
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 }

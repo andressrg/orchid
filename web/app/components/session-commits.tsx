@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 interface CommitFile {
   filename: string;
@@ -166,7 +165,7 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
       try {
         const res = await fetch(
           `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/commits`,
-          { headers: { "X-API-Key": API_KEY } }
+          { credentials: 'include' }
         );
         if (!res.ok) throw new Error("Failed to fetch commits");
         const data = await res.json();
