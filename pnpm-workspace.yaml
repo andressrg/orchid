@@ -1,5 +1,6 @@
 packages:
   - cli
   - infra
+  - infra-v2
   - server
   - web
