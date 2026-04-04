@@ -106,6 +106,19 @@ This rsyncs `server/` to the droplet, builds, and restarts the PM2 process.
 
 The web UI deploys automatically to Vercel on push to main.
 
+### Manual server deploy
+
+```bash
+KEY="/tmp/orchid-deploy/id_ed25519"
+HOST="root@24.144.97.81"
+SSH="ssh -i $KEY -o StrictHostKeyChecking=no $HOST"
+
+rsync -avz --delete --exclude node_modules --exclude dist \
+  -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
+  server/ $HOST:/opt/orchid-server/
+$SSH 'cd /opt/orchid-server && pnpm install && pnpm run build && pm2 restart orchid-server'
+```
+
 ### Useful commands on the droplet
 
 ```bash
