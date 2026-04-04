@@ -126,10 +126,12 @@ Monorepo:   pnpm workspaces
 
 Two Pulumi stacks (`dev`, `prod`) provision Hetzner Cloud servers:
 
-- **Server type**: `cx22` (2 vCPU, 4 GB RAM, 40 GB NVMe) — ~€3.99/month EU
+- **Server type**: `cx23` (2 vCPU, 4 GB RAM, 40 GB SSD)
 - **Region**: `nbg1` (Nuremberg) — cheapest
 - **IPv6-only**: No IPv4 charge. Cloudflare proxy provides IPv4 access.
+- **Data volume**: 10 GB Hetzner volume at `/mnt/data` for database persistence (survives server replacements, expandable)
 - **Firewall**: SSH (22), HTTP (80), HTTPS (443), ICMP. No direct API port exposure.
+- **Server hardening**: non-root `deploy` user, key-only SSH, fail2ban, unattended-upgrades
 - **State backend**: AWS S3 bucket (`orchid-pulumi-state`)
 - **Secrets**: Encrypted with shared passphrase via `PULUMI_CONFIG_PASSPHRASE` (stored in 1Password, loaded via `direnv`)
 
@@ -161,8 +163,8 @@ Cloudflare sits in front of both environments:
 - `api.orchidkeep.com` → AAAA record → Hetzner prod IPv6 (proxy enabled)
 - `api-dev.orchidkeep.com` → AAAA record → Hetzner dev IPv6 (proxy enabled)
 - Provides: IPv4 access, automatic HTTPS/TLS, DDoS protection
-- SSL mode: Full (Strict) with Cloudflare origin certificates on server
-- Ports 80/443 on firewall restricted to Cloudflare IP ranges only
+- SSL mode: Full (Strict) with Cloudflare origin certificates on kamal-proxy
+- Origin certificate stored in 1Password (15-year validity, generated once)
 
 ### Database Backups — WAL-G
 
