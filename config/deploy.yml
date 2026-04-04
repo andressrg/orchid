@@ -19,10 +19,7 @@ proxy:
     path: /health
 
 registry:
-  server: ghcr.io
-  username: andressrg
-  password:
-    - KAMAL_REGISTRY_PASSWORD
+  server: localhost
 
 builder:
   context: .
