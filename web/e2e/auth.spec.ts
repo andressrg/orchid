@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Authentication', () => {
   test('redirects unauthenticated users to login', async ({ page }) => {
-    await page.goto('/dashboard');
+    await page.goto('/t/any-team/dashboard');
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -42,8 +42,8 @@ test.describe('Authentication', () => {
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: /create account/i }).click();
 
-    // Should redirect to dashboard
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    // Should redirect to team dashboard (URL includes /t/<slug>/dashboard)
+    await expect(page).toHaveURL(/\/t\/[\w-]+\/dashboard/, { timeout: 10000 });
 
     // Should show user info in sidebar
     await expect(page.getByText('Test User')).toBeVisible();
