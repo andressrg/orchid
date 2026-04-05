@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
-import { readFileSync, readdirSync } from 'fs';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { join } from 'path';
 
 export async function setup() {
@@ -17,15 +18,9 @@ export async function setup() {
     END $$;
   `);
 
-  const migrationsDir = join(process.cwd(), 'migrations');
-  const files = readdirSync(migrationsDir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort();
-
-  for (const file of files) {
-    const sql = readFileSync(join(migrationsDir, file), 'utf-8');
-    await pool.query(sql);
-  }
+  // Run Drizzle migrations
+  const db = drizzle(pool);
+  await migrate(db, { migrationsFolder: join(process.cwd(), 'drizzle') });
 
   await pool.end();
 }

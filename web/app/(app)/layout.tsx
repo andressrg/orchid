@@ -13,8 +13,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // If we're at a non-team route, redirect to first team
   const firstTeam = await pool.query(
     `SELECT o.slug FROM organization o
-     INNER JOIN member m ON m."organizationId" = o.id
-     WHERE m."userId" = $1 ORDER BY m."createdAt" LIMIT 1`,
+     INNER JOIN member m ON m.organization_id = o.id
+     WHERE m.user_id = $1 ORDER BY m.created_at LIMIT 1`,
     [session.user.id],
   );
 
