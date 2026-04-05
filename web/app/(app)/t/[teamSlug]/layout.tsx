@@ -6,6 +6,7 @@ import { db } from '@/app/lib/db';
 import { organization } from '@/app/lib/schema';
 import { eq } from 'drizzle-orm';
 import { Sidebar } from '@/app/components/sidebar';
+import { MobileNav } from '@/app/components/mobile-nav';
 import { KeyboardNav } from '@/app/components/keyboard-nav';
 import { CommandPalette } from '@/app/components/command-palette';
 import { TitleUpdater } from '@/app/components/title-updater';
@@ -38,16 +39,27 @@ export default async function TeamLayout({
   const [team] = await db.select({ id: organization.id, name: organization.name, slug: organization.slug }).from(organization).where(eq(organization.id, teamId));
   const allTeams = await getUserTeams(session.user.id);
 
+  const sidebarContent = (
+    <Sidebar
+      user={session.user}
+      team={team}
+      teams={allTeams}
+      teamSlug={teamSlug}
+    />
+  );
+
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
+      {/* Desktop sidebar */}
       <div className="hidden md:block">
-        <Sidebar
-          user={session.user}
-          team={team}
-          teams={allTeams}
-          teamSlug={teamSlug}
-        />
+        {sidebarContent}
       </div>
+
+      {/* Mobile nav + drawer */}
+      <MobileNav>
+        {sidebarContent}
+      </MobileNav>
+
       <main className="flex-1 overflow-auto">
         <KeyboardNav />
         <CommandPalette teamSlug={teamSlug} />
