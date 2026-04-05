@@ -24,11 +24,10 @@ export function writeConfigFile(updates: Record<string, string>): void {
   });
 }
 
-export function getConfig() {
+// Returns apiUrl only — does not require token. Used by `orchid login`.
+export function getApiUrl(): string {
   const file = readConfigFile();
-
   const apiUrl = process.env.ORCHID_API_URL || file.api_url;
-  const token = process.env.ORCHID_TOKEN || file.token;
 
   if (!apiUrl) {
     console.error(
@@ -36,6 +35,15 @@ export function getConfig() {
     );
     process.exit(1);
   }
+
+  return apiUrl;
+}
+
+// Returns full config including token. Exits if not authenticated.
+export function getConfig() {
+  const apiUrl = getApiUrl();
+  const file = readConfigFile();
+  const token = process.env.ORCHID_TOKEN || file.token;
 
   if (!token) {
     console.error(

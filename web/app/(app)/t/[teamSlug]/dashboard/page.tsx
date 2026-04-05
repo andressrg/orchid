@@ -1,5 +1,8 @@
 import Link from 'next/link';
-import { getSessions, getStats, timeAgo } from '@/app/lib/api';
+import { headers } from 'next/headers';
+import { timeAgo } from '@/app/lib/api';
+import { auth } from '@/app/lib/auth';
+import { listSessions, getTeamStats, resolveTeamId } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
 
 function StatusBadge({ status }: { status: string }) {
@@ -66,38 +69,23 @@ export default async function SessionsPage({
   params: Promise<{ teamSlug: string }>;
 }) {
   const { teamSlug } = await params;
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) return null;
 
-  let sessions: Awaited<ReturnType<typeof getSessions>> = [];
-  let stats: Awaited<ReturnType<typeof getStats>> = {
-    total_sessions: '0',
-    active_sessions: '0',
-    unique_users: '0',
-    first_session: '',
-    last_activity: '',
-  };
+  const teamId = await resolveTeamId(teamSlug, session.user.id);
+  if (!teamId) return null;
 
-  try {
-    sessions = await getSessions(teamSlug);
-  } catch {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-center" style={{ color: "var(--text-secondary)" }}>
-          <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
-            Unable to connect to Orchid server
-          </p>
-          <p className="text-sm">Make sure the server is running and accessible.</p>
-        </div>
-      </div>
-    );
-  }
+  const sessions = await listSessions(teamId);
+  let stats = await getTeamStats(teamId);
 
-  try {
-    stats = await getStats(teamSlug);
-  } catch {
-    stats.total_sessions = String(sessions.length);
-    stats.active_sessions = String(sessions.filter((s) => s.status === "active").length);
-    const users = new Set(sessions.map((s) => s.user_name));
-    stats.unique_users = String(users.size);
+  if (!stats) {
+    stats = {
+      total_sessions: String(sessions.length),
+      active_sessions: String(sessions.filter((s) => s.status === "active").length),
+      unique_users: String(new Set(sessions.map((s) => s.user_name)).size),
+      first_session: '',
+      last_activity: '',
+    };
   }
 
   const activeSessions = sessions.filter((s) => s.status === "active");

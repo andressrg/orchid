@@ -1,7 +1,10 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { auth } from '@/app/lib/auth';
-import pool from '@/app/lib/db';
+import { resolveTeamId, getFirstTeamSlug, getUserTeams } from '@/app/lib/queries';
+import { db } from '@/app/lib/db';
+import { organization } from '@/app/lib/schema';
+import { eq } from 'drizzle-orm';
 import { Sidebar } from '@/app/components/sidebar';
 import { KeyboardNav } from '@/app/components/keyboard-nav';
 import { CommandPalette } from '@/app/components/command-palette';
@@ -22,37 +25,18 @@ export default async function TeamLayout({
 
   const { teamSlug } = await params;
 
-  // Resolve team by slug and verify membership
-  const teamResult = await pool.query(
-    `SELECT o.id, o.name, o.slug FROM organization o
-     INNER JOIN member m ON m.organization_id = o.id
-     WHERE o.slug = $1 AND m.user_id = $2`,
-    [teamSlug, session.user.id],
-  );
+  const teamId = await resolveTeamId(teamSlug, session.user.id);
 
-  if (teamResult.rows.length === 0) {
-    // User is not a member of this team — redirect to their first team
-    const firstTeam = await pool.query(
-      `SELECT o.slug FROM organization o
-       INNER JOIN member m ON m.organization_id = o.id
-       WHERE m.user_id = $1 ORDER BY m.created_at LIMIT 1`,
-      [session.user.id],
-    );
-    if (firstTeam.rows.length > 0) {
-      redirect(`/t/${firstTeam.rows[0].slug}/dashboard`);
+  if (!teamId) {
+    const firstSlug = await getFirstTeamSlug(session.user.id);
+    if (firstSlug) {
+      redirect(`/t/${firstSlug}/dashboard`);
     }
     redirect('/login');
   }
 
-  const team = teamResult.rows[0];
-
-  // Get all teams for the team switcher
-  const allTeams = await pool.query(
-    `SELECT o.id, o.name, o.slug FROM organization o
-     INNER JOIN member m ON m.organization_id = o.id
-     WHERE m.user_id = $1 ORDER BY o.name`,
-    [session.user.id],
-  );
+  const [team] = await db.select({ id: organization.id, name: organization.name, slug: organization.slug }).from(organization).where(eq(organization.id, teamId));
+  const allTeams = await getUserTeams(session.user.id);
 
   return (
     <div className="flex h-full">
@@ -60,7 +44,7 @@ export default async function TeamLayout({
         <Sidebar
           user={session.user}
           team={team}
-          teams={allTeams.rows}
+          teams={allTeams}
           teamSlug={teamSlug}
         />
       </div>

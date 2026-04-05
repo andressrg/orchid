@@ -27,7 +27,7 @@ describe('sessions/:id', () => {
 
       expect(res.status).toBe(200);
       expect(data.id).toBe('my-session');
-      expect(data.user_name).toBe('testuser');
+      expect(data.userName ?? data.user_name).toBe('testuser');
       expect(data.transcript).toBeDefined();
     });
   });

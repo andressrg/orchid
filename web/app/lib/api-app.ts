@@ -47,7 +47,7 @@ app.use('*', async (c, next) => {
         .where(and(eq(apiKey.keyHash, hash), or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, new Date()))));
 
       if (key) {
-        db.update(apiKey).set({ lastUsed: new Date() }).where(eq(apiKey.keyHash, hash)).execute();
+        db.update(apiKey).set({ lastUsed: new Date() }).where(eq(apiKey.keyHash, hash)).execute().catch(() => {});
         c.set('userId', key.userId);
         c.set('teamId', key.teamId);
         c.set('authMethod', 'pat');
@@ -85,13 +85,24 @@ app.use('*', async (c, next) => {
   return c.json({ error: 'Unauthorized' }, 401);
 });
 
-// Scope helper
+// Scope helpers
 function scopeConditions(c: { get(key: string): string | null }) {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
   if (teamId) return eq(orchidSession.teamId, teamId);
   if (userId) return eq(orchidSession.userId, userId);
   return undefined;
+}
+
+function scopeConditionForId(c: { get(key: string): string | null }, sessionId: string) {
+  const scope = scopeConditions(c);
+  const conditions = [eq(orchidSession.id, sessionId)];
+  if (scope) conditions.push(scope);
+  return and(...conditions);
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 // Health
@@ -110,7 +121,7 @@ app.get('/sessions', async (c) => {
   const scope = scopeConditions(c);
   try {
     const conditions = [
-      ...(q ? [ilike(orchidSession.transcript, `%${q}%`)] : []),
+      ...(q ? [ilike(orchidSession.transcript, `%${escapeLike(q)}%`)] : []),
       ...(scope ? [scope] : []),
     ];
 
@@ -139,13 +150,13 @@ app.get('/sessions', async (c) => {
   }
 });
 
-// Session by ID
+// Session by ID (scoped)
 app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM orchid_session WHERE id = $1', [id]);
-    if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
-    return c.json(result.rows[0]);
+    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+    return c.json(session);
   } catch (err) {
     console.error('GET /api/sessions/:id error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -179,6 +190,7 @@ app.put('/sessions/:id', async (c) => {
          user_id = COALESCE(EXCLUDED.user_id, orchid_session.user_id),
          team_id = COALESCE(EXCLUDED.team_id, orchid_session.team_id),
          updated_at = NOW()
+       WHERE orchid_session.user_id = $11 OR orchid_session.user_id IS NULL
        RETURNING *`,
       [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount, userId, teamId],
     );
@@ -189,11 +201,11 @@ app.put('/sessions/:id', async (c) => {
   }
 });
 
-// Delete session
+// Delete session (scoped)
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const deleted = await db.delete(orchidSession).where(eq(orchidSession.id, id)).returning({ id: orchidSession.id });
+    const deleted = await db.delete(orchidSession).where(scopeConditionForId(c, id)!).returning({ id: orchidSession.id });
     if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
@@ -301,7 +313,7 @@ app.get('/sessions/:id/summary', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
+    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
@@ -360,7 +372,7 @@ app.post('/sessions/:id/chat', async (c) => {
   if (!question) return c.json({ error: 'question is required' }, 400);
 
   try {
-    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
+    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ answer: 'No conversation content available to reason about.' });
 
@@ -454,7 +466,7 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
+    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
 
     const remotes: string[] = (session.gitRemotes as string[]) || [];
@@ -535,7 +547,7 @@ app.get('/decisions', async (c) => {
   try {
     const conditions = [
       isNotNull(orchidSession.transcript),
-      ...(repo ? [ilike(sql`${orchidSession.gitRemotes}::text`, `%${repo}%`)] : []),
+      ...(repo ? [ilike(sql`${orchidSession.gitRemotes}::text`, `%${escapeLike(repo)}%`)] : []),
       ...(scope ? [scope] : []),
     ];
 

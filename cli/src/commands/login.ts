@@ -1,8 +1,8 @@
 import * as readline from "readline";
-import { getConfig, writeConfigFile } from "../config";
+import { getApiUrl, writeConfigFile } from "../config";
 
 export async function runLogin(): Promise<void> {
-  const { apiUrl } = getConfig();
+  const apiUrl = getApiUrl();
 
   console.log("Paste your Personal Access Token.");
   console.log(`Generate one at: ${apiUrl.replace(/\/api$/, "")}/settings/tokens\n`);
