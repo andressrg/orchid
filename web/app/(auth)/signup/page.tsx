@@ -1,17 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { authClient } from '@/app/lib/auth-client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function SignupPage() {
+export const dynamic = 'force-dynamic';
+
+function SignupForm() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,12 +43,10 @@ export default function SignupPage() {
     });
 
     if (orgResult.error) {
-      // Team creation failed but user is signed up — redirect to generic dashboard
-      router.push('/dashboard');
+      router.push(redirectTo || '/dashboard');
     } else {
-      // Set active org so the session knows the team
       await authClient.organization.setActive({ organizationId: orgResult.data.id });
-      router.push(`/t/${teamSlug}/dashboard`);
+      router.push(redirectTo || `/t/${teamSlug}/dashboard`);
     }
   }
 
@@ -117,5 +119,13 @@ export default function SignupPage() {
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense>
+      <SignupForm />
+    </Suspense>
   );
 }

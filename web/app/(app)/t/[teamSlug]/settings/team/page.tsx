@@ -10,6 +10,7 @@ export default function TeamPage() {
   const [inviteRole, setInviteRole] = useState('member');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [inviteLink, setInviteLink] = useState('');
 
   async function inviteMember(e: React.FormEvent) {
     e.preventDefault();
@@ -25,8 +26,12 @@ export default function TeamPage() {
 
     if (result.error) {
       setMessage(result.error.message || 'Failed to send invitation');
+      setInviteLink('');
     } else {
+      const invitation = result.data;
+      const link = `${window.location.origin}/invite/${invitation?.id || ''}`;
       setMessage(`Invitation sent to ${inviteEmail}`);
+      setInviteLink(link);
       setInviteEmail('');
     }
     setLoading(false);
@@ -95,6 +100,20 @@ export default function TeamPage() {
         </button>
       </form>
       {message && <p className="mt-2 text-sm text-neutral-400">{message}</p>}
+      {inviteLink && (
+        <div className="mt-3 rounded-md border border-neutral-700 bg-neutral-900 p-3">
+          <p className="text-xs text-neutral-400 mb-1">Share this invite link:</p>
+          <div className="flex gap-2 items-center">
+            <code className="flex-1 text-xs text-violet-400 break-all">{inviteLink}</code>
+            <button
+              onClick={() => navigator.clipboard.writeText(inviteLink)}
+              className="text-xs text-neutral-400 hover:text-white shrink-0"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
