@@ -259,7 +259,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
 
       {/* Settings */}
       <Link
-        href={`${base}/settings/tokens`}
+        href={`${base}/settings/team`}
         className="flex items-center gap-2.5 mx-2 mb-1 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors"
         style={{
           background: pathname.includes('/settings') ? 'var(--bg-active)' : 'transparent',
