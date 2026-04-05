@@ -26,7 +26,7 @@ export async function getTestAuth(): Promise<{
   }
 
   const userId = `test-user-${Date.now()}`;
-  await testDb.insert(schema.users).values({
+  await testDb.insert(schema.user).values({
     id: userId,
     name: 'Test User',
     email: `test-${Date.now()}@example.com`,

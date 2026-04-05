@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
 import pool, { db } from './db';
-import { orchidSessions, apiKeys, organizations, members } from './schema';
+import { orchidSessions, apiKeys, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 
@@ -67,10 +67,10 @@ app.use('*', async (c, next) => {
       const teamSlug = c.req.query('team');
       if (teamSlug) {
         const [team] = await db
-          .select({ id: organizations.id })
-          .from(organizations)
-          .innerJoin(members, eq(members.organizationId, organizations.id))
-          .where(and(eq(organizations.slug, teamSlug), eq(members.userId, session.user.id)));
+          .select({ id: organization.id })
+          .from(organization)
+          .innerJoin(member, eq(member.organizationId, organization.id))
+          .where(and(eq(organization.slug, teamSlug), eq(member.userId, session.user.id)));
         c.set('teamId', team?.id || null);
       } else {
         c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);

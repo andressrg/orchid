@@ -7,6 +7,4 @@ export default defineConfig({
   dbCredentials: {
     url: process.env.DATABASE_URL!,
   },
-  // Only manage our tables — Better Auth manages its own
-  tablesFilter: ['orchid_sessions', 'api_keys'],
 });
