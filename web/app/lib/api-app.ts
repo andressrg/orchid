@@ -70,8 +70,8 @@ app.use('*', async (c, next) => {
       if (teamSlug) {
         const teamResult = await pool.query(
           `SELECT o.id FROM organization o
-           INNER JOIN member m ON m.organization_id = o.id
-           WHERE o.slug = $1 AND m.user_id = $2`,
+           INNER JOIN member m ON m."organizationId" = o.id
+           WHERE o.slug = $1 AND m."userId" = $2`,
           [teamSlug, session.user.id],
         );
         c.set('teamId', teamResult.rows[0]?.id || null);

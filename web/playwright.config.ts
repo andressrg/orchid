@@ -7,6 +7,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    viewport: { width: 1280, height: 720 },
   },
   webServer: {
     command: 'pnpm dev',

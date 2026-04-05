@@ -27,13 +27,25 @@ export default function SignupPage() {
     }
 
     // Create a default team for the user
-    const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    await authClient.organization.create({
+    const base =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '') || 'my-team';
+    const teamSlug = `${base}-${Date.now().toString(36)}`;
+    const orgResult = await authClient.organization.create({
       name: `${name}'s Team`,
-      slug: slug || 'my-team',
+      slug: teamSlug,
     });
 
-    router.push('/dashboard');
+    if (orgResult.error) {
+      // Team creation failed but user is signed up — redirect to generic dashboard
+      router.push('/dashboard');
+    } else {
+      // Set active org so the session knows the team
+      await authClient.organization.setActive({ organizationId: orgResult.data.id });
+      router.push(`/t/${teamSlug}/dashboard`);
+    }
   }
 
   return (

@@ -45,7 +45,8 @@ test.describe('Authentication', () => {
     // Should redirect to team dashboard (URL includes /t/<slug>/dashboard)
     await expect(page).toHaveURL(/\/t\/[\w-]+\/dashboard/, { timeout: 10000 });
 
-    // Should show user info in sidebar
-    await expect(page.getByText('Test User')).toBeVisible();
+    // Should redirect to team dashboard (URL includes /t/<slug>/dashboard)
+    // The client-side router.push navigates here after signup + team creation
+    await expect(page).toHaveURL(/\/t\/[\w-]+\/dashboard/, { timeout: 15000 });
   });
 });

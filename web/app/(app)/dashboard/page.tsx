@@ -3,14 +3,13 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/app/lib/auth';
 import pool from '@/app/lib/db';
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardRedirect() {
   const session = await auth.api.getSession({ headers: await headers() });
 
   if (!session) {
     redirect('/login');
   }
 
-  // If we're at a non-team route, redirect to first team
   const firstTeam = await pool.query(
     `SELECT o.slug FROM organization o
      INNER JOIN member m ON m."organizationId" = o.id
@@ -22,5 +21,5 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect(`/t/${firstTeam.rows[0].slug}/dashboard`);
   }
 
-  return <>{children}</>;
+  redirect('/login');
 }
