@@ -21,7 +21,7 @@ import { user, organization } from './auth-schema';
 
 // ── Our tables ──
 
-export const orchidSessions = pgTable('orchid_sessions', {
+export const orchidSession = pgTable('orchid_session', {
   id: text('id').primaryKey(),
   userName: text('user_name'),
   userEmail: text('user_email'),
@@ -37,11 +37,11 @@ export const orchidSessions = pgTable('orchid_sessions', {
   userId: text('user_id').references(() => user.id),
   teamId: text('team_id').references(() => organization.id),
 }, (t) => [
-  index('idx_orchid_sessions_team').on(t.teamId),
-  index('idx_orchid_sessions_user').on(t.userId),
+  index('idx_orchid_session_team').on(t.teamId),
+  index('idx_orchid_session_user').on(t.userId),
 ]);
 
-export const apiKeys = pgTable('api_keys', {
+export const apiKey = pgTable('api_key', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
   teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
@@ -52,6 +52,6 @@ export const apiKeys = pgTable('api_keys', {
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index('idx_api_keys_user').on(t.userId),
-  index('idx_api_keys_hash').on(t.keyHash),
+  index('idx_api_key_user').on(t.userId),
+  index('idx_api_key_hash').on(t.keyHash),
 ]);

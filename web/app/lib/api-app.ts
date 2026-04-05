@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
 import pool, { db } from './db';
-import { orchidSessions, apiKeys, organization, member } from './schema';
+import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 
@@ -42,12 +42,12 @@ app.use('*', async (c, next) => {
     const hash = hashToken(token);
     try {
       const [key] = await db
-        .select({ userId: apiKeys.userId, teamId: apiKeys.teamId })
-        .from(apiKeys)
-        .where(and(eq(apiKeys.keyHash, hash), or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, new Date()))));
+        .select({ userId: apiKey.userId, teamId: apiKey.teamId })
+        .from(apiKey)
+        .where(and(eq(apiKey.keyHash, hash), or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, new Date()))));
 
       if (key) {
-        db.update(apiKeys).set({ lastUsed: new Date() }).where(eq(apiKeys.keyHash, hash)).execute();
+        db.update(apiKey).set({ lastUsed: new Date() }).where(eq(apiKey.keyHash, hash)).execute();
         c.set('userId', key.userId);
         c.set('teamId', key.teamId);
         c.set('authMethod', 'pat');
@@ -89,8 +89,8 @@ app.use('*', async (c, next) => {
 function scopeConditions(c: { get(key: string): string | null }) {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
-  if (teamId) return eq(orchidSessions.teamId, teamId);
-  if (userId) return eq(orchidSessions.userId, userId);
+  if (teamId) return eq(orchidSession.teamId, teamId);
+  if (userId) return eq(orchidSession.userId, userId);
   return undefined;
 }
 
@@ -110,27 +110,27 @@ app.get('/sessions', async (c) => {
   const scope = scopeConditions(c);
   try {
     const conditions = [
-      ...(q ? [ilike(orchidSessions.transcript, `%${q}%`)] : []),
+      ...(q ? [ilike(orchidSession.transcript, `%${q}%`)] : []),
       ...(scope ? [scope] : []),
     ];
 
     const rows = await db
       .select({
-        id: orchidSessions.id,
-        user_name: orchidSessions.userName,
-        user_email: orchidSessions.userEmail,
-        working_dir: orchidSessions.workingDir,
-        git_remotes: orchidSessions.gitRemotes,
-        branch: orchidSessions.branch,
-        tool: orchidSessions.tool,
-        started_at: orchidSessions.startedAt,
-        updated_at: orchidSessions.updatedAt,
-        status: orchidSessions.status,
-        message_count: orchidSessions.messageCount,
+        id: orchidSession.id,
+        user_name: orchidSession.userName,
+        user_email: orchidSession.userEmail,
+        working_dir: orchidSession.workingDir,
+        git_remotes: orchidSession.gitRemotes,
+        branch: orchidSession.branch,
+        tool: orchidSession.tool,
+        started_at: orchidSession.startedAt,
+        updated_at: orchidSession.updatedAt,
+        status: orchidSession.status,
+        message_count: orchidSession.messageCount,
       })
-      .from(orchidSessions)
+      .from(orchidSession)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(orchidSessions.startedAt));
+      .orderBy(desc(orchidSession.startedAt));
 
     return c.json(rows);
   } catch (err) {
@@ -143,7 +143,7 @@ app.get('/sessions', async (c) => {
 app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM orchid_session WHERE id = $1', [id]);
     if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json(result.rows[0]);
   } catch (err) {
@@ -168,7 +168,7 @@ app.put('/sessions/:id', async (c) => {
 
   try {
     const result = await pool.query(
-      `INSERT INTO orchid_sessions (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, user_id, team_id, updated_at)
+      `INSERT INTO orchid_session (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, user_id, team_id, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
        ON CONFLICT (id) DO UPDATE SET
          user_name = EXCLUDED.user_name, user_email = EXCLUDED.user_email,
@@ -176,8 +176,8 @@ app.put('/sessions/:id', async (c) => {
          branch = EXCLUDED.branch, tool = EXCLUDED.tool,
          transcript = EXCLUDED.transcript, status = EXCLUDED.status,
          message_count = EXCLUDED.message_count,
-         user_id = COALESCE(EXCLUDED.user_id, orchid_sessions.user_id),
-         team_id = COALESCE(EXCLUDED.team_id, orchid_sessions.team_id),
+         user_id = COALESCE(EXCLUDED.user_id, orchid_session.user_id),
+         team_id = COALESCE(EXCLUDED.team_id, orchid_session.team_id),
          updated_at = NOW()
        RETURNING *`,
       [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount, userId, teamId],
@@ -193,7 +193,7 @@ app.put('/sessions/:id', async (c) => {
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const deleted = await db.delete(orchidSessions).where(eq(orchidSessions.id, id)).returning({ id: orchidSessions.id });
+    const deleted = await db.delete(orchidSession).where(eq(orchidSession.id, id)).returning({ id: orchidSession.id });
     if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
@@ -209,12 +209,12 @@ app.get('/stats', async (c) => {
     const [stats] = await db
       .select({
         total_sessions: sql<string>`count(*)`,
-        active_sessions: sql<string>`count(*) filter (where ${orchidSessions.status} = 'active')`,
-        unique_users: sql<string>`count(distinct ${orchidSessions.userName})`,
-        first_session: sql<string>`min(${orchidSessions.startedAt})`,
-        last_activity: sql<string>`max(${orchidSessions.updatedAt})`,
+        active_sessions: sql<string>`count(*) filter (where ${orchidSession.status} = 'active')`,
+        unique_users: sql<string>`count(distinct ${orchidSession.userName})`,
+        first_session: sql<string>`min(${orchidSession.startedAt})`,
+        last_activity: sql<string>`max(${orchidSession.updatedAt})`,
       })
-      .from(orchidSessions)
+      .from(orchidSession)
       .where(scope || undefined);
 
     return c.json(stats);
@@ -236,10 +236,10 @@ app.post('/tokens', async (c) => {
   const { token, hash, prefix } = generateToken();
 
   try {
-    const [row] = await db.insert(apiKeys).values({
+    const [row] = await db.insert(apiKey).values({
       userId, teamId, name, keyHash: hash, keyPrefix: prefix,
     }).returning({
-      id: apiKeys.id, name: apiKeys.name, key_prefix: apiKeys.keyPrefix, created_at: apiKeys.createdAt,
+      id: apiKey.id, name: apiKey.name, key_prefix: apiKey.keyPrefix, created_at: apiKey.createdAt,
     });
     return c.json({ ...row, token });
   } catch (err) {
@@ -255,12 +255,12 @@ app.get('/tokens', async (c) => {
   try {
     const rows = await db
       .select({
-        id: apiKeys.id, name: apiKeys.name, key_prefix: apiKeys.keyPrefix,
-        last_used: apiKeys.lastUsed, expires_at: apiKeys.expiresAt, created_at: apiKeys.createdAt,
+        id: apiKey.id, name: apiKey.name, key_prefix: apiKey.keyPrefix,
+        last_used: apiKey.lastUsed, expires_at: apiKey.expiresAt, created_at: apiKey.createdAt,
       })
-      .from(apiKeys)
-      .where(eq(apiKeys.userId, userId))
-      .orderBy(desc(apiKeys.createdAt));
+      .from(apiKey)
+      .where(eq(apiKey.userId, userId))
+      .orderBy(desc(apiKey.createdAt));
     return c.json(rows);
   } catch (err) {
     console.error('GET /api/tokens error:', err);
@@ -274,7 +274,7 @@ app.delete('/tokens/:id', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const deleted = await db.delete(apiKeys).where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId))).returning({ id: apiKeys.id });
+    const deleted = await db.delete(apiKey).where(and(eq(apiKey.id, id), eq(apiKey.userId, userId))).returning({ id: apiKey.id });
     if (deleted.length === 0) return c.json({ error: 'Token not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
@@ -301,7 +301,7 @@ app.get('/sessions/:id/summary', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
@@ -360,7 +360,7 @@ app.post('/sessions/:id/chat', async (c) => {
   if (!question) return c.json({ error: 'question is required' }, 400);
 
   try {
-    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ answer: 'No conversation content available to reason about.' });
 
@@ -454,7 +454,7 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    const [session] = await db.select().from(orchidSession).where(eq(orchidSession.id, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
 
     const remotes: string[] = (session.gitRemotes as string[]) || [];
@@ -534,16 +534,16 @@ app.get('/decisions', async (c) => {
   const scope = scopeConditions(c);
   try {
     const conditions = [
-      isNotNull(orchidSessions.transcript),
-      ...(repo ? [ilike(sql`${orchidSessions.gitRemotes}::text`, `%${repo}%`)] : []),
+      isNotNull(orchidSession.transcript),
+      ...(repo ? [ilike(sql`${orchidSession.gitRemotes}::text`, `%${repo}%`)] : []),
       ...(scope ? [scope] : []),
     ];
 
     const rows = await db
-      .select({ id: orchidSessions.id, user_name: orchidSessions.userName, transcript: orchidSessions.transcript })
-      .from(orchidSessions)
+      .select({ id: orchidSession.id, user_name: orchidSession.userName, transcript: orchidSession.transcript })
+      .from(orchidSession)
       .where(and(...conditions))
-      .orderBy(desc(orchidSessions.startedAt))
+      .orderBy(desc(orchidSession.startedAt))
       .limit(repo ? 20 : 10);
 
     if (rows.length === 0) return c.json({ decisions: [], sessions_analyzed: 0 });
@@ -628,17 +628,17 @@ app.post('/webhook/github', async (c) => {
     const branch = pull_request.head.ref;
     const rows = await db
       .select({
-        id: orchidSessions.id, user_name: orchidSessions.userName, branch: orchidSessions.branch,
-        started_at: orchidSessions.startedAt, updated_at: orchidSessions.updatedAt,
-        status: orchidSessions.status,
-        transcript_length: sql<number>`length(${orchidSessions.transcript})`,
+        id: orchidSession.id, user_name: orchidSession.userName, branch: orchidSession.branch,
+        started_at: orchidSession.startedAt, updated_at: orchidSession.updatedAt,
+        status: orchidSession.status,
+        transcript_length: sql<number>`length(${orchidSession.transcript})`,
       })
-      .from(orchidSessions)
+      .from(orchidSession)
       .where(or(
-        ilike(sql`${orchidSessions.gitRemotes}::text`, `%${repository.full_name}%`),
-        eq(orchidSessions.branch, branch),
+        ilike(sql`${orchidSession.gitRemotes}::text`, `%${repository.full_name}%`),
+        eq(orchidSession.branch, branch),
       ))
-      .orderBy(desc(orchidSessions.updatedAt))
+      .orderBy(desc(orchidSession.updatedAt))
       .limit(10);
 
     if (rows.length === 0) return c.json({ ok: true, sessions: 0 });

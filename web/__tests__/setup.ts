@@ -34,7 +34,7 @@ export async function getTestAuth(): Promise<{
   }).onConflictDoNothing();
 
   const { token, hash, prefix } = generateToken();
-  await testDb.insert(schema.apiKeys).values({
+  await testDb.insert(schema.apiKey).values({
     userId,
     name: 'test-token',
     keyHash: hash,
@@ -47,14 +47,14 @@ export async function getTestAuth(): Promise<{
 }
 
 export async function cleanTestDb() {
-  await testDb.delete(schema.orchidSessions);
+  await testDb.delete(schema.orchidSession);
 }
 
 // Accept both snake_case (legacy test format) and camelCase keys
 export async function insertTestSession(overrides: Record<string, unknown> = {}) {
   const { userId } = await getTestAuth();
 
-  await testDb.insert(schema.orchidSessions).values({
+  await testDb.insert(schema.orchidSession).values({
     id: (overrides.id ?? 'test-session-1') as string,
     userName: (overrides.user_name ?? overrides.userName ?? 'testuser') as string,
     userEmail: (overrides.user_email ?? overrides.userEmail ?? 'test@example.com') as string,

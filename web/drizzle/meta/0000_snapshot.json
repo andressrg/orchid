@@ -1,5 +1,5 @@
 {
-  "id": "431c383a-076c-44e3-ae85-be3d4e1d0ede",
+  "id": "9fb93604-eb7f-4132-a021-9b807a97959e",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -126,8 +126,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.api_keys": {
-      "name": "api_keys",
+    "public.api_key": {
+      "name": "api_key",
       "schema": "",
       "columns": {
         "id": {
@@ -187,8 +187,8 @@
         }
       },
       "indexes": {
-        "idx_api_keys_user": {
-          "name": "idx_api_keys_user",
+        "idx_api_key_user": {
+          "name": "idx_api_key_user",
           "columns": [
             {
               "expression": "user_id",
@@ -202,8 +202,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_api_keys_hash": {
-          "name": "idx_api_keys_hash",
+        "idx_api_key_hash": {
+          "name": "idx_api_key_hash",
           "columns": [
             {
               "expression": "key_hash",
@@ -219,9 +219,9 @@
         }
       },
       "foreignKeys": {
-        "api_keys_user_id_user_id_fk": {
-          "name": "api_keys_user_id_user_id_fk",
-          "tableFrom": "api_keys",
+        "api_key_user_id_user_id_fk": {
+          "name": "api_key_user_id_user_id_fk",
+          "tableFrom": "api_key",
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
@@ -232,9 +232,9 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "api_keys_team_id_organization_id_fk": {
-          "name": "api_keys_team_id_organization_id_fk",
-          "tableFrom": "api_keys",
+        "api_key_team_id_organization_id_fk": {
+          "name": "api_key_team_id_organization_id_fk",
+          "tableFrom": "api_key",
           "tableTo": "organization",
           "columnsFrom": [
             "team_id"
@@ -248,8 +248,8 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "api_keys_key_hash_unique": {
-          "name": "api_keys_key_hash_unique",
+        "api_key_key_hash_unique": {
+          "name": "api_key_key_hash_unique",
           "nullsNotDistinct": false,
           "columns": [
             "key_hash"
@@ -483,8 +483,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.orchid_sessions": {
-      "name": "orchid_sessions",
+    "public.orchid_session": {
+      "name": "orchid_session",
       "schema": "",
       "columns": {
         "id": {
@@ -577,8 +577,8 @@
         }
       },
       "indexes": {
-        "idx_orchid_sessions_team": {
-          "name": "idx_orchid_sessions_team",
+        "idx_orchid_session_team": {
+          "name": "idx_orchid_session_team",
           "columns": [
             {
               "expression": "team_id",
@@ -592,8 +592,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_orchid_sessions_user": {
-          "name": "idx_orchid_sessions_user",
+        "idx_orchid_session_user": {
+          "name": "idx_orchid_session_user",
           "columns": [
             {
               "expression": "user_id",
@@ -609,9 +609,9 @@
         }
       },
       "foreignKeys": {
-        "orchid_sessions_user_id_user_id_fk": {
-          "name": "orchid_sessions_user_id_user_id_fk",
-          "tableFrom": "orchid_sessions",
+        "orchid_session_user_id_user_id_fk": {
+          "name": "orchid_session_user_id_user_id_fk",
+          "tableFrom": "orchid_session",
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
@@ -622,9 +622,9 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "orchid_sessions_team_id_organization_id_fk": {
-          "name": "orchid_sessions_team_id_organization_id_fk",
-          "tableFrom": "orchid_sessions",
+        "orchid_session_team_id_organization_id_fk": {
+          "name": "orchid_session_team_id_organization_id_fk",
+          "tableFrom": "orchid_session",
           "tableTo": "organization",
           "columnsFrom": [
             "team_id"
