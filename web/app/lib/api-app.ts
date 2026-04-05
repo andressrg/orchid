@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import pool from './db';
+import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
+import pool, { db } from './db';
+import { orchidSessions, apiKeys, organizations, members } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 
@@ -18,12 +20,12 @@ const app = new Hono<{ Variables: AuthContext }>().basePath('/api');
 
 app.use('*', cors());
 
-// Better Auth handler — must be before auth middleware
+// Better Auth handler
 app.on(['POST', 'GET'], '/auth/*', (c) => {
   return auth.handler(c.req.raw);
 });
 
-// Auth middleware — skip for health, webhook, and auth routes
+// Auth middleware
 app.use('*', async (c, next) => {
   const path = c.req.path;
   if (path === '/api/health' || path.startsWith('/api/webhook/') || path.startsWith('/api/auth/')) {
@@ -39,17 +41,15 @@ app.use('*', async (c, next) => {
     const token = authHeader.slice(7);
     const hash = hashToken(token);
     try {
-      const result = await pool.query(
-        `SELECT ak.user_id, ak.team_id FROM api_keys ak WHERE ak.key_hash = $1
-         AND (ak.expires_at IS NULL OR ak.expires_at > NOW())`,
-        [hash],
-      );
-      if (result.rows.length > 0) {
-        const { user_id, team_id } = result.rows[0];
-        // Update last_used
-        pool.query('UPDATE api_keys SET last_used = NOW() WHERE key_hash = $1', [hash]);
-        c.set('userId', user_id);
-        c.set('teamId', team_id);
+      const [key] = await db
+        .select({ userId: apiKeys.userId, teamId: apiKeys.teamId })
+        .from(apiKeys)
+        .where(and(eq(apiKeys.keyHash, hash), or(isNull(apiKeys.expiresAt), gt(apiKeys.expiresAt, new Date()))));
+
+      if (key) {
+        db.update(apiKeys).set({ lastUsed: new Date() }).where(eq(apiKeys.keyHash, hash)).execute();
+        c.set('userId', key.userId);
+        c.set('teamId', key.teamId);
         c.set('authMethod', 'pat');
         return next();
       }
@@ -64,16 +64,14 @@ app.use('*', async (c, next) => {
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
     if (session) {
       c.set('userId', session.user.id);
-      // Resolve team from ?team= query param (slug) or fallback to active org
       const teamSlug = c.req.query('team');
       if (teamSlug) {
-        const teamResult = await pool.query(
-          `SELECT o.id FROM organization o
-           INNER JOIN member m ON m."organizationId" = o.id
-           WHERE o.slug = $1 AND m."userId" = $2`,
-          [teamSlug, session.user.id],
-        );
-        c.set('teamId', teamResult.rows[0]?.id || null);
+        const [team] = await db
+          .select({ id: organizations.id })
+          .from(organizations)
+          .innerJoin(members, eq(members.organizationId, organizations.id))
+          .where(and(eq(organizations.slug, teamSlug), eq(members.userId, session.user.id)));
+        c.set('teamId', team?.id || null);
       } else {
         c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);
       }
@@ -87,14 +85,13 @@ app.use('*', async (c, next) => {
   return c.json({ error: 'Unauthorized' }, 401);
 });
 
-// Helper: build WHERE clause for team scoping
-function scopeClause(c: { get(key: string): string | null }, paramOffset: number): { where: string; params: string[] } {
+// Scope helper
+function scopeConditions(c: { get(key: string): string | null }) {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
-
-  if (teamId) return { where: `AND team_id = $${paramOffset}`, params: [teamId] };
-  if (userId) return { where: `AND user_id = $${paramOffset}`, params: [userId] };
-  return { where: '', params: [] };
+  if (teamId) return eq(orchidSessions.teamId, teamId);
+  if (userId) return eq(orchidSessions.userId, userId);
+  return undefined;
 }
 
 // Health
@@ -110,23 +107,32 @@ app.get('/health', async (c) => {
 // Sessions list/search
 app.get('/sessions', async (c) => {
   const q = c.req.query('q');
-  const scope = scopeClause(c, q ? 2 : 1);
+  const scope = scopeConditions(c);
   try {
-    let result;
-    if (q) {
-      result = await pool.query(
-        `SELECT id, user_name, user_email, working_dir, git_remotes, branch, tool, started_at, updated_at, status, message_count
-         FROM orchid_sessions WHERE transcript ILIKE $1 ${scope.where} ORDER BY started_at DESC`,
-        [`%${q}%`, ...scope.params],
-      );
-    } else {
-      result = await pool.query(
-        `SELECT id, user_name, user_email, working_dir, git_remotes, branch, tool, started_at, updated_at, status, message_count
-         FROM orchid_sessions WHERE 1=1 ${scope.where} ORDER BY started_at DESC`,
-        [...scope.params],
-      );
-    }
-    return c.json(result.rows);
+    const conditions = [
+      ...(q ? [ilike(orchidSessions.transcript, `%${q}%`)] : []),
+      ...(scope ? [scope] : []),
+    ];
+
+    const rows = await db
+      .select({
+        id: orchidSessions.id,
+        user_name: orchidSessions.userName,
+        user_email: orchidSessions.userEmail,
+        working_dir: orchidSessions.workingDir,
+        git_remotes: orchidSessions.gitRemotes,
+        branch: orchidSessions.branch,
+        tool: orchidSessions.tool,
+        started_at: orchidSessions.startedAt,
+        updated_at: orchidSessions.updatedAt,
+        status: orchidSessions.status,
+        message_count: orchidSessions.messageCount,
+      })
+      .from(orchidSessions)
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .orderBy(desc(orchidSessions.startedAt));
+
+    return c.json(rows);
   } catch (err) {
     console.error('GET /api/sessions error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -138,9 +144,7 @@ app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
     const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
+    if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json(result.rows[0]);
   } catch (err) {
     console.error('GET /api/sessions/:id error:', err);
@@ -148,7 +152,7 @@ app.get('/sessions/:id', async (c) => {
   }
 });
 
-// Create/update session
+// Create/update session (upsert via raw SQL — Drizzle's onConflict is limited)
 app.put('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   const { user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status } =
@@ -189,11 +193,9 @@ app.put('/sessions/:id', async (c) => {
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('DELETE FROM orchid_sessions WHERE id = $1 RETURNING id', [id]);
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
-    return c.json({ deleted: result.rows[0].id });
+    const deleted = await db.delete(orchidSessions).where(eq(orchidSessions.id, id)).returning({ id: orchidSessions.id });
+    if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
+    return c.json({ deleted: deleted[0].id });
   } catch (err) {
     console.error('DELETE /api/sessions/:id error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -202,18 +204,20 @@ app.delete('/sessions/:id', async (c) => {
 
 // Stats
 app.get('/stats', async (c) => {
-  const scope = scopeClause(c, 1);
+  const scope = scopeConditions(c);
   try {
-    const result = await pool.query(`
-      SELECT
-        COUNT(*) as total_sessions,
-        COUNT(*) FILTER (WHERE status = 'active') as active_sessions,
-        COUNT(DISTINCT user_name) as unique_users,
-        MIN(started_at) as first_session,
-        MAX(updated_at) as last_activity
-      FROM orchid_sessions WHERE 1=1 ${scope.where}
-    `, [...scope.params]);
-    return c.json(result.rows[0]);
+    const [stats] = await db
+      .select({
+        total_sessions: sql<string>`count(*)`,
+        active_sessions: sql<string>`count(*) filter (where ${orchidSessions.status} = 'active')`,
+        unique_users: sql<string>`count(distinct ${orchidSessions.userName})`,
+        first_session: sql<string>`min(${orchidSessions.startedAt})`,
+        last_activity: sql<string>`max(${orchidSessions.updatedAt})`,
+      })
+      .from(orchidSessions)
+      .where(scope || undefined);
+
+    return c.json(stats);
   } catch (err) {
     console.error('GET /api/stats error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -232,11 +236,12 @@ app.post('/tokens', async (c) => {
   const { token, hash, prefix } = generateToken();
 
   try {
-    const result = await pool.query(
-      `INSERT INTO api_keys (user_id, team_id, name, key_hash, key_prefix) VALUES ($1, $2, $3, $4, $5) RETURNING id, name, key_prefix, created_at`,
-      [userId, teamId, name, hash, prefix],
-    );
-    return c.json({ ...result.rows[0], token });
+    const [row] = await db.insert(apiKeys).values({
+      userId, teamId, name, keyHash: hash, keyPrefix: prefix,
+    }).returning({
+      id: apiKeys.id, name: apiKeys.name, key_prefix: apiKeys.keyPrefix, created_at: apiKeys.createdAt,
+    });
+    return c.json({ ...row, token });
   } catch (err) {
     console.error('POST /api/tokens error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -248,11 +253,15 @@ app.get('/tokens', async (c) => {
   if (!userId) return c.json({ error: 'Requires user authentication' }, 403);
 
   try {
-    const result = await pool.query(
-      `SELECT id, name, key_prefix, last_used, expires_at, created_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
-      [userId],
-    );
-    return c.json(result.rows);
+    const rows = await db
+      .select({
+        id: apiKeys.id, name: apiKeys.name, key_prefix: apiKeys.keyPrefix,
+        last_used: apiKeys.lastUsed, expires_at: apiKeys.expiresAt, created_at: apiKeys.createdAt,
+      })
+      .from(apiKeys)
+      .where(eq(apiKeys.userId, userId))
+      .orderBy(desc(apiKeys.createdAt));
+    return c.json(rows);
   } catch (err) {
     console.error('GET /api/tokens error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -265,12 +274,9 @@ app.delete('/tokens/:id', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const result = await pool.query(
-      'DELETE FROM api_keys WHERE id = $1 AND user_id = $2 RETURNING id',
-      [id, userId],
-    );
-    if (result.rows.length === 0) return c.json({ error: 'Token not found' }, 404);
-    return c.json({ deleted: result.rows[0].id });
+    const deleted = await db.delete(apiKeys).where(and(eq(apiKeys.id, id), eq(apiKeys.userId, userId))).returning({ id: apiKeys.id });
+    if (deleted.length === 0) return c.json({ error: 'Token not found' }, 404);
+    return c.json({ deleted: deleted[0].id });
   } catch (err) {
     console.error('DELETE /api/tokens/:id error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -295,17 +301,11 @@ app.get('/sessions/:id/summary', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
-      return c.json({ error: 'Session not found' }, 404);
-    }
+    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+    if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
-    const session = result.rows[0];
-    if (!session.transcript) {
-      return c.json({ summary: 'No conversation content available.' });
-    }
-
-    const lines = session.transcript.split('\n').filter((l: string) => l.trim());
+    const lines = session.transcript.split('\n').filter((l) => l.trim());
     const turns: Array<{ role: string; text: string }> = [];
     for (const line of lines) {
       try {
@@ -360,13 +360,9 @@ app.post('/sessions/:id/chat', async (c) => {
   if (!question) return c.json({ error: 'question is required' }, 400);
 
   try {
-    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
-    if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
-
-    const session = result.rows[0];
-    if (!session.transcript) {
-      return c.json({ answer: 'No conversation content available to reason about.' });
-    }
+    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+    if (!session.transcript) return c.json({ answer: 'No conversation content available to reason about.' });
 
     function extractText(content: unknown): string {
       if (typeof content === 'string') return content;
@@ -383,7 +379,7 @@ app.post('/sessions/:id/chat', async (c) => {
       return '';
     }
 
-    const lines = session.transcript.split('\n').filter((l: string) => l.trim());
+    const lines = session.transcript.split('\n').filter((l) => l.trim());
     const turns: Array<{ role: string; text: string }> = [];
     for (const line of lines) {
       try {
@@ -411,11 +407,11 @@ app.post('/sessions/:id/chat', async (c) => {
         content: `You are Orchid, an assistant that answers questions about AI coding sessions.
 
 Session info:
-- User: ${session.user_name} <${session.user_email}>
+- User: ${session.userName} <${session.userEmail}>
 - Branch: ${session.branch || 'unknown'}
-- Directory: ${session.working_dir || 'unknown'}
+- Directory: ${session.workingDir || 'unknown'}
 - Tool: ${session.tool || 'unknown'}
-- Started: ${session.started_at}
+- Started: ${session.startedAt}
 - Status: ${session.status}
 - Total turns: ${turns.length}
 
@@ -458,11 +454,10 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query('SELECT * FROM orchid_sessions WHERE id = $1', [id]);
-    if (result.rows.length === 0) return c.json({ error: 'Session not found' }, 404);
+    const [session] = await db.select().from(orchidSessions).where(eq(orchidSessions.id, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
 
-    const session = result.rows[0];
-    const remotes: string[] = session.git_remotes || [];
+    const remotes: string[] = (session.gitRemotes as string[]) || [];
     if (remotes.length === 0) {
       return c.json({ commits: [], message: 'No git remotes associated with this session' });
     }
@@ -470,12 +465,12 @@ app.get('/sessions/:id/commits', async (c) => {
     const ghHeaders: Record<string, string> = { Accept: 'application/vnd.github+json' };
     if (GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${GITHUB_TOKEN}`;
 
-    const since = session.started_at
-      ? new Date(new Date(session.started_at).getTime() - 3600000).toISOString()
+    const since = session.startedAt
+      ? new Date(new Date(session.startedAt).getTime() - 3600000).toISOString()
       : undefined;
     const until =
-      session.status === 'done' && session.updated_at
-        ? new Date(new Date(session.updated_at).getTime() + 300000).toISOString()
+      session.status === 'done' && session.updatedAt
+        ? new Date(new Date(session.updatedAt).getTime() + 300000).toISOString()
         : undefined;
 
     const allCommits: Array<{
@@ -536,38 +531,37 @@ app.get('/sessions/:id/commits', async (c) => {
 // Decisions
 app.get('/decisions', async (c) => {
   const repo = c.req.query('repo');
-  const scope = scopeClause(c, repo ? 2 : 1);
+  const scope = scopeConditions(c);
   try {
-    let sessionsResult;
-    if (repo) {
-      sessionsResult = await pool.query(
-        `SELECT id, user_name, transcript FROM orchid_sessions WHERE git_remotes::text ILIKE $1 AND transcript IS NOT NULL ${scope.where} ORDER BY started_at DESC LIMIT 20`,
-        [`%${repo}%`, ...scope.params],
-      );
-    } else {
-      sessionsResult = await pool.query(
-        `SELECT id, user_name, transcript FROM orchid_sessions WHERE transcript IS NOT NULL ${scope.where === '' ? '' : `AND 1=1 ${scope.where}`} ORDER BY started_at DESC LIMIT 10`,
-        [...scope.params],
-      );
-    }
+    const conditions = [
+      isNotNull(orchidSessions.transcript),
+      ...(repo ? [ilike(sql`${orchidSessions.gitRemotes}::text`, `%${repo}%`)] : []),
+      ...(scope ? [scope] : []),
+    ];
 
-    const sessions = sessionsResult.rows;
-    if (sessions.length === 0) return c.json({ decisions: [], sessions_analyzed: 0 });
+    const rows = await db
+      .select({ id: orchidSessions.id, user_name: orchidSessions.userName, transcript: orchidSessions.transcript })
+      .from(orchidSessions)
+      .where(and(...conditions))
+      .orderBy(desc(orchidSessions.startedAt))
+      .limit(repo ? 20 : 10);
+
+    if (rows.length === 0) return c.json({ decisions: [], sessions_analyzed: 0 });
 
     if (!OPENAI_API_KEY) {
       return c.json({
         decisions: [
-          { title: 'Chose PostgreSQL over MongoDB', decision: 'Use PostgreSQL as the primary database', alternatives: ['MongoDB', 'SQLite'], reason: 'PostgreSQL provides better relational integrity and the team has existing expertise.', session_id: sessions[0].id, turn_index: 3 },
-          { title: 'Periodic sync instead of real-time streaming', decision: 'Sync transcripts every 5 seconds via polling', alternatives: ['WebSockets', 'SSE', 'post-session upload'], reason: 'Simplest approach that keeps data crash-safe without requiring persistent connections.', session_id: sessions[0].id, turn_index: 7 },
+          { title: 'Chose PostgreSQL over MongoDB', decision: 'Use PostgreSQL as the primary database', alternatives: ['MongoDB', 'SQLite'], reason: 'PostgreSQL provides better relational integrity and the team has existing expertise.', session_id: rows[0].id, turn_index: 3 },
+          { title: 'Periodic sync instead of real-time streaming', decision: 'Sync transcripts every 5 seconds via polling', alternatives: ['WebSockets', 'SSE', 'post-session upload'], reason: 'Simplest approach that keeps data crash-safe without requiring persistent connections.', session_id: rows[0].id, turn_index: 7 },
         ],
-        sessions_analyzed: sessions.length,
+        sessions_analyzed: rows.length,
       });
     }
 
-    const transcriptBlocks = sessions.map((s: { id: string; user_name: string; transcript: string }) => {
-      const lines = s.transcript.split('\n').filter((l: string) => l.trim());
+    const transcriptBlocks = rows.map((s) => {
+      const lines = (s.transcript || '').split('\n').filter((l) => l.trim());
       const turns: string[] = [];
-      lines.forEach((line: string, idx: number) => {
+      lines.forEach((line, idx) => {
         try {
           const obj = JSON.parse(line);
           let role = '', text = '';
@@ -610,7 +604,7 @@ app.get('/decisions', async (c) => {
       decisions = JSON.parse(raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim());
     } catch { decisions = []; }
 
-    return c.json({ decisions, sessions_analyzed: sessions.length });
+    return c.json({ decisions, sessions_analyzed: rows.length });
   } catch (err) {
     console.error('GET /api/decisions error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -632,24 +626,32 @@ app.post('/webhook/github', async (c) => {
 
   try {
     const branch = pull_request.head.ref;
-    const result = await pool.query(
-      `SELECT id, user_name, branch, started_at, updated_at, status, LENGTH(transcript) as transcript_length
-       FROM orchid_sessions WHERE (git_remotes::text ILIKE $1 OR branch = $2) ORDER BY updated_at DESC LIMIT 10`,
-      [`%${repository.full_name}%`, branch],
-    );
+    const rows = await db
+      .select({
+        id: orchidSessions.id, user_name: orchidSessions.userName, branch: orchidSessions.branch,
+        started_at: orchidSessions.startedAt, updated_at: orchidSessions.updatedAt,
+        status: orchidSessions.status,
+        transcript_length: sql<number>`length(${orchidSessions.transcript})`,
+      })
+      .from(orchidSessions)
+      .where(or(
+        ilike(sql`${orchidSessions.gitRemotes}::text`, `%${repository.full_name}%`),
+        eq(orchidSessions.branch, branch),
+      ))
+      .orderBy(desc(orchidSessions.updatedAt))
+      .limit(10);
 
-    if (result.rows.length === 0) return c.json({ ok: true, sessions: 0 });
+    if (rows.length === 0) return c.json({ ok: true, sessions: 0 });
 
-    const sessions = result.rows;
     const baseUrl = WEB_UI_URL.startsWith('http') ? WEB_UI_URL : `https://${WEB_UI_URL}`;
-    const sessionLines = sessions.map((s: { id: string; user_name: string; started_at: string; updated_at: string; status: string; transcript_length: number }) => {
+    const sessionLines = rows.map((s) => {
       const duration = Math.round((new Date(s.updated_at).getTime() - new Date(s.started_at).getTime()) / 60000);
-      const msgEstimate = Math.round(s.transcript_length / 500);
+      const msgEstimate = Math.round((s.transcript_length || 0) / 500);
       const emoji = s.status === 'active' ? '🟢' : '✅';
       return `- ${emoji} **Session by @${s.user_name}** (${duration}m, ~${msgEstimate} messages) — [View conversation](${baseUrl}/sessions/${encodeURIComponent(s.id)})`;
     });
 
-    const comment = `🌸 **Orchid**: ${sessions.length} AI conversation${sessions.length > 1 ? 's' : ''} related to this PR\n\n${sessionLines.join('\n')}\n\n---\n*These conversations capture the reasoning behind the code changes.*`;
+    const comment = `🌸 **Orchid**: ${rows.length} AI conversation${rows.length > 1 ? 's' : ''} related to this PR\n\n${sessionLines.join('\n')}\n\n---\n*These conversations capture the reasoning behind the code changes.*`;
 
     const [owner, repo] = repository.full_name.split('/');
     const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${pull_request.number}/comments`, {
@@ -663,8 +665,8 @@ app.post('/webhook/github', async (c) => {
       return c.json({ error: 'GitHub API error' }, 502);
     }
 
-    console.log(`Posted comment on ${repository.full_name}#${pull_request.number} with ${sessions.length} sessions`);
-    return c.json({ ok: true, sessions: sessions.length });
+    console.log(`Posted comment on ${repository.full_name}#${pull_request.number} with ${rows.length} sessions`);
+    return c.json({ ok: true, sessions: rows.length });
   } catch (err) {
     console.error('Webhook error:', err);
     return c.json({ error: 'Internal server error' }, 500);
