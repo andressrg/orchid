@@ -6,13 +6,12 @@ import { hashToken, generateToken } from './crypto';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const LEGACY_API_KEY = process.env.ORCHID_API_KEY;
 const WEB_UI_URL = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || 'http://localhost:3000';
 
 type AuthContext = {
   userId: string | null;
   teamId: string | null;
-  authMethod: 'pat' | 'session' | 'legacy' | null;
+  authMethod: 'pat' | 'session' | null;
 };
 
 const app = new Hono<{ Variables: AuthContext }>().basePath('/api');
@@ -82,16 +81,7 @@ app.use('*', async (c, next) => {
       return next();
     }
   } catch {
-    // Session check failed, continue to legacy
-  }
-
-  // 3. Legacy X-API-Key
-  const key = c.req.header('x-api-key');
-  if (LEGACY_API_KEY && key === LEGACY_API_KEY) {
-    c.set('userId', null);
-    c.set('teamId', null);
-    c.set('authMethod', 'legacy');
-    return next();
+    // Session check failed
   }
 
   return c.json({ error: 'Unauthorized' }, 401);
@@ -101,9 +91,7 @@ app.use('*', async (c, next) => {
 function scopeClause(c: { get(key: string): string | null }, paramOffset: number): { where: string; params: string[] } {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
-  const authMethod = c.get('authMethod');
 
-  if (authMethod === 'legacy') return { where: '', params: [] };
   if (teamId) return { where: `AND team_id = $${paramOffset}`, params: [teamId] };
   if (userId) return { where: `AND user_id = $${paramOffset}`, params: [userId] };
   return { where: '', params: [] };

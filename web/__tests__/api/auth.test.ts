@@ -1,23 +1,23 @@
 import { describe, it, expect } from 'vitest';
+import { getTestAuth } from '../setup';
 import app from '@/app/lib/api-app';
 
 describe('auth middleware', () => {
-  it('returns 401 when no api key provided', async () => {
+  it('returns 401 when no auth provided', async () => {
     const res = await app.request('/api/sessions');
     expect(res.status).toBe(401);
   });
 
-  it('returns 401 when wrong api key provided', async () => {
+  it('returns 401 when invalid PAT provided', async () => {
     const res = await app.request('/api/sessions', {
-      headers: { 'x-api-key': 'wrong-key' },
+      headers: { authorization: 'Bearer orc_invalid_token' },
     });
     expect(res.status).toBe(401);
   });
 
-  it('allows request with correct api key', async () => {
-    const res = await app.request('/api/sessions', {
-      headers: { 'x-api-key': 'test-api-key' },
-    });
+  it('allows request with valid PAT', async () => {
+    const { headers } = await getTestAuth();
+    const res = await app.request('/api/sessions', { headers });
     expect(res.status).toBe(200);
   });
 

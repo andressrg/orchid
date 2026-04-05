@@ -28,7 +28,6 @@ export function getConfig() {
   const file = readConfigFile();
 
   const apiUrl = process.env.ORCHID_API_URL || file.api_url;
-  const apiKey = process.env.ORCHID_API_KEY || file.api_key;
   const token = process.env.ORCHID_TOKEN || file.token;
 
   if (!apiUrl) {
@@ -38,30 +37,18 @@ export function getConfig() {
     process.exit(1);
   }
 
-  if (!token && !apiKey) {
+  if (!token) {
     console.error(
       'Error: Not authenticated. Run "orchid login" to set up.'
     );
     process.exit(1);
   }
 
-  if (apiKey && !token) {
-    process.stderr.write(
-      "[orchid] Warning: Using legacy API key. Run 'orchid login' to switch to personal access tokens.\n"
-    );
-  }
-
-  const webUrl = process.env.ORCHID_WEB_URL || file.web_url || apiUrl.replace(/:3000$/, "");
-  return { apiUrl, apiKey, token, webUrl };
+  const webUrl = process.env.ORCHID_WEB_URL || file.web_url || apiUrl.replace(/\/api$/, "");
+  return { apiUrl, token, webUrl };
 }
 
 export function getAuthHeaders(): Record<string, string> {
-  const { token, apiKey } = getConfig();
-  if (token) {
-    return { Authorization: `Bearer ${token}` };
-  }
-  if (apiKey) {
-    return { "X-API-Key": apiKey };
-  }
-  return {};
+  const { token } = getConfig();
+  return { Authorization: `Bearer ${token}` };
 }
