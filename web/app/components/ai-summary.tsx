@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 export function AISummary({ sessionId }: { sessionId: string }) {
   const [summary, setSummary] = useState<string | null>(null);
@@ -16,7 +15,7 @@ export function AISummary({ sessionId }: { sessionId: string }) {
     try {
       const res = await fetch(
         `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/summary`,
-        { headers: { "X-API-Key": API_KEY } }
+        { credentials: 'include' }
       );
       if (!res.ok) throw new Error("Failed");
       const data = await res.json();

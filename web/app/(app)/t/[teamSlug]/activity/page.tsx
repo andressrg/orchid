@@ -1,5 +1,5 @@
-import { getSessions, timeAgo } from "../../lib/api";
-import Link from "next/link";
+import { getSessions, timeAgo } from '@/app/lib/api';
+import Link from 'next/link';
 
 export const dynamic = "force-dynamic";
 
@@ -7,10 +7,12 @@ function UserCard({
   name,
   sessions,
   color,
+  teamSlug,
 }: {
   name: string;
   sessions: Array<{ id: string; branch: string; status: string; updated_at: string; tool: string }>;
   color: string;
+  teamSlug: string;
 }) {
   const active = sessions.filter((s) => s.status === "active").length;
 
@@ -42,7 +44,7 @@ function UserCard({
         {sessions.slice(0, 5).map((s) => (
           <Link
             key={s.id}
-            href={`/sessions/${encodeURIComponent(s.id)}`}
+            href={`/t/${teamSlug}/sessions/${encodeURIComponent(s.id)}`}
             className="flex items-center gap-2 text-[11px] px-2 py-1 rounded transition-colors session-row"
           >
             {s.status === "active" ? (
@@ -63,10 +65,16 @@ function UserCard({
   );
 }
 
-export default async function ActivityPage() {
+export default async function ActivityPage({
+  params,
+}: {
+  params: Promise<{ teamSlug: string }>;
+}) {
+  const { teamSlug } = await params;
+
   let sessions;
   try {
-    sessions = await getSessions();
+    sessions = await getSessions(teamSlug);
   } catch {
     return (
       <div className="flex items-center justify-center h-full">
@@ -143,7 +151,7 @@ export default async function ActivityPage() {
       {/* User cards */}
       <div className="px-6 pb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {users.map((user) => (
-          <UserCard key={user.name} {...user} />
+          <UserCard key={user.name} {...user} teamSlug={teamSlug} />
         ))}
       </div>
     </div>

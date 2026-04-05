@@ -1,11 +1,11 @@
-import Link from "next/link";
-import { getDecisions, Decision } from "../../lib/api";
+import Link from 'next/link';
+import { getDecisions, Decision } from '@/app/lib/api';
 
 export const dynamic = "force-dynamic";
 
-function DecisionCard({ decision, index }: { decision: Decision; index: number }) {
+function DecisionCard({ decision, index, teamSlug }: { decision: Decision; index: number; teamSlug: string }) {
   const sessionShort = decision.session_id.slice(0, 8);
-  const deepLink = `/sessions/${encodeURIComponent(decision.session_id)}?turn=${decision.turn_index + 1}`;
+  const deepLink = `/t/${teamSlug}/sessions/${encodeURIComponent(decision.session_id)}?turn=${decision.turn_index + 1}`;
 
   return (
     <div
@@ -104,10 +104,13 @@ function DecisionCard({ decision, index }: { decision: Decision; index: number }
 }
 
 export default async function DecisionsPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ teamSlug: string }>;
   searchParams: Promise<{ repo?: string }>;
 }) {
+  const { teamSlug } = await params;
   const { repo } = await searchParams;
 
   if (!repo) {
@@ -118,7 +121,7 @@ export default async function DecisionsPage({
           style={{ background: "rgba(10, 10, 15, 0.85)", borderColor: "var(--border-subtle)" }}
         >
           <Link
-            href="/"
+            href={`/t/${teamSlug}/dashboard`}
             className="flex items-center gap-1 text-[12px] font-medium transition-colors hover:opacity-80"
             style={{ color: "var(--text-tertiary)" }}
           >
@@ -145,7 +148,7 @@ export default async function DecisionsPage({
             AI-extracted architectural decisions from your team&apos;s coding conversations.
             Each decision links back to the exact moment it was made.
           </p>
-          <form method="GET" action="/decisions" className="flex gap-2 justify-center">
+          <form method="GET" action={`/t/${teamSlug}/decisions`} className="flex gap-2 justify-center">
             <input
               name="repo"
               type="text"
@@ -176,7 +179,7 @@ export default async function DecisionsPage({
   let result;
   let error = "";
   try {
-    result = await getDecisions(repo);
+    result = await getDecisions(teamSlug, repo);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load decisions";
   }
@@ -189,7 +192,7 @@ export default async function DecisionsPage({
         style={{ background: "rgba(10, 10, 15, 0.85)", borderColor: "var(--border-subtle)" }}
       >
         <Link
-          href="/"
+          href={`/t/${teamSlug}/dashboard`}
           className="flex items-center gap-1 text-[12px] font-medium transition-colors hover:opacity-80"
           style={{ color: "var(--text-tertiary)" }}
         >
@@ -250,7 +253,7 @@ export default async function DecisionsPage({
             <p className="text-sm mb-2">No architectural decisions found for &quot;{repo}&quot;</p>
             <p className="text-[12px]" style={{ color: "var(--text-tertiary)" }}>
               Try a broader repo name, or{" "}
-              <Link href="/decisions" className="underline" style={{ color: "var(--accent)" }}>
+              <Link href={`/t/${teamSlug}/decisions`} className="underline" style={{ color: "var(--accent)" }}>
                 analyze all sessions
               </Link>
             </p>
@@ -260,7 +263,7 @@ export default async function DecisionsPage({
         {result && result.decisions.length > 0 && (
           <div className="space-y-4">
             {result.decisions.map((d, i) => (
-              <DecisionCard key={i} decision={d} index={i} />
+              <DecisionCard key={i} decision={d} index={i} teamSlug={teamSlug} />
             ))}
           </div>
         )}

@@ -1,10 +1,14 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { cleanTestDb, insertTestSession } from '../setup';
+import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { cleanTestDb, getTestAuth, insertTestSession } from '../setup';
 import app from '@/app/lib/api-app';
 
-const headers = { 'x-api-key': 'test-api-key' };
-
 describe('GET /api/stats', () => {
+  let headers: Record<string, string>;
+
+  beforeAll(async () => {
+    headers = (await getTestAuth()).headers;
+  });
+
   beforeEach(async () => {
     await cleanTestDb();
   });

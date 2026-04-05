@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -82,11 +81,11 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
       const res = await fetch(
         `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/chat`,
         {
-          method: "POST",
+          method: 'POST',
           headers: {
-            "X-API-Key": API_KEY,
-            "Content-Type": "application/json",
+            'Content-Type': 'application/json',
           },
+          credentials: 'include',
           body: JSON.stringify({
             question: question.trim(),
             history: messages,

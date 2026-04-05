@@ -11,9 +11,8 @@ interface Session {
 }
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
-export function CommandPalette() {
+export function CommandPalette({ teamSlug = '' }: { teamSlug?: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Session[]>([]);
@@ -54,8 +53,8 @@ export function CommandPalette() {
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(
-          `${API_URL}/api/sessions?q=${encodeURIComponent(query)}`,
-          { headers: { "X-API-Key": API_KEY } }
+          `${API_URL}/api/sessions?q=${encodeURIComponent(query)}${teamSlug ? `&team=${teamSlug}` : ''}`,
+          { credentials: 'include' }
         );
         if (res.ok) {
           setResults((await res.json()) as Session[]);
@@ -66,7 +65,7 @@ export function CommandPalette() {
       }
     }, 200);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, teamSlug]);
 
   function navigate(path: string) {
     setOpen(false);
@@ -98,7 +97,7 @@ export function CommandPalette() {
     const sessionItems = results.map((s) => ({
       label: s.branch || s.id,
       desc: `${s.user_name} · ${s.status}`,
-      href: `/sessions/${encodeURIComponent(s.id)}`,
+      href: teamSlug ? `/t/${teamSlug}/sessions/${encodeURIComponent(s.id)}` : `/sessions/${encodeURIComponent(s.id)}`,
     }));
 
     return query.trim() ? [...sessionItems, ...staticItems] : staticItems;

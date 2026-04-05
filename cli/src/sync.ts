@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { getConfig } from "./config";
+import { getConfig, getAuthHeaders } from "./config";
 import { GitMetadata } from "./commands/claude";
 
 /**
@@ -20,7 +20,7 @@ async function syncToServer(
   transcriptPath: string,
   status: "active" | "done"
 ): Promise<void> {
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
 
   let transcript = "";
   try {
@@ -47,7 +47,7 @@ async function syncToServer(
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": apiKey,
+      ...getAuthHeaders(),
     },
     body,
   });

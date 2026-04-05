@@ -1,4 +1,4 @@
-import { getConfig } from "../config";
+import { getConfig, getAuthHeaders } from "../config";
 
 interface Session {
   id: string;
@@ -92,7 +92,7 @@ Environment:
     return;
   }
 
-  const { apiUrl, apiKey } = getConfig();
+  const { apiUrl } = getConfig();
 
   console.log(`\x1b[35m🌸 Orchid Review\x1b[0m`);
   console.log(`\x1b[90mSearching for conversations related to: ${query}\x1b[0m\n`);
@@ -103,7 +103,7 @@ Environment:
   try {
     // Try branch match
     const branchRes = await fetch(`${apiUrl.replace(/\/$/, "")}/sessions?q=${encodeURIComponent(query)}`, {
-      headers: { "X-API-Key": apiKey },
+      headers: { ...getAuthHeaders() },
     });
     if (branchRes.ok) {
       sessions = (await branchRes.json()) as Session[];
@@ -128,7 +128,7 @@ Environment:
   for (const s of topSessions) {
     try {
       const res = await fetch(`${apiUrl.replace(/\/$/, "")}/sessions/${encodeURIComponent(s.id)}`, {
-        headers: { "X-API-Key": apiKey },
+        headers: { ...getAuthHeaders() },
       });
       if (res.ok) {
         fullSessions.push((await res.json()) as Session);

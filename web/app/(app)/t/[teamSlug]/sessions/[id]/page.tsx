@@ -1,10 +1,10 @@
-import Link from "next/link";
-import { getSession, parseTranscript, timeAgo, formatDuration } from "../../../lib/api";
-import { LiveRefresh } from "../../../components/live-refresh";
-import { AISummary } from "../../../components/ai-summary";
-import { CopyLink } from "../../../components/copy-link";
-import { TurnHighlighter } from "./turn-highlighter";
-import { SessionTabs } from "../../../components/session-tabs";
+import Link from 'next/link';
+import { getSession, parseTranscript, timeAgo, formatDuration } from '@/app/lib/api';
+import { LiveRefresh } from '@/app/components/live-refresh';
+import { AISummary } from '@/app/components/ai-summary';
+import { CopyLink } from '@/app/components/copy-link';
+import { TurnHighlighter } from './turn-highlighter';
+import { SessionTabs } from '@/app/components/session-tabs';
 
 function MetadataItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
@@ -25,16 +25,16 @@ export default async function SessionPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ teamSlug: string; id: string }>;
   searchParams: Promise<{ turn?: string }>;
 }) {
-  const { id } = await params;
+  const { teamSlug, id } = await params;
   const { turn } = await searchParams;
   const highlightTurn = turn ? parseInt(turn, 10) : null;
 
   let session;
   try {
-    session = await getSession(decodeURIComponent(id));
+    session = await getSession(decodeURIComponent(id), teamSlug);
   } catch {
     return (
       <div className="flex items-center justify-center h-full">
@@ -42,7 +42,7 @@ export default async function SessionPage({
           <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
             Session not found
           </p>
-          <Link href="/dashboard" className="text-sm underline" style={{ color: "var(--accent)" }}>
+          <Link href={`/t/${teamSlug}/dashboard`} className="text-sm underline" style={{ color: "var(--accent)" }}>
             Back to sessions
           </Link>
         </div>
@@ -68,7 +68,7 @@ export default async function SessionPage({
         }}
       >
         <Link
-          href="/dashboard"
+          href={`/t/${teamSlug}/dashboard`}
           className="flex items-center gap-1 text-[12px] font-medium transition-colors hover:opacity-80"
           style={{ color: "var(--text-tertiary)" }}
         >
@@ -96,7 +96,7 @@ export default async function SessionPage({
             const repoName = session.git_remotes[0].split("/").pop()?.replace(/\.git$/, "") || "";
             return repoName ? (
               <Link
-                href={`/decisions?repo=${encodeURIComponent(repoName)}`}
+                href={`/t/${teamSlug}/decisions?repo=${encodeURIComponent(repoName)}`}
                 className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded transition-opacity hover:opacity-80"
                 style={{ background: "var(--bg-tertiary)", color: "var(--accent)", border: "1px solid var(--border-subtle)" }}
               >
