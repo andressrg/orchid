@@ -403,11 +403,6 @@ const interactiveList = <T>(config: {
       const scroll = computeScroll(state.cursor, state.scroll, maxVisible, total);
       stateRef[0] = { ...state, scroll };
 
-      // Clear previous render
-      if (renderedRef[0] > 0) {
-        process.stdout.write(`\x1b[${renderedRef[0]}A\x1b[0J`);
-      }
-
       const visibleItems = config.items.slice(scroll, scroll + maxVisible);
       const lines = [
         ...config.headerLines,
@@ -417,13 +412,20 @@ const interactiveList = <T>(config: {
           const isSelected = state.selected.has(globalIdx);
           return config.renderRow(item, globalIdx, active, isSelected);
         }),
-        ...(total > maxVisible ? [`  ${dim(`  ↕ ${scroll + 1}–${Math.min(scroll + maxVisible, total)} of ${total}`)}`] : []),
+        ...(total > maxVisible ? [`    ${dim(`↕ ${scroll + 1}–${Math.min(scroll + maxVisible, total)} of ${total}`)}`] : []),
         "",
         config.footerLine(state.selected.size, total),
       ];
 
-      const output = lines.join("\n") + "\n";
-      process.stdout.write(output);
+      // Build output as single buffer write to prevent flicker:
+      // Move cursor to top of previous render, then overwrite each line in place
+      const moveUp = renderedRef[0] > 0 ? `\x1b[${renderedRef[0]}A` : "";
+      const output = moveUp + lines.map((line) => `\x1b[2K${line}`).join("\n") + "\n";
+      // Clear any leftover lines if new render is shorter
+      const extraClears = renderedRef[0] > lines.length
+        ? Array.from({ length: renderedRef[0] - lines.length }, () => "\x1b[2K\n").join("")
+        : "";
+      process.stdout.write(output + extraClears);
       renderedRef[0] = lines.length;
     };
 
@@ -493,8 +495,8 @@ const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selec
   const pointer = active ? cyan("▸") : " ";
   const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
   const name = active ? bold(g.projectName) : g.projectName;
-  const row = `${pointer} ${padRight(name, 34)}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
-  return active ? `\x1b[48;5;236m${row}\x1b[0m` : `  ${row}`;
+  const content = `  ${pointer} ${padRight(name, 34)}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
+  return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
 const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, selected: boolean): string => {
@@ -502,8 +504,8 @@ const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, select
   const checkbox = selected ? green("[✓]") : dim("[ ]");
   const label = s.summary ? truncate(s.summary, 38) : dim(s.sessionId.slice(0, 12) + "…");
   const archived = s.filePath === null ? dim(" ✱") : "";
-  const row = `${pointer} ${checkbox} ${padRight(label, 40)}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
-  return active ? `\x1b[48;5;236m${row}\x1b[0m` : `  ${row}`;
+  const content = `  ${pointer} ${checkbox} ${padRight(label, 40)}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
+  return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
 // ── Main flows ─────────────────────────────────────────────────────────────
