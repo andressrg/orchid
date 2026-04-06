@@ -494,17 +494,22 @@ const interactiveList = <T>(config: {
 const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selected: boolean): string => {
   const pointer = active ? cyan("▸") : " ";
   const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
-  const name = active ? bold(g.projectName) : g.projectName;
-  const content = `  ${pointer} ${padRight(name, 34)}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
+  // Pad with plain text first, then apply bold — ANSI codes break padRight width calculation
+  const paddedName = padRight(g.projectName, 34);
+  const name = active ? bold(paddedName) : paddedName;
+  const content = `  ${pointer} ${name}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
   return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
 const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, selected: boolean): string => {
   const pointer = active ? cyan("▸") : " ";
   const checkbox = selected ? green("[✓]") : dim("[ ]");
-  const label = s.summary ? truncate(s.summary, 38) : dim(s.sessionId.slice(0, 12) + "…");
+  // Pad plain text first, then apply ANSI — keeps column alignment consistent
+  const rawLabel = s.summary ? truncate(s.summary, 38) : s.sessionId.slice(0, 12) + "…";
+  const paddedLabel = padRight(rawLabel, 40);
+  const label = !s.summary ? dim(paddedLabel) : paddedLabel;
   const archived = s.filePath === null ? dim(" ✱") : "";
-  const content = `  ${pointer} ${checkbox} ${padRight(label, 40)}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
+  const content = `  ${pointer} ${checkbox} ${label}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
   return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
