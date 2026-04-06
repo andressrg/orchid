@@ -1,5 +1,6 @@
 import { runClaude } from "./commands/claude";
 import { runData } from "./commands/data";
+import { runSync } from "./commands/sync";
 import { runReview } from "./commands/review";
 import { runExplain } from "./commands/explain";
 import { runConfig } from "./commands/config";
@@ -17,6 +18,7 @@ Commands:
   login     Authenticate with a Personal Access Token
   logout    Remove stored credentials
   claude    Launch Claude Code and sync the conversation
+  sync      Sync past conversations (--discover to scan all)
   config    Set up CLI configuration (~/.orchid/config.json)
   data      Query stored sessions (list, show, search, summary)
   review    Conversation-aware code review
@@ -55,6 +57,9 @@ function main() {
       break;
     case "claude":
       runClaude(subArgs);
+      break;
+    case "sync":
+      runSync(subArgs);
       break;
     case "config":
       runConfig(subArgs).catch((err) => {
