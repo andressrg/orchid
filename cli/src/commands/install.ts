@@ -13,10 +13,12 @@ export const PLIST_PATH = path.join(
 );
 const SYSTEMD_DIR = path.join(os.homedir(), ".config", "systemd", "user");
 export const SYSTEMD_SERVICE = path.join(SYSTEMD_DIR, "orchid-daemon.service");
+export const WIN_TASK_NAME = "OrchidDaemon";
 
 function getNodePath(): string {
   try {
-    return execSync("which node", { encoding: "utf-8" }).trim();
+    const cmd = os.platform() === "win32" ? "where node" : "which node";
+    return execSync(cmd, { encoding: "utf-8" }).trim().split("\n")[0];
   } catch {
     return "node";
   }
@@ -79,6 +81,39 @@ WantedBy=default.target
 `;
 }
 
+function getWindowsXml(): string {
+  const nodePath = getNodePath();
+  const scriptPath = getDaemonScriptPath();
+
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>Orchid Daemon - AI conversation capture</Description>
+  </RegistrationInfo>
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>3</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions>
+    <Exec>
+      <Command>${nodePath}</Command>
+      <Arguments>${scriptPath}</Arguments>
+    </Exec>
+  </Actions>
+</Task>`;
+}
+
 function installMacOS(autoRun: boolean): void {
   const logDir = path.join(os.homedir(), ".orchid");
 
@@ -137,6 +172,33 @@ function installLinux(autoRun: boolean): void {
   }
 }
 
+function installWindows(autoRun: boolean): void {
+  const logDir = path.join(os.homedir(), ".orchid");
+
+  if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+  }
+
+  const xmlPath = path.join(logDir, "orchid-task.xml");
+  fs.writeFileSync(xmlPath, getWindowsXml());
+  console.log(`  Created ${xmlPath}`);
+
+  const createCmd = `schtasks /Create /TN "${WIN_TASK_NAME}" /XML "${xmlPath}" /F`;
+  const runCmd = `schtasks /Run /TN "${WIN_TASK_NAME}"`;
+
+  if (autoRun) {
+    execSync(createCmd, { stdio: "pipe" });
+    execSync(runCmd, { stdio: "pipe" });
+    console.log("  Created and started Windows Scheduled Task");
+  } else {
+    console.log("\n  To start the daemon, run:\n");
+    console.log(`    ${createCmd}`);
+    console.log(`    ${runCmd}\n`);
+    console.log("  Or let orchid do it for you:\n");
+    console.log("    orchid install --run\n");
+  }
+}
+
 export function runInstall(args: string[] = []): void {
   const autoRun = args.includes("--run");
 
@@ -155,6 +217,8 @@ export function runInstall(args: string[] = []): void {
     installMacOS(autoRun);
   } else if (platform === "linux") {
     installLinux(autoRun);
+  } else if (platform === "win32") {
+    installWindows(autoRun);
   } else {
     console.error(`Unsupported platform: ${platform}`);
     console.error(`You can run the daemon manually: orchid daemon`);

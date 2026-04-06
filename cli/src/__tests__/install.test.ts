@@ -62,21 +62,18 @@ describe("install command", () => {
 
       runInstall([]);
 
-      // Plist file should exist
       expect(fs.existsSync(PLIST_PATH)).toBe(true);
 
       const plistContent = fs.readFileSync(PLIST_PATH, "utf-8");
       expect(plistContent).toContain("com.orchid.daemon");
       expect(plistContent).toContain("daemon-entry.js");
 
-      // launchctl should NOT have been called (only 'which node')
       const launchctlCalls = execSyncMock.mock.calls.filter(
         (call: any[]) =>
           typeof call[0] === "string" && call[0].includes("launchctl")
       );
       expect(launchctlCalls).toHaveLength(0);
 
-      // Should print the manual commands
       const output = logs.join("\n");
       expect(output).toContain("launchctl load");
       expect(output).toContain("orchid install --run");
@@ -88,7 +85,6 @@ describe("install command", () => {
 
       runInstall(["--run"]);
 
-      // launchctl should have been called
       const launchctlCalls = execSyncMock.mock.calls.filter(
         (call: any[]) =>
           typeof call[0] === "string" && call[0].includes("launchctl load")
@@ -138,7 +134,6 @@ describe("install command", () => {
       expect(unitContent).toContain("Orchid Daemon");
       expect(unitContent).toContain("daemon-entry.js");
 
-      // systemctl should NOT have been called
       const systemctlCalls = execSyncMock.mock.calls.filter(
         (call: any[]) =>
           typeof call[0] === "string" && call[0].includes("systemctl")
@@ -164,6 +159,64 @@ describe("install command", () => {
     });
   });
 
+  describe("windows", () => {
+    it("creates task XML without running schtasks by default", async () => {
+      setPlatform("win32");
+      const { runInstall } = await import("../commands/install");
+
+      runInstall([]);
+
+      const xmlPath = path.join(tmpDir, ".orchid", "orchid-task.xml");
+      expect(fs.existsSync(xmlPath)).toBe(true);
+
+      const xmlContent = fs.readFileSync(xmlPath, "utf-8");
+      expect(xmlContent).toContain("Orchid Daemon");
+      expect(xmlContent).toContain("daemon-entry.js");
+      expect(xmlContent).toContain("<LogonTrigger>");
+
+      // schtasks should NOT have been called
+      const schtasksCalls = execSyncMock.mock.calls.filter(
+        (call: any[]) =>
+          typeof call[0] === "string" && call[0].includes("schtasks")
+      );
+      expect(schtasksCalls).toHaveLength(0);
+
+      const output = logs.join("\n");
+      expect(output).toContain("schtasks /Create");
+      expect(output).toContain("orchid install --run");
+    });
+
+    it("runs schtasks when --run flag is passed", async () => {
+      setPlatform("win32");
+      const { runInstall } = await import("../commands/install");
+
+      runInstall(["--run"]);
+
+      const schtasksCalls = execSyncMock.mock.calls.filter(
+        (call: any[]) =>
+          typeof call[0] === "string" && call[0].includes("schtasks")
+      );
+      // /Create and /Run
+      expect(schtasksCalls.length).toBe(2);
+
+      const output = logs.join("\n");
+      expect(output).toContain("Created and started Windows Scheduled Task");
+    });
+
+    it("task XML has correct settings", async () => {
+      setPlatform("win32");
+      const { runInstall } = await import("../commands/install");
+
+      runInstall([]);
+
+      const xmlPath = path.join(tmpDir, ".orchid", "orchid-task.xml");
+      const content = fs.readFileSync(xmlPath, "utf-8");
+      expect(content).toContain("<DisallowStartIfOnBatteries>false");
+      expect(content).toContain("<StopIfGoingOnBatteries>false");
+      expect(content).toContain("<RestartOnFailure>");
+    });
+  });
+
   describe("already running", () => {
     it("exits early if daemon is already running", async () => {
       mockPid = 12345;
@@ -179,7 +232,7 @@ describe("install command", () => {
 
   describe("unsupported platform", () => {
     it("prints error for unsupported platforms", async () => {
-      setPlatform("win32");
+      setPlatform("freebsd");
 
       const mockExit = vi
         .spyOn(process, "exit")

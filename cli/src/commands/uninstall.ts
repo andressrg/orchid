@@ -1,8 +1,9 @@
 import * as fs from "fs";
 import * as os from "os";
+import * as path from "path";
 import { execSync } from "child_process";
 import { getDaemonPid, PID_FILE } from "../daemon";
-import { PLIST_PATH, SYSTEMD_SERVICE } from "./install";
+import { PLIST_PATH, SYSTEMD_SERVICE, WIN_TASK_NAME } from "./install";
 
 function uninstallMacOS(): void {
   try {
@@ -42,6 +43,30 @@ function uninstallLinux(): void {
   }
 }
 
+function uninstallWindows(): void {
+  try {
+    execSync(`schtasks /End /TN "${WIN_TASK_NAME}" 2>nul`, { stdio: "pipe" });
+  } catch {
+    // Not running
+  }
+
+  try {
+    execSync(`schtasks /Delete /TN "${WIN_TASK_NAME}" /F 2>nul`, {
+      stdio: "pipe",
+    });
+    console.log("  Removed Windows Scheduled Task");
+  } catch {
+    // Doesn't exist
+  }
+
+  const xmlPath = path.join(os.homedir(), ".orchid", "orchid-task.xml");
+  try {
+    fs.unlinkSync(xmlPath);
+  } catch {
+    // Doesn't exist
+  }
+}
+
 export function runUninstall(): void {
   console.log("Uninstalling Orchid background daemon...\n");
 
@@ -66,6 +91,8 @@ export function runUninstall(): void {
     uninstallMacOS();
   } else if (platform === "linux") {
     uninstallLinux();
+  } else if (platform === "win32") {
+    uninstallWindows();
   }
 
   console.log(
