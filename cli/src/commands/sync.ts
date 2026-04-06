@@ -1,14 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import * as readline from "readline";
 import { execSync } from "child_process";
 import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface LocalSession {
-  readonly filePath: string | null; // null for archived sessions (transcript cleaned up)
+  readonly filePath: string | null;
   readonly sessionId: string;
   readonly projectKey: string;
   readonly projectName: string;
@@ -36,8 +35,6 @@ interface SyncResult {
   readonly skipped: number;
 }
 
-// ── sessions-index.json schema ─────────────────────────────────────────────
-
 interface SessionIndexEntry {
   readonly sessionId: string;
   readonly fullPath: string;
@@ -58,6 +55,9 @@ interface SessionIndex {
 
 // ── ANSI helpers ───────────────────────────────────────────────────────────
 
+const HIDE_CURSOR = "\x1b[?25l";
+const SHOW_CURSOR = "\x1b[?25h";
+
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
@@ -65,8 +65,7 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
-
-// ── Utility ────────────────────────────────────────────────────────────────
+const inverse = (s: string) => `\x1b[7m${s}\x1b[0m`;
 
 const formatBytes = (bytes: number): string =>
   bytes < 1024
@@ -77,10 +76,7 @@ const formatBytes = (bytes: number): string =>
 
 const formatDate = (iso: string): string => {
   const d = new Date(iso);
-  const months = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-  ];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[d.getMonth()]} ${d.getDate()}`;
 };
 
@@ -93,10 +89,6 @@ const padLeft = (str: string, len: number): string =>
 const truncate = (str: string, len: number): string =>
   str.length <= len ? str : str.slice(0, len - 1) + "…";
 
-/**
- * Convert a Claude projects directory name to a human-readable project name.
- * e.g. "-Users-juliankmazo-Developer-personal-orchid" → "personal/orchid"
- */
 const humanizeProjectKey = (key: string): string => {
   const match = key.match(/-Developer-/);
   if (match && match.index !== undefined) {
@@ -106,19 +98,15 @@ const humanizeProjectKey = (key: string): string => {
       ? `${afterDev.slice(0, firstDash)}/${afterDev.slice(firstDash + 1)}`
       : afterDev;
   }
-
   const parts = key.split("-").filter(Boolean);
   return parts.length >= 2 ? parts.slice(-2).join("/") : key;
 };
 
-// ── Discovery: JSONL files ─────────────────────────────────────────────────
+// ── Discovery ──────────────────────────────────────────────────────────────
 
 const tryParseJson = (line: string): Record<string, unknown> | null => {
-  try {
-    return JSON.parse(line) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(line) as Record<string, unknown>; }
+  catch { return null; }
 };
 
 const extractTextContent = (content: unknown): string => {
@@ -127,9 +115,7 @@ const extractTextContent = (content: unknown): string => {
     return content
       .map((block: { type?: string; text?: string }) =>
         typeof block === "string" ? block
-          : block?.type === "text" && typeof block.text === "string" ? block.text
-          : ""
-      )
+          : block?.type === "text" && typeof block.text === "string" ? block.text : "")
       .filter(Boolean)
       .join(" ");
   }
@@ -139,26 +125,19 @@ const extractTextContent = (content: unknown): string => {
 const extractMetadataFromJsonl = (
   filePath: string
 ): Omit<LocalSession, "filePath" | "fileSize" | "projectKey" | "projectName"> | null => {
-  const fd = (() => {
-    try { return fs.openSync(filePath, "r"); }
-    catch { return null; }
-  })();
+  const fd = (() => { try { return fs.openSync(filePath, "r"); } catch { return null; } })();
   if (fd === null) return null;
 
   const buf = Buffer.alloc(32 * 1024);
   const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
   fs.closeSync(fd);
 
-  const lines = buf.toString("utf-8", 0, bytesRead).split("\n").filter((l) => l.trim());
-  const parsed = lines.map(tryParseJson).filter((obj): obj is Record<string, unknown> => obj !== null);
+  const parsed = buf.toString("utf-8", 0, bytesRead).split("\n").filter((l) => l.trim())
+    .map(tryParseJson).filter((obj): obj is Record<string, unknown> => obj !== null);
 
   const meta = parsed.reduce<{
-    sessionId: string;
-    cwd: string;
-    gitBranch: string;
-    firstTimestamp: string;
-    messageCount: number;
-    firstUserMessage: string;
+    sessionId: string; cwd: string; gitBranch: string;
+    firstTimestamp: string; messageCount: number; firstUserMessage: string;
   }>(
     (acc, obj) => {
       const isUserMsg = obj.type === "user" || obj.type === "human";
@@ -181,65 +160,39 @@ const extractMetadataFromJsonl = (
 
   const sessionId = meta.sessionId || path.basename(filePath, ".jsonl");
   const fileSize = fs.statSync(filePath).size;
-
-  const estimatedMessages =
-    meta.messageCount > 0 && bytesRead > 0
-      ? Math.round((meta.messageCount / bytesRead) * fileSize)
-      : meta.messageCount;
-
+  const estimatedMessages = meta.messageCount > 0 && bytesRead > 0
+    ? Math.round((meta.messageCount / bytesRead) * fileSize) : meta.messageCount;
   const lastTimestamp = (() => {
     try { return fs.statSync(filePath).mtime.toISOString(); }
     catch { return meta.firstTimestamp; }
   })();
-
-  // Clean up the first user message for use as summary
-  const summary = meta.firstUserMessage
-    .replace(/<[^>]+>/g, "")  // strip XML tags
-    .replace(/\s+/g, " ")     // collapse whitespace
-    .trim();
+  const summary = meta.firstUserMessage.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
 
   return {
-    sessionId,
-    cwd: meta.cwd || "unknown",
-    gitBranch: meta.gitBranch || "unknown",
+    sessionId, cwd: meta.cwd || "unknown", gitBranch: meta.gitBranch || "unknown",
     firstTimestamp: meta.firstTimestamp || new Date().toISOString(),
     lastTimestamp: lastTimestamp || meta.firstTimestamp || new Date().toISOString(),
-    messageCount: estimatedMessages,
-    summary,
+    messageCount: estimatedMessages, summary,
   };
 };
 
-// ── Discovery: sessions-index.json (archived sessions) ─────────────────────
-
 const readSessionIndex = (indexPath: string): SessionIndex | null => {
-  try {
-    return JSON.parse(fs.readFileSync(indexPath, "utf-8")) as SessionIndex;
-  } catch {
-    return null;
-  }
+  try { return JSON.parse(fs.readFileSync(indexPath, "utf-8")) as SessionIndex; }
+  catch { return null; }
 };
 
-const indexEntryToSession = (
-  entry: SessionIndexEntry,
-  projectKey: string,
-  projectName: string
-): LocalSession => ({
+const indexEntryToSession = (entry: SessionIndexEntry, projectKey: string, projectName: string): LocalSession => ({
   filePath: fs.existsSync(entry.fullPath) ? entry.fullPath : null,
-  sessionId: entry.sessionId,
-  projectKey,
-  projectName,
+  sessionId: entry.sessionId, projectKey, projectName,
   cwd: entry.projectPath || "unknown",
   gitBranch: entry.gitBranch || "unknown",
   firstTimestamp: entry.created || new Date().toISOString(),
   lastTimestamp: entry.modified || entry.created || new Date().toISOString(),
   fileSize: entry.fullPath && fs.existsSync(entry.fullPath)
-    ? ((() => { try { return fs.statSync(entry.fullPath).size; } catch { return 0; } })())
-    : 0,
+    ? ((() => { try { return fs.statSync(entry.fullPath).size; } catch { return 0; } })()) : 0,
   messageCount: entry.messageCount || 0,
   summary: entry.summary || entry.firstPrompt?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || "",
 });
-
-// ── Discovery: combined ────────────────────────────────────────────────────
 
 const tryReadDir = (dir: string): fs.Dirent[] => {
   try { return fs.readdirSync(dir, { withFileTypes: true }); }
@@ -255,41 +208,28 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
   const claudeProjectsDir = path.join(os.homedir(), ".claude", "projects");
   if (!fs.existsSync(claudeProjectsDir)) return [];
 
-  const projectDirs = tryReadDir(claudeProjectsDir).filter((e) => e.isDirectory());
-
-  return projectDirs
+  return tryReadDir(claudeProjectsDir).filter((e) => e.isDirectory())
     .flatMap((projEntry) => {
       const projPath = path.join(claudeProjectsDir, projEntry.name);
       const projectName = humanizeProjectKey(projEntry.name);
 
-      // 1. Sessions from .jsonl files (live/recent sessions)
       const jsonlSessions = tryReadDir(projPath)
         .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
         .map((entry) => {
           const filePath = path.join(projPath, entry.name);
           const fileSize = tryStatSize(filePath);
           if (fileSize === null || fileSize < 100) return null;
-
           const meta = extractMetadataFromJsonl(filePath);
           if (!meta) return null;
-
-          return {
-            ...meta,
-            filePath,
-            fileSize,
-            projectKey: projEntry.name,
-            projectName,
-          } as LocalSession;
+          return { ...meta, filePath, fileSize, projectKey: projEntry.name, projectName } as LocalSession;
         })
         .filter((s): s is LocalSession => s !== null);
 
       const jsonlSessionIds = new Set(jsonlSessions.map((s) => s.sessionId));
-
-      // 2. Sessions from sessions-index.json (archived, transcript may be gone)
       const indexPath = path.join(projPath, "sessions-index.json");
       const index = readSessionIndex(indexPath);
       const indexSessions = (index?.entries || [])
-        .filter((e) => !jsonlSessionIds.has(e.sessionId)) // skip if already found via .jsonl
+        .filter((e) => !jsonlSessionIds.has(e.sessionId))
         .map((e) => indexEntryToSession(e, projEntry.name, projectName));
 
       return [...jsonlSessions, ...indexSessions];
@@ -299,25 +239,15 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
 
 const groupByProject = (sessions: readonly LocalSession[]): readonly ProjectGroup[] => {
   const grouped = sessions.reduce<Record<string, LocalSession[]>>(
-    (acc, s) => ({
-      ...acc,
-      [s.projectKey]: [...(acc[s.projectKey] || []), s],
-    }),
-    {}
+    (acc, s) => ({ ...acc, [s.projectKey]: [...(acc[s.projectKey] || []), s] }), {}
   );
-
   return Object.entries(grouped)
     .map(([key, sess]) => {
-      const sorted = [...sess].sort(
-        (a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime()
-      );
+      const sorted = [...sess].sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
       return {
-        projectKey: key,
-        projectName: sorted[0].projectName,
-        sessions: sorted,
+        projectKey: key, projectName: sorted[0].projectName, sessions: sorted,
         totalSize: sorted.reduce((sum, s) => sum + s.fileSize, 0),
-        earliest: sorted[sorted.length - 1].firstTimestamp,
-        latest: sorted[0].lastTimestamp,
+        earliest: sorted[sorted.length - 1].firstTimestamp, latest: sorted[0].lastTimestamp,
       };
     })
     .sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime());
@@ -328,31 +258,19 @@ const groupByProject = (sessions: readonly LocalSession[]): readonly ProjectGrou
 const fetchSyncedSessionIds = async (): Promise<Set<string>> => {
   const config = tryGetConfig();
   if (!config) return new Set();
-
   try {
     const url = `${config.apiUrl.replace(/\/$/, "")}/sessions`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${config.token}` },
-    });
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${config.token}` } });
     if (!res.ok) return new Set();
-
     const sessions = (await res.json()) as Array<{ id: string }>;
     return new Set(sessions.map((s) => s.id));
-  } catch {
-    return new Set();
-  }
+  } catch { return new Set(); }
 };
 
 const execGit = (args: string, dir?: string): string => {
   try {
-    return execSync(`git ${args}`, {
-      cwd: dir,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
-  } catch {
-    return "";
-  }
+    return execSync(`git ${args}`, { cwd: dir, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  } catch { return ""; }
 };
 
 const collectGitMetadataForDir = (cwd: string) => {
@@ -365,120 +283,46 @@ const collectGitMetadataForDir = (cwd: string) => {
 };
 
 const syncSessionToServer = async (session: LocalSession): Promise<"synced" | "skipped"> => {
-  if (!session.filePath) {
-    return "skipped"; // archived session, no transcript available
-  }
-
+  if (!session.filePath) return "skipped";
   const { apiUrl } = getConfig();
-
   const transcript = (() => {
     try { return fs.readFileSync(session.filePath, "utf-8"); }
     catch (err) { throw new Error(`Cannot read ${session.filePath}: ${(err as Error).message}`); }
   })();
-
   const gitMeta = collectGitMetadataForDir(session.cwd);
   const url = `${apiUrl.replace(/\/$/, "")}/sessions/${session.sessionId}`;
-
   const res = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...getAuthHeaders() },
     body: JSON.stringify({
-      user_name: gitMeta.user_name,
-      user_email: gitMeta.user_email,
-      working_dir: session.cwd,
-      git_remotes: gitMeta.git_remotes,
-      branch: session.gitBranch,
-      tool: "claude-code",
-      transcript,
-      status: "done",
+      user_name: gitMeta.user_name, user_email: gitMeta.user_email,
+      working_dir: session.cwd, git_remotes: gitMeta.git_remotes,
+      branch: session.gitBranch, tool: "claude-code", transcript, status: "done",
     }),
   });
-
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`PUT ${url} returned ${res.status}: ${text}`);
   }
-
   return "synced";
 };
 
-// ── Interactive TUI ────────────────────────────────────────────────────────
-
-const createPrompt = () => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return {
-    ask: (question: string): Promise<string> =>
-      new Promise((resolve) => {
-        rl.question(question, (answer) => resolve(answer.trim()));
-      }),
-    close: () => rl.close(),
-  };
-};
-
-const printProjectTable = (groups: readonly ProjectGroup[]): void => {
-  console.log();
-  console.log(
-    `  ${dim(padRight("#", 4))}${padRight("PROJECT", 34)}${padLeft("SESSIONS", 10)}${padLeft("SIZE", 12)}  ${padRight("DATE RANGE", 20)}`
-  );
-  console.log(`  ${dim("─".repeat(82))}`);
-
-  groups.forEach((g, i) => {
-    const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
-    console.log(
-      `  ${cyan(padRight(String(i + 1), 4))}${padRight(g.projectName, 34)}${padLeft(String(g.sessions.length), 10)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`
-    );
-  });
-  console.log();
-};
-
-const printSessionTable = (sessions: readonly LocalSession[]): void => {
-  console.log();
-  console.log(
-    `  ${dim(padRight("#", 4))}${padRight("SUMMARY", 42)}${padRight("BRANCH", 20)}${padRight("DATE", 10)}${padLeft("MSGS", 6)}`
-  );
-  console.log(`  ${dim("─".repeat(82))}`);
-
-  sessions.forEach((s, i) => {
-    const label = s.summary
-      ? truncate(s.summary, 40)
-      : s.sessionId.slice(0, 12) + "…";
-    const archived = s.filePath === null ? dim(" (archived)") : "";
-    console.log(
-      `  ${cyan(padRight(String(i + 1), 4))}${padRight(label, 42)}${padRight(s.gitBranch.slice(0, 18), 20)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 6)}${archived}`
-    );
-  });
-  console.log();
-};
-
 const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResult> => {
-  console.log();
   const syncable = sessions.filter((s) => s.filePath !== null);
   const skippedCount = sessions.length - syncable.length;
 
-  if (skippedCount > 0) {
-    console.log(`  ${dim(`Skipping ${skippedCount} archived sessions (no transcript on disk)`)}`);
-  }
-
+  if (skippedCount > 0) console.log(`  ${dim(`Skipping ${skippedCount} archived sessions (no transcript on disk)`)}`);
   if (syncable.length === 0) {
-    console.log(`  ${dim("Nothing to sync — all selected sessions are archived.")}`);
-    console.log();
+    console.log(`  ${dim("Nothing to sync — all selected sessions are archived.")}\n`);
     return { synced: 0, failed: 0, skipped: skippedCount };
   }
 
   const total = syncable.length;
-
   const result = await syncable.reduce<Promise<{ synced: number; failed: number }>>(
     async (accPromise, session, i) => {
       const acc = await accPromise;
-      const label = session.summary
-        ? truncate(session.summary, 30)
-        : session.sessionId.slice(0, 12);
+      const label = session.summary ? truncate(session.summary, 30) : session.sessionId.slice(0, 12);
       process.stdout.write(`  ${dim(`[${i + 1}/${total}]`)} Syncing ${label}… `);
-
       try {
         await syncSessionToServer(session);
         process.stdout.write(`${green("✓")} ${dim(formatBytes(session.fileSize))}\n`);
@@ -491,141 +335,262 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
     Promise.resolve({ synced: 0, failed: 0 })
   );
 
-  console.log();
   console.log(
     result.failed === 0
-      ? `  ${green("Done!")} ${bold(String(result.synced))} sessions synced.`
-      : `  ${yellow("Done.")} ${bold(String(result.synced))} synced, ${red(String(result.failed))} failed.`
+      ? `\n  ${green("Done!")} ${bold(String(result.synced))} sessions synced.\n`
+      : `\n  ${yellow("Done.")} ${bold(String(result.synced))} synced, ${red(String(result.failed))} failed.\n`
   );
-  console.log();
-
   return { ...result, skipped: skippedCount };
 };
 
-const expandRange = (start: number, end: number): readonly number[] =>
-  Array.from({ length: end - start + 1 }, (_, i) => start + i);
+// ── Vim-style Interactive TUI ──────────────────────────────────────────────
 
-const parseSelection = (input: string, max: number): readonly number[] | "all" | "back" | "quit" | null => {
-  const lower = input.toLowerCase();
-  if (lower === "q" || lower === "quit") return "quit";
-  if (lower === "b" || lower === "back") return "back";
-  if (lower === "a" || lower === "all") return "all";
+interface ListState {
+  readonly cursor: number;
+  readonly selected: ReadonlySet<number>;
+  readonly scroll: number;
+}
 
-  const indices = input
-    .split(",")
-    .map((p) => p.trim())
-    .flatMap((part) => {
-      if (part.includes("-")) {
-        const [startStr, endStr] = part.split("-").map((s) => s.trim());
-        const start = parseInt(startStr, 10);
-        const end = parseInt(endStr, 10);
-        return isNaN(start) || isNaN(end) ? [] : expandRange(start, end);
+type ListAction =
+  | { type: "enter"; index: number }
+  | { type: "sync"; indices: readonly number[] }
+  | { type: "back" }
+  | { type: "quit" };
+
+const parseKey = (buf: Buffer): string => {
+  const hex = buf.toString("hex");
+  const ch = buf.toString("utf-8");
+  if (hex === "1b5b41" || ch === "k") return "up";
+  if (hex === "1b5b42" || ch === "j") return "down";
+  if (hex === "0d" || hex === "0a") return "enter";
+  if (ch === " ") return "space";
+  if (ch === "a") return "select-all";
+  if (ch === "s") return "sync";
+  if (ch === "g") return "top";
+  if (ch === "G") return "bottom";
+  if (hex === "1b" || ch === "q") return "back";
+  if (hex === "03") return "ctrl-c"; // ctrl+c
+  return "";
+};
+
+const clamp = (val: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, val));
+
+const computeScroll = (cursor: number, currentScroll: number, maxVisible: number, total: number): number => {
+  const maxScroll = Math.max(0, total - maxVisible);
+  if (cursor < currentScroll) return cursor;
+  if (cursor >= currentScroll + maxVisible) return Math.min(cursor - maxVisible + 1, maxScroll);
+  return Math.min(currentScroll, maxScroll);
+};
+
+const interactiveList = <T>(config: {
+  readonly items: readonly T[];
+  readonly renderRow: (item: T, index: number, active: boolean, selected: boolean) => string;
+  readonly headerLines: readonly string[];
+  readonly footerLine: (selectedCount: number, total: number) => string;
+  readonly selectable: boolean;
+}): Promise<ListAction> =>
+  new Promise((resolve) => {
+    const maxVisible = clamp((process.stdout.rows || 24) - config.headerLines.length - 4, 5, 40);
+    const total = config.items.length;
+
+    // Encapsulated state for event-driven TUI — reducer is pure, this is the event loop boundary
+    const stateRef: [ListState] = [{ cursor: 0, selected: new Set(), scroll: 0 }];
+    const renderedRef: [number] = [0]; // lines rendered last frame
+
+    const render = () => {
+      const state = stateRef[0];
+      const scroll = computeScroll(state.cursor, state.scroll, maxVisible, total);
+      stateRef[0] = { ...state, scroll };
+
+      // Clear previous render
+      if (renderedRef[0] > 0) {
+        process.stdout.write(`\x1b[${renderedRef[0]}A\x1b[0J`);
       }
-      const n = parseInt(part, 10);
-      return isNaN(n) ? [] : [n];
-    })
-    .filter((n) => n >= 1 && n <= max)
-    .map((n) => n - 1);
 
-  return indices.length > 0 ? indices : null;
+      const visibleItems = config.items.slice(scroll, scroll + maxVisible);
+      const lines = [
+        ...config.headerLines,
+        ...visibleItems.map((item, i) => {
+          const globalIdx = scroll + i;
+          const active = globalIdx === state.cursor;
+          const isSelected = state.selected.has(globalIdx);
+          return config.renderRow(item, globalIdx, active, isSelected);
+        }),
+        ...(total > maxVisible ? [`  ${dim(`  ↕ ${scroll + 1}–${Math.min(scroll + maxVisible, total)} of ${total}`)}`] : []),
+        "",
+        config.footerLine(state.selected.size, total),
+      ];
+
+      const output = lines.join("\n") + "\n";
+      process.stdout.write(output);
+      renderedRef[0] = lines.length;
+    };
+
+    const cleanup = () => {
+      process.stdin.setRawMode?.(false);
+      process.stdin.pause();
+      process.stdin.removeAllListeners("data");
+      process.stdout.write(SHOW_CURSOR);
+    };
+
+    const onKey = (buf: Buffer) => {
+      const key = parseKey(buf);
+      const state = stateRef[0];
+
+      if (key === "ctrl-c") {
+        cleanup();
+        process.exit(0);
+      }
+
+      if (key === "up") {
+        stateRef[0] = { ...state, cursor: clamp(state.cursor - 1, 0, total - 1) };
+        render();
+      } else if (key === "down") {
+        stateRef[0] = { ...state, cursor: clamp(state.cursor + 1, 0, total - 1) };
+        render();
+      } else if (key === "top") {
+        stateRef[0] = { ...state, cursor: 0, scroll: 0 };
+        render();
+      } else if (key === "bottom") {
+        stateRef[0] = { ...state, cursor: total - 1 };
+        render();
+      } else if (key === "space" && config.selectable) {
+        const next = new Set(state.selected);
+        if (next.has(state.cursor)) { next.delete(state.cursor); } else { next.add(state.cursor); }
+        stateRef[0] = { ...state, selected: next, cursor: clamp(state.cursor + 1, 0, total - 1) };
+        render();
+      } else if (key === "select-all" && config.selectable) {
+        const allSelected = state.selected.size === total;
+        const next = allSelected ? new Set<number>() : new Set(Array.from({ length: total }, (_, i) => i));
+        stateRef[0] = { ...state, selected: next };
+        render();
+      } else if (key === "enter") {
+        cleanup();
+        resolve({ type: "enter", index: state.cursor });
+      } else if (key === "sync") {
+        cleanup();
+        const indices = state.selected.size > 0
+          ? Array.from(state.selected).sort((a, b) => a - b)
+          : Array.from({ length: total }, (_, i) => i);
+        resolve({ type: "sync", indices });
+      } else if (key === "back") {
+        cleanup();
+        resolve({ type: "back" });
+      }
+    };
+
+    process.stdout.write(HIDE_CURSOR);
+    process.stdin.setRawMode?.(true);
+    process.stdin.resume();
+    process.stdin.on("data", onKey);
+    render();
+  });
+
+// ── View renderers ─────────────────────────────────────────────────────────
+
+const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selected: boolean): string => {
+  const pointer = active ? cyan("▸") : " ";
+  const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
+  const name = active ? bold(g.projectName) : g.projectName;
+  const row = `${pointer} ${padRight(name, 34)}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
+  return active ? `\x1b[48;5;236m${row}\x1b[0m` : `  ${row}`;
 };
 
-// ── Interactive flows (recursive, no mutation) ─────────────────────────────
+const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, selected: boolean): string => {
+  const pointer = active ? cyan("▸") : " ";
+  const checkbox = selected ? green("[✓]") : dim("[ ]");
+  const label = s.summary ? truncate(s.summary, 38) : dim(s.sessionId.slice(0, 12) + "…");
+  const archived = s.filePath === null ? dim(" ✱") : "";
+  const row = `${pointer} ${checkbox} ${padRight(label, 40)}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
+  return active ? `\x1b[48;5;236m${row}\x1b[0m` : `  ${row}`;
+};
 
-const browseProject = async (
-  prompt: { ask: (q: string) => Promise<string> },
-  group: ProjectGroup
-): Promise<ProjectGroup> => {
-  console.log();
-  console.log(`  ${bold(group.projectName)} ${dim(`— ${group.sessions.length} unsynced sessions`)}`);
-  printSessionTable(group.sessions);
+// ── Main flows ─────────────────────────────────────────────────────────────
 
+const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
   const syncableCount = group.sessions.filter((s) => s.filePath !== null).length;
-  const totalSize = group.sessions.reduce((sum, s) => sum + s.fileSize, 0);
-  console.log(
-    `  ${dim(`[a] Sync all (${syncableCount} syncable, ${formatBytes(totalSize)})`)}  ${dim("[1-" + group.sessions.length + "] Select")}  ${dim("[b] Back")}  ${dim("[q] Quit")}`
-  );
 
-  const input = await prompt.ask(`  ${cyan("❯")} `);
-  const selection = parseSelection(input, group.sessions.length);
+  const action = await interactiveList({
+    items: group.sessions,
+    renderRow: renderSessionRow,
+    headerLines: [
+      "",
+      `  ${bold(group.projectName)} ${dim(`— ${group.sessions.length} sessions (${syncableCount} syncable)`)}`,
+      "",
+      `  ${dim("    ")}${dim(padRight("SUMMARY", 44))}${dim(padRight("BRANCH", 18))}${dim(padRight("DATE", 10))}${dim(padLeft("MSGS", 5))}`,
+      `  ${dim("─".repeat(82))}`,
+    ],
+    footerLine: (sel, total) => {
+      const selLabel = sel > 0 ? ` (${sel} selected)` : "";
+      return `  ${dim("j/k")} navigate  ${dim("space")} select  ${dim("a")} toggle all  ${dim("s")} sync${selLabel}  ${dim("esc")} back`;
+    },
+    selectable: true,
+  });
 
-  if (selection === "quit") {
-    process.exit(0);
+  if (action.type === "back") return group;
+
+  if (action.type === "enter") {
+    // Sync single session
+    console.log();
+    await syncSessions([group.sessions[action.index]]);
+    const remaining = group.sessions.filter((_, i) => i !== action.index || !group.sessions[action.index].filePath);
+    return remaining.length > 0
+      ? browseProject({ ...group, sessions: remaining })
+      : { ...group, sessions: [] };
   }
 
-  if (selection === "back") {
-    return group;
+  if (action.type === "sync") {
+    const toSync = action.indices.map((i) => group.sessions[i]);
+    console.log();
+    await syncSessions(toSync);
+    const syncedIds = new Set(toSync.filter((s) => s.filePath !== null).map((s) => s.sessionId));
+    const remaining = group.sessions.filter((s) => !syncedIds.has(s.sessionId));
+    return remaining.length > 0
+      ? browseProject({ ...group, sessions: remaining })
+      : { ...group, sessions: [] };
   }
 
-  if (selection === "all") {
-    await syncSessions(group.sessions);
-    return { ...group, sessions: [] };
-  }
-
-  if (selection === null) {
-    console.log(`  ${dim("Invalid input. Enter numbers (e.g. 1,3,5-7), 'a' for all, or 'b' to go back.")}`);
-    return browseProject(prompt, group);
-  }
-
-  const selected = selection.map((i) => group.sessions[i]);
-  await syncSessions(selected);
-
-  const syncedSet = new Set(selected.filter((s) => s.filePath !== null).map((s) => s.sessionId));
-  const remaining = group.sessions.filter((s) => !syncedSet.has(s.sessionId));
-  const updatedGroup = { ...group, sessions: remaining };
-
-  if (remaining.length === 0) {
-    console.log(`  ${green("All sessions in this project are now synced!")}`);
-    return updatedGroup;
-  }
-
-  return browseProject(prompt, updatedGroup);
+  return group;
 };
 
-const runDiscoverLoop = async (
-  prompt: { ask: (q: string) => Promise<string> },
-  groups: readonly ProjectGroup[],
-  allUnsynced: readonly LocalSession[]
-): Promise<void> => {
-  printProjectTable(groups);
-
+const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> => {
+  const allUnsynced = groups.flatMap((g) => g.sessions);
   const syncableCount = allUnsynced.filter((s) => s.filePath !== null).length;
-  const totalSize = allUnsynced.reduce((sum, s) => sum + s.fileSize, 0);
-  console.log(
-    `  ${dim(`[a] Sync all (${syncableCount} syncable, ${formatBytes(totalSize)})`)}  ${dim("[1-" + groups.length + "] Browse project")}  ${dim("[q] Quit")}`
-  );
 
-  const input = await prompt.ask(`  ${cyan("❯")} `);
-  const selection = parseSelection(input, groups.length);
+  const action = await interactiveList({
+    items: groups,
+    renderRow: renderProjectRow,
+    headerLines: [
+      "",
+      `  ${magenta("orchid sync")} ${dim("— discover local Claude Code sessions")}`,
+      "",
+      `  ${bold(String(allUnsynced.length))} sessions across ${bold(String(groups.length))} projects ${dim(`(${syncableCount} syncable)`)}`,
+      "",
+      `  ${dim(" ")}${dim(padRight("PROJECT", 36))}${dim(padLeft("SESSIONS", 8))}${dim(padLeft("SIZE", 12))}  ${dim("DATE RANGE")}`,
+      `  ${dim("─".repeat(82))}`,
+    ],
+    footerLine: (_sel, _total) =>
+      `  ${dim("j/k")} navigate  ${dim("↵")} browse  ${dim("s")} sync all  ${dim("q")} quit`,
+    selectable: false,
+  });
 
-  if (selection === "quit") return;
-  if (selection === "back") return runDiscoverLoop(prompt, groups, allUnsynced);
+  if (action.type === "back" || action.type === "quit") return;
 
-  if (selection === "all") {
-    await syncSessions(allUnsynced);
+  if (action.type === "enter") {
+    const group = groups[action.index];
+    const updated = await browseProject(group);
+    const updatedGroups = groups.map((g, i) => (i === action.index ? updated : g));
+    const active = updatedGroups.filter((g) => g.sessions.length > 0);
+    if (active.length > 0) return runDiscoverLoop(active);
     return;
   }
 
-  if (selection === null) {
-    console.log(`  ${dim("Invalid input. Enter a number, 'a' for all, or 'q' to quit.")}`);
-    return runDiscoverLoop(prompt, groups, allUnsynced);
+  if (action.type === "sync") {
+    console.log();
+    await syncSessions(allUnsynced);
+    return;
   }
-
-  const updatedGroups = await selection.reduce<Promise<readonly ProjectGroup[]>>(
-    async (accPromise, idx) => {
-      const acc = await accPromise;
-      const updated = await browseProject(prompt, acc[idx]);
-      return acc.map((g, i) => (i === idx ? updated : g));
-    },
-    Promise.resolve([...groups])
-  );
-
-  const remainingUnsynced = updatedGroups.flatMap((g) => g.sessions);
-  const activeGroups = updatedGroups.filter((g) => g.sessions.length > 0);
-
-  if (activeGroups.length === 0) return;
-
-  return runDiscoverLoop(prompt, activeGroups, remainingUnsynced);
 };
 
 const runDiscover = async (): Promise<void> => {
@@ -654,75 +619,37 @@ const runDiscover = async (): Promise<void> => {
   }
 
   const groups = groupByProject(unsyncedSessions);
-  const syncableCount = unsyncedSessions.filter((s) => s.filePath !== null).length;
-  const archivedCount = unsyncedSessions.length - syncableCount;
-
-  console.log();
-  console.log(
-    `  ${bold(String(unsyncedSessions.length))} unsynced sessions across ${bold(String(groups.length))} projects` +
-    (archivedCount > 0 ? dim(` (${archivedCount} archived, metadata only)`) : "")
-  );
-
-  const prompt = createPrompt();
-  await runDiscoverLoop(prompt, groups, unsyncedSessions);
-  prompt.close();
+  await runDiscoverLoop(groups);
 };
 
 // ── Single file sync ───────────────────────────────────────────────────────
 
 const syncFile = async (filePath: string): Promise<void> => {
   const resolved = path.resolve(filePath);
-
-  if (!fs.existsSync(resolved)) {
-    console.error(`${red("Error:")} File not found: ${resolved}`);
-    process.exit(1);
-  }
-
-  if (!resolved.endsWith(".jsonl")) {
-    console.error(`${red("Error:")} Expected a .jsonl file`);
-    process.exit(1);
-  }
+  if (!fs.existsSync(resolved)) { console.error(`${red("Error:")} File not found: ${resolved}`); process.exit(1); }
+  if (!resolved.endsWith(".jsonl")) { console.error(`${red("Error:")} Expected a .jsonl file`); process.exit(1); }
 
   const fileSize = fs.statSync(resolved).size;
   const meta = extractMetadataFromJsonl(resolved);
-
-  if (!meta) {
-    console.error(`${red("Error:")} Could not parse metadata from ${resolved}`);
-    process.exit(1);
-  }
+  if (!meta) { console.error(`${red("Error:")} Could not parse metadata from ${resolved}`); process.exit(1); }
 
   const projectKey = path.basename(path.dirname(resolved));
-  const session: LocalSession = {
-    ...meta,
-    filePath: resolved,
-    fileSize,
-    projectKey,
-    projectName: humanizeProjectKey(projectKey),
-  };
+  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: humanizeProjectKey(projectKey) };
 
-  console.log();
-  console.log(`  ${magenta("orchid sync")} ${dim("— syncing single session")}`);
-  console.log();
+  console.log(`\n  ${magenta("orchid sync")} ${dim("— syncing single session")}\n`);
   console.log(`  Session:  ${session.sessionId}`);
   console.log(`  Summary:  ${session.summary || dim("(no summary)")}`);
-  console.log(`  Project:  ${session.projectName}`);
   console.log(`  Branch:   ${session.gitBranch}`);
-  console.log(`  Date:     ${formatDate(session.firstTimestamp)}`);
-  console.log(`  Size:     ${formatBytes(session.fileSize)}`);
-  console.log(`  Messages: ${session.messageCount}`);
-  console.log();
+  console.log(`  Size:     ${formatBytes(session.fileSize)}\n`);
 
   process.stdout.write(`  Syncing… `);
-
   try {
     await syncSessionToServer(session);
-    console.log(`${green("✓")} Done!`);
+    console.log(`${green("✓")} Done!\n`);
   } catch (err) {
     console.log(`${red("✗")} ${(err as Error).message}`);
     process.exit(1);
   }
-
-  console.log();
 };
 
 // ── Entry point ────────────────────────────────────────────────────────────
@@ -745,6 +672,7 @@ Options:
 
   if (flag === "--discover" || !flag) {
     runDiscover().catch((err) => {
+      process.stdout.write(SHOW_CURSOR);
       console.error(`\n${red("Error:")} ${err.message}`);
       process.exit(1);
     });
