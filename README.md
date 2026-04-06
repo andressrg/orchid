@@ -21,16 +21,31 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ### CLI
 ```bash
-orchid claude                          # Launch Claude + capture conversation
+# Capture
+orchid install                         # Set up background daemon (prints commands to run)
+orchid install --run                   # Set up + start daemon automatically
+orchid uninstall                       # Remove background daemon
+orchid status                          # Show daemon status and capture stats
+orchid claude                          # Launch Claude + capture conversation (manual mode)
+
+# Query
 orchid data list                       # List all sessions
 orchid data show <id> [--turns]        # View full transcript
 orchid data search "why websockets"    # Search across all conversations
 orchid data summary <id>               # AI-generated session summary
 orchid data decisions [repo]           # AI-extracted architectural decision log
 orchid data ask <id> [question]        # Ask questions about a session (interactive if no question)
-orchid review <branch>                 # AI-powered conversation-aware review
+
+# AI-powered tools
+orchid review <branch>                 # Conversation-aware code review
 orchid explain <commit-sha>            # Explain why a commit was made
 ```
+
+#### Background Daemon vs Manual Mode
+
+**Background daemon** (`orchid install`) — watches `~/.claude/projects/` for all Claude Code sessions and syncs them automatically. Just use `claude` normally. The daemon runs as a macOS LaunchAgent or Linux systemd service.
+
+**Manual mode** (`orchid claude`) — wraps a single Claude Code session. Use this if you don't want the daemon running all the time.
 
 ### Web UI
 
