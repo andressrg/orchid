@@ -8,7 +8,7 @@ import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
 // ── Types ──────────────────────────────────────────────────────────────────
 
 interface LocalSession {
-  readonly filePath: string;
+  readonly filePath: string | null; // null for archived sessions (transcript cleaned up)
   readonly sessionId: string;
   readonly projectKey: string;
   readonly projectName: string;
@@ -18,6 +18,7 @@ interface LocalSession {
   readonly lastTimestamp: string;
   readonly fileSize: number;
   readonly messageCount: number;
+  readonly summary: string;
 }
 
 interface ProjectGroup {
@@ -32,6 +33,27 @@ interface ProjectGroup {
 interface SyncResult {
   readonly synced: number;
   readonly failed: number;
+  readonly skipped: number;
+}
+
+// ── sessions-index.json schema ─────────────────────────────────────────────
+
+interface SessionIndexEntry {
+  readonly sessionId: string;
+  readonly fullPath: string;
+  readonly firstPrompt?: string;
+  readonly summary?: string;
+  readonly messageCount?: number;
+  readonly created?: string;
+  readonly modified?: string;
+  readonly gitBranch?: string;
+  readonly projectPath?: string;
+}
+
+interface SessionIndex {
+  readonly version: number;
+  readonly entries: readonly SessionIndexEntry[];
+  readonly originalPath?: string;
 }
 
 // ── ANSI helpers ───────────────────────────────────────────────────────────
@@ -68,6 +90,9 @@ const padRight = (str: string, len: number): string =>
 const padLeft = (str: string, len: number): string =>
   str.length >= len ? str.slice(0, len) : " ".repeat(len - str.length) + str;
 
+const truncate = (str: string, len: number): string =>
+  str.length <= len ? str : str.slice(0, len - 1) + "…";
+
 /**
  * Convert a Claude projects directory name to a human-readable project name.
  * e.g. "-Users-juliankmazo-Developer-personal-orchid" → "personal/orchid"
@@ -86,7 +111,7 @@ const humanizeProjectKey = (key: string): string => {
   return parts.length >= 2 ? parts.slice(-2).join("/") : key;
 };
 
-// ── Discovery ──────────────────────────────────────────────────────────────
+// ── Discovery: JSONL files ─────────────────────────────────────────────────
 
 const tryParseJson = (line: string): Record<string, unknown> | null => {
   try {
@@ -94,6 +119,21 @@ const tryParseJson = (line: string): Record<string, unknown> | null => {
   } catch {
     return null;
   }
+};
+
+const extractTextContent = (content: unknown): string => {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block: { type?: string; text?: string }) =>
+        typeof block === "string" ? block
+          : block?.type === "text" && typeof block.text === "string" ? block.text
+          : ""
+      )
+      .filter(Boolean)
+      .join(" ");
+  }
+  return "";
 };
 
 const extractMetadataFromJsonl = (
@@ -118,16 +158,25 @@ const extractMetadataFromJsonl = (
     gitBranch: string;
     firstTimestamp: string;
     messageCount: number;
+    firstUserMessage: string;
   }>(
-    (acc, obj) => ({
-      sessionId: acc.sessionId || (obj.sessionId as string) || "",
-      cwd: acc.cwd || (obj.cwd as string) || "",
-      gitBranch: acc.gitBranch || (obj.gitBranch as string) || "",
-      firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || "",
-      messageCount:
-        acc.messageCount + (obj.type === "user" || obj.type === "assistant" ? 1 : 0),
-    }),
-    { sessionId: "", cwd: "", gitBranch: "", firstTimestamp: "", messageCount: 0 }
+    (acc, obj) => {
+      const isUserMsg = obj.type === "user" || obj.type === "human";
+      const userText = isUserMsg && !acc.firstUserMessage
+        ? extractTextContent((obj as Record<string, unknown>).message
+            ? ((obj as Record<string, unknown>).message as Record<string, unknown>).content
+            : obj.content)
+        : "";
+      return {
+        sessionId: acc.sessionId || (obj.sessionId as string) || "",
+        cwd: acc.cwd || (obj.cwd as string) || "",
+        gitBranch: acc.gitBranch || (obj.gitBranch as string) || "",
+        firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || "",
+        messageCount: acc.messageCount + (isUserMsg || obj.type === "assistant" ? 1 : 0),
+        firstUserMessage: acc.firstUserMessage || userText,
+      };
+    },
+    { sessionId: "", cwd: "", gitBranch: "", firstTimestamp: "", messageCount: 0, firstUserMessage: "" }
   );
 
   const sessionId = meta.sessionId || path.basename(filePath, ".jsonl");
@@ -143,6 +192,12 @@ const extractMetadataFromJsonl = (
     catch { return meta.firstTimestamp; }
   })();
 
+  // Clean up the first user message for use as summary
+  const summary = meta.firstUserMessage
+    .replace(/<[^>]+>/g, "")  // strip XML tags
+    .replace(/\s+/g, " ")     // collapse whitespace
+    .trim();
+
   return {
     sessionId,
     cwd: meta.cwd || "unknown",
@@ -150,8 +205,41 @@ const extractMetadataFromJsonl = (
     firstTimestamp: meta.firstTimestamp || new Date().toISOString(),
     lastTimestamp: lastTimestamp || meta.firstTimestamp || new Date().toISOString(),
     messageCount: estimatedMessages,
+    summary,
   };
 };
+
+// ── Discovery: sessions-index.json (archived sessions) ─────────────────────
+
+const readSessionIndex = (indexPath: string): SessionIndex | null => {
+  try {
+    return JSON.parse(fs.readFileSync(indexPath, "utf-8")) as SessionIndex;
+  } catch {
+    return null;
+  }
+};
+
+const indexEntryToSession = (
+  entry: SessionIndexEntry,
+  projectKey: string,
+  projectName: string
+): LocalSession => ({
+  filePath: fs.existsSync(entry.fullPath) ? entry.fullPath : null,
+  sessionId: entry.sessionId,
+  projectKey,
+  projectName,
+  cwd: entry.projectPath || "unknown",
+  gitBranch: entry.gitBranch || "unknown",
+  firstTimestamp: entry.created || new Date().toISOString(),
+  lastTimestamp: entry.modified || entry.created || new Date().toISOString(),
+  fileSize: entry.fullPath && fs.existsSync(entry.fullPath)
+    ? ((() => { try { return fs.statSync(entry.fullPath).size; } catch { return 0; } })())
+    : 0,
+  messageCount: entry.messageCount || 0,
+  summary: entry.summary || entry.firstPrompt?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || "",
+});
+
+// ── Discovery: combined ────────────────────────────────────────────────────
 
 const tryReadDir = (dir: string): fs.Dirent[] => {
   try { return fs.readdirSync(dir, { withFileTypes: true }); }
@@ -172,7 +260,10 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
   return projectDirs
     .flatMap((projEntry) => {
       const projPath = path.join(claudeProjectsDir, projEntry.name);
-      return tryReadDir(projPath)
+      const projectName = humanizeProjectKey(projEntry.name);
+
+      // 1. Sessions from .jsonl files (live/recent sessions)
+      const jsonlSessions = tryReadDir(projPath)
         .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
         .map((entry) => {
           const filePath = path.join(projPath, entry.name);
@@ -187,10 +278,21 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
             filePath,
             fileSize,
             projectKey: projEntry.name,
-            projectName: humanizeProjectKey(projEntry.name),
+            projectName,
           } as LocalSession;
         })
         .filter((s): s is LocalSession => s !== null);
+
+      const jsonlSessionIds = new Set(jsonlSessions.map((s) => s.sessionId));
+
+      // 2. Sessions from sessions-index.json (archived, transcript may be gone)
+      const indexPath = path.join(projPath, "sessions-index.json");
+      const index = readSessionIndex(indexPath);
+      const indexSessions = (index?.entries || [])
+        .filter((e) => !jsonlSessionIds.has(e.sessionId)) // skip if already found via .jsonl
+        .map((e) => indexEntryToSession(e, projEntry.name, projectName));
+
+      return [...jsonlSessions, ...indexSessions];
     })
     .sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
 };
@@ -262,7 +364,11 @@ const collectGitMetadataForDir = (cwd: string) => {
   };
 };
 
-const syncSessionToServer = async (session: LocalSession): Promise<void> => {
+const syncSessionToServer = async (session: LocalSession): Promise<"synced" | "skipped"> => {
+  if (!session.filePath) {
+    return "skipped"; // archived session, no transcript available
+  }
+
   const { apiUrl } = getConfig();
 
   const transcript = (() => {
@@ -292,6 +398,8 @@ const syncSessionToServer = async (session: LocalSession): Promise<void> => {
     const text = await res.text();
     throw new Error(`PUT ${url} returned ${res.status}: ${text}`);
   }
+
+  return "synced";
 };
 
 // ── Interactive TUI ────────────────────────────────────────────────────────
@@ -330,14 +438,17 @@ const printProjectTable = (groups: readonly ProjectGroup[]): void => {
 const printSessionTable = (sessions: readonly LocalSession[]): void => {
   console.log();
   console.log(
-    `  ${dim(padRight("#", 4))}${padRight("SESSION", 16)}${padRight("BRANCH", 20)}${padRight("DATE", 14)}${padLeft("SIZE", 10)}${padLeft("MSGS", 8)}`
+    `  ${dim(padRight("#", 4))}${padRight("SUMMARY", 42)}${padRight("BRANCH", 20)}${padRight("DATE", 10)}${padLeft("MSGS", 6)}`
   );
-  console.log(`  ${dim("─".repeat(72))}`);
+  console.log(`  ${dim("─".repeat(82))}`);
 
   sessions.forEach((s, i) => {
-    const shortId = s.sessionId.slice(0, 12) + "…";
+    const label = s.summary
+      ? truncate(s.summary, 40)
+      : s.sessionId.slice(0, 12) + "…";
+    const archived = s.filePath === null ? dim(" (archived)") : "";
     console.log(
-      `  ${cyan(padRight(String(i + 1), 4))}${padRight(shortId, 16)}${padRight(s.gitBranch.slice(0, 18), 20)}${padRight(formatDate(s.lastTimestamp), 14)}${padLeft(formatBytes(s.fileSize), 10)}${padLeft(String(s.messageCount), 8)}`
+      `  ${cyan(padRight(String(i + 1), 4))}${padRight(label, 42)}${padRight(s.gitBranch.slice(0, 18), 20)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 6)}${archived}`
     );
   });
   console.log();
@@ -345,13 +456,28 @@ const printSessionTable = (sessions: readonly LocalSession[]): void => {
 
 const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResult> => {
   console.log();
-  const total = sessions.length;
+  const syncable = sessions.filter((s) => s.filePath !== null);
+  const skippedCount = sessions.length - syncable.length;
 
-  const result = await sessions.reduce<Promise<SyncResult>>(
+  if (skippedCount > 0) {
+    console.log(`  ${dim(`Skipping ${skippedCount} archived sessions (no transcript on disk)`)}`);
+  }
+
+  if (syncable.length === 0) {
+    console.log(`  ${dim("Nothing to sync — all selected sessions are archived.")}`);
+    console.log();
+    return { synced: 0, failed: 0, skipped: skippedCount };
+  }
+
+  const total = syncable.length;
+
+  const result = await syncable.reduce<Promise<{ synced: number; failed: number }>>(
     async (accPromise, session, i) => {
       const acc = await accPromise;
-      const shortId = session.sessionId.slice(0, 12);
-      process.stdout.write(`  ${dim(`[${i + 1}/${total}]`)} Syncing ${shortId}… `);
+      const label = session.summary
+        ? truncate(session.summary, 30)
+        : session.sessionId.slice(0, 12);
+      process.stdout.write(`  ${dim(`[${i + 1}/${total}]`)} Syncing ${label}… `);
 
       try {
         await syncSessionToServer(session);
@@ -373,7 +499,7 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
   );
   console.log();
 
-  return result;
+  return { ...result, skipped: skippedCount };
 };
 
 const expandRange = (start: number, end: number): readonly number[] =>
@@ -414,9 +540,10 @@ const browseProject = async (
   console.log(`  ${bold(group.projectName)} ${dim(`— ${group.sessions.length} unsynced sessions`)}`);
   printSessionTable(group.sessions);
 
+  const syncableCount = group.sessions.filter((s) => s.filePath !== null).length;
   const totalSize = group.sessions.reduce((sum, s) => sum + s.fileSize, 0);
   console.log(
-    `  ${dim(`[a] Sync all (${formatBytes(totalSize)})`)}  ${dim("[1-" + group.sessions.length + "] Select")}  ${dim("[b] Back")}  ${dim("[q] Quit")}`
+    `  ${dim(`[a] Sync all (${syncableCount} syncable, ${formatBytes(totalSize)})`)}  ${dim("[1-" + group.sessions.length + "] Select")}  ${dim("[b] Back")}  ${dim("[q] Quit")}`
   );
 
   const input = await prompt.ask(`  ${cyan("❯")} `);
@@ -443,7 +570,7 @@ const browseProject = async (
   const selected = selection.map((i) => group.sessions[i]);
   await syncSessions(selected);
 
-  const syncedSet = new Set(selected.map((s) => s.sessionId));
+  const syncedSet = new Set(selected.filter((s) => s.filePath !== null).map((s) => s.sessionId));
   const remaining = group.sessions.filter((s) => !syncedSet.has(s.sessionId));
   const updatedGroup = { ...group, sessions: remaining };
 
@@ -462,9 +589,10 @@ const runDiscoverLoop = async (
 ): Promise<void> => {
   printProjectTable(groups);
 
+  const syncableCount = allUnsynced.filter((s) => s.filePath !== null).length;
   const totalSize = allUnsynced.reduce((sum, s) => sum + s.fileSize, 0);
   console.log(
-    `  ${dim(`[a] Sync all (${formatBytes(totalSize)})`)}  ${dim("[1-" + groups.length + "] Browse project")}  ${dim("[q] Quit")}`
+    `  ${dim(`[a] Sync all (${syncableCount} syncable, ${formatBytes(totalSize)})`)}  ${dim("[1-" + groups.length + "] Browse project")}  ${dim("[q] Quit")}`
   );
 
   const input = await prompt.ask(`  ${cyan("❯")} `);
@@ -483,7 +611,6 @@ const runDiscoverLoop = async (
     return runDiscoverLoop(prompt, groups, allUnsynced);
   }
 
-  // Browse selected projects sequentially, threading updated groups through
   const updatedGroups = await selection.reduce<Promise<readonly ProjectGroup[]>>(
     async (accPromise, idx) => {
       const acc = await accPromise;
@@ -493,7 +620,6 @@ const runDiscoverLoop = async (
     Promise.resolve([...groups])
   );
 
-  // Recompute unsynced from updated groups
   const remainingUnsynced = updatedGroups.flatMap((g) => g.sessions);
   const activeGroups = updatedGroups.filter((g) => g.sessions.length > 0);
 
@@ -528,10 +654,13 @@ const runDiscover = async (): Promise<void> => {
   }
 
   const groups = groupByProject(unsyncedSessions);
+  const syncableCount = unsyncedSessions.filter((s) => s.filePath !== null).length;
+  const archivedCount = unsyncedSessions.length - syncableCount;
 
   console.log();
   console.log(
-    `  ${bold(String(unsyncedSessions.length))} unsynced sessions across ${bold(String(groups.length))} projects`
+    `  ${bold(String(unsyncedSessions.length))} unsynced sessions across ${bold(String(groups.length))} projects` +
+    (archivedCount > 0 ? dim(` (${archivedCount} archived, metadata only)`) : "")
   );
 
   const prompt = createPrompt();
@@ -575,6 +704,7 @@ const syncFile = async (filePath: string): Promise<void> => {
   console.log(`  ${magenta("orchid sync")} ${dim("— syncing single session")}`);
   console.log();
   console.log(`  Session:  ${session.sessionId}`);
+  console.log(`  Summary:  ${session.summary || dim("(no summary)")}`);
   console.log(`  Project:  ${session.projectName}`);
   console.log(`  Branch:   ${session.gitBranch}`);
   console.log(`  Date:     ${formatDate(session.firstTimestamp)}`);
