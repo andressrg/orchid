@@ -5,9 +5,10 @@ import { execSync } from "child_process";
 import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
 import {
   type LocalSession, type ProjectGroup,
-  formatBytes, formatTokens, formatDate, padRight, padLeft, truncate,
-  humanizeProjectKey, tryParseJson, extractTextContent, extractTokensFromUsage,
-  groupByProject, markSynced, markGroupSynced, clamp, computeScroll, parseKey,
+  displayFileSize, displayTokenCount, displayShortDate, padRight, padLeft, truncate,
+  projectKeyToName, tryParseJson, extractMessageText, sumTokensFromUsage,
+  groupSessionsByProject, markSessionsSynced, markGroupSessionsSynced,
+  clamp, computeScrollOffset, parseKeypress,
 } from "../sync-utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -70,7 +71,7 @@ const extractMetadataFromJsonl = (
     (acc, obj) => {
       const isUserMsg = obj.type === "user" || obj.type === "human";
       const userText = isUserMsg && !acc.firstUserMessage
-        ? extractTextContent((obj as Record<string, unknown>).message
+        ? extractMessageText((obj as Record<string, unknown>).message
             ? ((obj as Record<string, unknown>).message as Record<string, unknown>).content
             : obj.content)
         : "";
@@ -80,7 +81,7 @@ const extractMetadataFromJsonl = (
         gitBranch: acc.gitBranch || (obj.gitBranch as string) || "",
         firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || "",
         messageCount: acc.messageCount + (isUserMsg || obj.type === "assistant" ? 1 : 0),
-        totalTokens: acc.totalTokens + extractTokensFromUsage(obj),
+        totalTokens: acc.totalTokens + sumTokensFromUsage(obj),
         firstUserMessage: acc.firstUserMessage || userText,
       };
     },
@@ -144,7 +145,7 @@ const discoverLocalSessions = (syncedIds: ReadonlySet<string>): readonly LocalSe
   return tryReadDir(claudeProjectsDir).filter((e) => e.isDirectory())
     .flatMap((projEntry) => {
       const projPath = path.join(claudeProjectsDir, projEntry.name);
-      const projectName = humanizeProjectKey(projEntry.name);
+      const projectName = projectKeyToName(projEntry.name);
 
       const jsonlSessions = tryReadDir(projPath)
         .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
@@ -258,7 +259,7 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
       try {
         await syncSessionToServer(session);
         successIds.push(session.sessionId);
-        process.stdout.write(`${green("✓")} ${dim(formatBytes(session.fileSize))}\n`);
+        process.stdout.write(`${green("✓")} ${dim(displayFileSize(session.fileSize))}\n`);
         return { synced: acc.synced + 1, failed: acc.failed };
       } catch (err) {
         process.stdout.write(`${red("✗")} ${dim((err as Error).message)}\n`);
@@ -309,7 +310,7 @@ const interactiveList = <T>(config: {
 
     const render = () => {
       const state = stateRef[0];
-      const scroll = computeScroll(state.cursor, state.scroll, maxVisible, total);
+      const scroll = computeScrollOffset({ cursor: state.cursor, scroll: state.scroll, maxVisible, total });
       stateRef[0] = { ...state, scroll };
 
       const visibleItems = config.items.slice(scroll, scroll + maxVisible);
@@ -343,7 +344,7 @@ const interactiveList = <T>(config: {
     };
 
     const onKey = (buf: Buffer) => {
-      const key = parseKey(buf);
+      const key = parseKeypress(buf);
       const state = stateRef[0];
 
       if (key === "ctrl-c") { cleanup(); process.exit(0); }
@@ -401,10 +402,10 @@ const interactiveList = <T>(config: {
 
 const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selected: boolean): string => {
   const pointer = active ? cyan("▸") : " ";
-  const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
+  const dateRange = `${displayShortDate(g.earliest)} – ${displayShortDate(g.latest)}`;
   const paddedName = padRight(g.projectName, 34);
   const name = active ? bold(paddedName) : paddedName;
-  const content = `  ${pointer} ${name}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
+  const content = `  ${pointer} ${name}${padLeft(String(g.sessions.length), 8)}${padLeft(displayFileSize(g.totalSize), 12)}  ${dim(dateRange)}`;
   return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
@@ -415,9 +416,9 @@ const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, select
   const paddedLabel = padRight(rawLabel, 36);
   const label = s.synced ? dim(paddedLabel) : !s.summary ? dim(paddedLabel) : paddedLabel;
   const branch = padRight(s.gitBranch.slice(0, 14), 16);
-  const date = padRight(formatDate(s.lastTimestamp), 8);
+  const date = padRight(displayShortDate(s.lastTimestamp), 8);
   const msgs = padLeft(String(s.messageCount), 5);
-  const tokens = padLeft(formatTokens(s.totalTokens), 7);
+  const tokens = padLeft(displayTokenCount(s.totalTokens), 7);
   const archived = s.filePath === null && !s.synced ? dim(" ✱") : "";
   const content = `  ${pointer} ${status} ${label}${branch}${date}${msgs}${tokens}${archived}`;
   return s.synced
@@ -462,7 +463,7 @@ const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
       : [group.sessions[action.index]];
     console.log();
     const result = await syncSessions(toSync);
-    const updated = markGroupSynced(group, result.syncedIds);
+    const updated = markGroupSessionsSynced({ group, syncedIds: result.syncedIds });
     return browseProject(updated);
   }
 
@@ -501,7 +502,7 @@ const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> =
   if (action.type === "sync") {
     console.log();
     const result = await syncSessions(allSessions);
-    const updatedGroups = groups.map((g) => markGroupSynced(g, result.syncedIds));
+    const updatedGroups = groups.map((g) => markGroupSessionsSynced({ group: g, syncedIds: result.syncedIds }));
     return runDiscoverLoop(updatedGroups);
   }
 };
@@ -524,7 +525,7 @@ const runDiscover = async (): Promise<void> => {
     return;
   }
 
-  const groups = groupByProject(allSessions);
+  const groups = groupSessionsByProject(allSessions);
   await runDiscoverLoop(groups);
 };
 
@@ -540,14 +541,14 @@ const syncFile = async (filePath: string): Promise<void> => {
   if (!meta) { console.error(`${red("Error:")} Could not parse metadata from ${resolved}`); process.exit(1); }
 
   const projectKey = path.basename(path.dirname(resolved));
-  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: humanizeProjectKey(projectKey), synced: false };
+  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: projectKeyToName(projectKey), synced: false };
 
   console.log(`\n  ${magenta("orchid sync")} ${dim("— syncing single session")}\n`);
   console.log(`  Session:  ${session.sessionId}`);
   console.log(`  Summary:  ${session.summary || dim("(no summary)")}`);
   console.log(`  Branch:   ${session.gitBranch}`);
-  console.log(`  Size:     ${formatBytes(session.fileSize)}`);
-  console.log(`  Tokens:   ${formatTokens(session.totalTokens)}\n`);
+  console.log(`  Size:     ${displayFileSize(session.fileSize)}`);
+  console.log(`  Tokens:   ${displayTokenCount(session.totalTokens)}\n`);
 
   process.stdout.write(`  Syncing… `);
   try {

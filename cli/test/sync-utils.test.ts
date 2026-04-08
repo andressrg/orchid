@@ -1,12 +1,10 @@
 import { describe, it } from "node:test";
 import * as assert from "node:assert/strict";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import {
-  formatBytes, formatTokens, formatDate, padRight, padLeft, truncate,
-  humanizeProjectKey, tryParseJson, extractTextContent, extractTokensFromUsage,
-  groupByProject, markSynced, markGroupSynced, clamp, computeScroll, parseKey,
+  displayFileSize, displayTokenCount, displayShortDate, padRight, padLeft, truncate,
+  projectKeyToName, tryParseJson, extractMessageText, sumTokensFromUsage,
+  groupSessionsByProject, markSessionsSynced, markGroupSessionsSynced,
+  clamp, computeScrollOffset, parseKeypress,
   type LocalSession, type ProjectGroup,
 } from "../src/sync-utils";
 
@@ -29,62 +27,61 @@ const makeSession = (overrides: Partial<LocalSession> = {}): LocalSession => ({
   ...overrides,
 });
 
-// ── formatBytes ────────────────────────────────────────────────────────────
+// ── displayFileSize ────────────────────────────────────────────────────────
 
-describe("formatBytes", () => {
+describe("displayFileSize", () => {
   it("formats bytes", () => {
-    assert.equal(formatBytes(0), "0 B");
-    assert.equal(formatBytes(512), "512 B");
-    assert.equal(formatBytes(1023), "1023 B");
+    assert.equal(displayFileSize(0), "0 B");
+    assert.equal(displayFileSize(512), "512 B");
+    assert.equal(displayFileSize(1023), "1023 B");
   });
 
   it("formats kilobytes", () => {
-    assert.equal(formatBytes(1024), "1.0 KB");
-    assert.equal(formatBytes(1536), "1.5 KB");
-    assert.equal(formatBytes(524288), "512.0 KB");
+    assert.equal(displayFileSize(1024), "1.0 KB");
+    assert.equal(displayFileSize(1536), "1.5 KB");
+    assert.equal(displayFileSize(524288), "512.0 KB");
   });
 
   it("formats megabytes", () => {
-    assert.equal(formatBytes(1048576), "1.0 MB");
-    assert.equal(formatBytes(3932160), "3.8 MB");
+    assert.equal(displayFileSize(1048576), "1.0 MB");
+    assert.equal(displayFileSize(3932160), "3.8 MB");
   });
 });
 
-// ── formatTokens ───────────────────────────────────────────────────────────
+// ── displayTokenCount ──────────────────────────────────────────────────────
 
-describe("formatTokens", () => {
+describe("displayTokenCount", () => {
   it("returns dash for zero", () => {
-    assert.equal(formatTokens(0), "—");
+    assert.equal(displayTokenCount(0), "—");
   });
 
   it("formats small numbers as-is", () => {
-    assert.equal(formatTokens(42), "42");
-    assert.equal(formatTokens(999), "999");
+    assert.equal(displayTokenCount(42), "42");
+    assert.equal(displayTokenCount(999), "999");
   });
 
   it("formats thousands with k suffix", () => {
-    assert.equal(formatTokens(1000), "1k");
-    assert.equal(formatTokens(50000), "50k");
-    assert.equal(formatTokens(999999), "1000k");
+    assert.equal(displayTokenCount(1000), "1k");
+    assert.equal(displayTokenCount(50000), "50k");
+    assert.equal(displayTokenCount(999999), "1000k");
   });
 
   it("formats millions with M suffix", () => {
-    assert.equal(formatTokens(1_000_000), "1.0M");
-    assert.equal(formatTokens(16_900_000), "16.9M");
+    assert.equal(displayTokenCount(1_000_000), "1.0M");
+    assert.equal(displayTokenCount(16_900_000), "16.9M");
   });
 });
 
-// ── formatDate ─────────────────────────────────────────────────────────────
+// ── displayShortDate ───────────────────────────────────────────────────────
 
-describe("formatDate", () => {
+describe("displayShortDate", () => {
   it("formats ISO dates to Mon D", () => {
-    // Use midday UTC to avoid timezone day-shift issues
-    assert.equal(formatDate("2026-01-15T12:00:00.000Z"), "Jan 15");
-    assert.equal(formatDate("2026-12-25T12:00:00.000Z"), "Dec 25");
+    assert.equal(displayShortDate("2026-01-15T12:00:00.000Z"), "Jan 15");
+    assert.equal(displayShortDate("2026-12-25T12:00:00.000Z"), "Dec 25");
   });
 
   it("handles single digit days", () => {
-    assert.equal(formatDate("2026-03-05T12:00:00.000Z"), "Mar 5");
+    assert.equal(displayShortDate("2026-03-05T12:00:00.000Z"), "Mar 5");
   });
 });
 
@@ -130,40 +127,40 @@ describe("truncate", () => {
   });
 });
 
-// ── humanizeProjectKey ─────────────────────────────────────────────────────
+// ── projectKeyToName ───────────────────────────────────────────────────────
 
-describe("humanizeProjectKey", () => {
+describe("projectKeyToName", () => {
   it("extracts org/project from Developer path", () => {
     assert.equal(
-      humanizeProjectKey("-Users-juliankmazo-Developer-personal-orchid"),
+      projectKeyToName("-Users-juliankmazo-Developer-personal-orchid"),
       "personal/orchid"
     );
   });
 
   it("preserves hyphens in project names", () => {
     assert.equal(
-      humanizeProjectKey("-Users-juliankmazo-Developer-personal-mining-plate-crawler"),
+      projectKeyToName("-Users-juliankmazo-Developer-personal-mining-plate-crawler"),
       "personal/mining-plate-crawler"
     );
   });
 
   it("handles nested org paths", () => {
     assert.equal(
-      humanizeProjectKey("-Users-juliankmazo-Developer-snappr-snappr-server"),
+      projectKeyToName("-Users-juliankmazo-Developer-snappr-snappr-server"),
       "snappr/snappr-server"
     );
   });
 
   it("handles single segment after Developer", () => {
     assert.equal(
-      humanizeProjectKey("-Users-juliankmazo-Developer-snappr"),
+      projectKeyToName("-Users-juliankmazo-Developer-snappr"),
       "snappr"
     );
   });
 
   it("falls back to last two segments when no Developer", () => {
     assert.equal(
-      humanizeProjectKey("-some-random-path"),
+      projectKeyToName("-some-random-path"),
       "random/path"
     );
   });
@@ -182,16 +179,16 @@ describe("tryParseJson", () => {
   });
 });
 
-// ── extractTextContent ─────────────────────────────────────────────────────
+// ── extractMessageText ─────────────────────────────────────────────────────
 
-describe("extractTextContent", () => {
+describe("extractMessageText", () => {
   it("returns strings as-is", () => {
-    assert.equal(extractTextContent("hello"), "hello");
+    assert.equal(extractMessageText("hello"), "hello");
   });
 
   it("extracts text from block arrays", () => {
     assert.equal(
-      extractTextContent([
+      extractMessageText([
         { type: "text", text: "hello" },
         { type: "text", text: "world" },
       ]),
@@ -200,12 +197,12 @@ describe("extractTextContent", () => {
   });
 
   it("handles string blocks in array", () => {
-    assert.equal(extractTextContent(["hello", "world"]), "hello world");
+    assert.equal(extractMessageText(["hello", "world"]), "hello world");
   });
 
   it("skips non-text blocks", () => {
     assert.equal(
-      extractTextContent([
+      extractMessageText([
         { type: "text", text: "hello" },
         { type: "image", url: "..." },
       ]),
@@ -214,17 +211,17 @@ describe("extractTextContent", () => {
   });
 
   it("returns empty string for other types", () => {
-    assert.equal(extractTextContent(42), "");
-    assert.equal(extractTextContent(null), "");
-    assert.equal(extractTextContent(undefined), "");
+    assert.equal(extractMessageText(42), "");
+    assert.equal(extractMessageText(null), "");
+    assert.equal(extractMessageText(undefined), "");
   });
 });
 
-// ── extractTokensFromUsage ─────────────────────────────────────────────────
+// ── sumTokensFromUsage ─────────────────────────────────────────────────────
 
-describe("extractTokensFromUsage", () => {
-  it("extracts tokens from usage object", () => {
-    const result = extractTokensFromUsage({
+describe("sumTokensFromUsage", () => {
+  it("sums all token fields from usage object", () => {
+    const result = sumTokensFromUsage({
       usage: {
         input_tokens: 100,
         output_tokens: 200,
@@ -236,7 +233,7 @@ describe("extractTokensFromUsage", () => {
   });
 
   it("extracts tokens from nested message.usage", () => {
-    const result = extractTokensFromUsage({
+    const result = sumTokensFromUsage({
       message: {
         usage: { input_tokens: 50, output_tokens: 75 },
       },
@@ -245,28 +242,28 @@ describe("extractTokensFromUsage", () => {
   });
 
   it("returns 0 when no usage", () => {
-    assert.equal(extractTokensFromUsage({}), 0);
-    assert.equal(extractTokensFromUsage({ type: "user" }), 0);
+    assert.equal(sumTokensFromUsage({}), 0);
+    assert.equal(sumTokensFromUsage({ type: "user" }), 0);
   });
 
   it("handles partial usage fields", () => {
-    const result = extractTokensFromUsage({
+    const result = sumTokensFromUsage({
       usage: { input_tokens: 100 },
     });
     assert.equal(result, 100);
   });
 });
 
-// ── groupByProject ─────────────────────────────────────────────────────────
+// ── groupSessionsByProject ─────────────────────────────────────────────────
 
-describe("groupByProject", () => {
+describe("groupSessionsByProject", () => {
   it("groups sessions by projectKey", () => {
     const sessions = [
       makeSession({ sessionId: "s1", projectKey: "proj-a", projectName: "proj-a" }),
       makeSession({ sessionId: "s2", projectKey: "proj-b", projectName: "proj-b" }),
       makeSession({ sessionId: "s3", projectKey: "proj-a", projectName: "proj-a" }),
     ];
-    const groups = groupByProject(sessions);
+    const groups = groupSessionsByProject(sessions);
     assert.equal(groups.length, 2);
     const projA = groups.find((g) => g.projectKey === "proj-a");
     assert.equal(projA?.sessions.length, 2);
@@ -277,7 +274,7 @@ describe("groupByProject", () => {
       makeSession({ sessionId: "s1", projectKey: "old", lastTimestamp: "2026-01-01T00:00:00Z" }),
       makeSession({ sessionId: "s2", projectKey: "new", lastTimestamp: "2026-04-01T00:00:00Z" }),
     ];
-    const groups = groupByProject(sessions);
+    const groups = groupSessionsByProject(sessions);
     assert.equal(groups[0].projectKey, "new");
     assert.equal(groups[1].projectKey, "old");
   });
@@ -287,7 +284,7 @@ describe("groupByProject", () => {
       makeSession({ sessionId: "early", projectKey: "p", lastTimestamp: "2026-01-01T00:00:00Z" }),
       makeSession({ sessionId: "late", projectKey: "p", lastTimestamp: "2026-04-01T00:00:00Z" }),
     ];
-    const groups = groupByProject(sessions);
+    const groups = groupSessionsByProject(sessions);
     assert.equal(groups[0].sessions[0].sessionId, "late");
     assert.equal(groups[0].sessions[1].sessionId, "early");
   });
@@ -297,7 +294,7 @@ describe("groupByProject", () => {
       makeSession({ sessionId: "s1", projectKey: "p", fileSize: 100 }),
       makeSession({ sessionId: "s2", projectKey: "p", fileSize: 200 }),
     ];
-    const groups = groupByProject(sessions);
+    const groups = groupSessionsByProject(sessions);
     assert.equal(groups[0].totalSize, 300);
   });
 
@@ -306,26 +303,26 @@ describe("groupByProject", () => {
       makeSession({ sessionId: "s1", projectKey: "p", firstTimestamp: "2026-01-01T00:00:00Z", lastTimestamp: "2026-02-01T00:00:00Z" }),
       makeSession({ sessionId: "s2", projectKey: "p", firstTimestamp: "2026-03-01T00:00:00Z", lastTimestamp: "2026-04-01T00:00:00Z" }),
     ];
-    const groups = groupByProject(sessions);
+    const groups = groupSessionsByProject(sessions);
     assert.equal(groups[0].earliest, "2026-01-01T00:00:00Z");
     assert.equal(groups[0].latest, "2026-04-01T00:00:00Z");
   });
 
   it("returns empty array for empty input", () => {
-    assert.deepEqual(groupByProject([]), []);
+    assert.deepEqual(groupSessionsByProject([]), []);
   });
 });
 
-// ── markSynced / markGroupSynced ───────────────────────────────────────────
+// ── markSessionsSynced / markGroupSessionsSynced ───────────────────────────
 
-describe("markSynced", () => {
+describe("markSessionsSynced", () => {
   it("marks matching sessions as synced", () => {
     const sessions = [
       makeSession({ sessionId: "s1", synced: false }),
       makeSession({ sessionId: "s2", synced: false }),
       makeSession({ sessionId: "s3", synced: false }),
     ];
-    const result = markSynced(sessions, new Set(["s1", "s3"]));
+    const result = markSessionsSynced({ sessions, syncedIds: new Set(["s1", "s3"]) });
     assert.equal(result[0].synced, true);
     assert.equal(result[1].synced, false);
     assert.equal(result[2].synced, true);
@@ -333,25 +330,25 @@ describe("markSynced", () => {
 
   it("does not mutate original sessions", () => {
     const sessions = [makeSession({ sessionId: "s1", synced: false })];
-    markSynced(sessions, new Set(["s1"]));
+    markSessionsSynced({ sessions, syncedIds: new Set(["s1"]) });
     assert.equal(sessions[0].synced, false);
   });
 
   it("handles empty syncedIds", () => {
     const sessions = [makeSession({ synced: false })];
-    const result = markSynced(sessions, new Set());
+    const result = markSessionsSynced({ sessions, syncedIds: new Set() });
     assert.equal(result[0].synced, false);
   });
 });
 
-describe("markGroupSynced", () => {
+describe("markGroupSessionsSynced", () => {
   it("marks sessions in group and preserves other fields", () => {
     const group: ProjectGroup = {
       projectKey: "p", projectName: "test",
       sessions: [makeSession({ sessionId: "s1", synced: false })],
       totalSize: 100, earliest: "2026-01-01", latest: "2026-04-01",
     };
-    const result = markGroupSynced(group, new Set(["s1"]));
+    const result = markGroupSessionsSynced({ group, syncedIds: new Set(["s1"]) });
     assert.equal(result.sessions[0].synced, true);
     assert.equal(result.projectName, "test");
     assert.equal(result.totalSize, 100);
@@ -378,107 +375,86 @@ describe("clamp", () => {
   });
 });
 
-// ── computeScroll ──────────────────────────────────────────────────────────
+// ── computeScrollOffset ────────────────────────────────────────────────────
 
-describe("computeScroll", () => {
+describe("computeScrollOffset", () => {
   it("keeps scroll when cursor is in viewport", () => {
-    assert.equal(computeScroll(5, 0, 10, 20), 0);
+    assert.equal(computeScrollOffset({ cursor: 5, scroll: 0, maxVisible: 10, total: 20 }), 0);
   });
 
   it("scrolls up when cursor goes above viewport", () => {
-    assert.equal(computeScroll(2, 5, 10, 20), 2);
+    assert.equal(computeScrollOffset({ cursor: 2, scroll: 5, maxVisible: 10, total: 20 }), 2);
   });
 
   it("scrolls down when cursor goes below viewport", () => {
-    assert.equal(computeScroll(15, 0, 10, 20), 6);
+    assert.equal(computeScrollOffset({ cursor: 15, scroll: 0, maxVisible: 10, total: 20 }), 6);
   });
 
   it("does not scroll past end", () => {
-    assert.equal(computeScroll(19, 0, 10, 20), 10);
+    assert.equal(computeScrollOffset({ cursor: 19, scroll: 0, maxVisible: 10, total: 20 }), 10);
   });
 
   it("handles cursor at position 0", () => {
-    assert.equal(computeScroll(0, 5, 10, 20), 0);
+    assert.equal(computeScrollOffset({ cursor: 0, scroll: 5, maxVisible: 10, total: 20 }), 0);
   });
 
   it("handles single-page list (no scrolling needed)", () => {
-    assert.equal(computeScroll(3, 0, 10, 5), 0);
+    assert.equal(computeScrollOffset({ cursor: 3, scroll: 0, maxVisible: 10, total: 5 }), 0);
   });
 });
 
-// ── parseKey ───────────────────────────────────────────────────────────────
+// ── parseKeypress ──────────────────────────────────────────────────────────
 
-describe("parseKey", () => {
+describe("parseKeypress", () => {
   it("parses vim keys", () => {
-    assert.equal(parseKey(Buffer.from("k")), "up");
-    assert.equal(parseKey(Buffer.from("j")), "down");
-    assert.equal(parseKey(Buffer.from("g")), "top");
-    assert.equal(parseKey(Buffer.from("G")), "bottom");
+    assert.equal(parseKeypress(Buffer.from("k")), "up");
+    assert.equal(parseKeypress(Buffer.from("j")), "down");
+    assert.equal(parseKeypress(Buffer.from("g")), "top");
+    assert.equal(parseKeypress(Buffer.from("G")), "bottom");
   });
 
   it("parses arrow keys", () => {
-    assert.equal(parseKey(Buffer.from([0x1b, 0x5b, 0x41])), "up");
-    assert.equal(parseKey(Buffer.from([0x1b, 0x5b, 0x42])), "down");
+    assert.equal(parseKeypress(Buffer.from([0x1b, 0x5b, 0x41])), "up");
+    assert.equal(parseKeypress(Buffer.from([0x1b, 0x5b, 0x42])), "down");
   });
 
   it("parses action keys", () => {
-    assert.equal(parseKey(Buffer.from("\r")), "enter");
-    assert.equal(parseKey(Buffer.from(" ")), "space");
-    assert.equal(parseKey(Buffer.from("a")), "select-all");
-    assert.equal(parseKey(Buffer.from("s")), "sync");
-    assert.equal(parseKey(Buffer.from("q")), "back");
+    assert.equal(parseKeypress(Buffer.from("\r")), "enter");
+    assert.equal(parseKeypress(Buffer.from(" ")), "space");
+    assert.equal(parseKeypress(Buffer.from("a")), "select-all");
+    assert.equal(parseKeypress(Buffer.from("s")), "sync");
+    assert.equal(parseKeypress(Buffer.from("q")), "back");
   });
 
   it("parses escape and ctrl-c", () => {
-    assert.equal(parseKey(Buffer.from([0x1b])), "back");
-    assert.equal(parseKey(Buffer.from([0x03])), "ctrl-c");
+    assert.equal(parseKeypress(Buffer.from([0x1b])), "back");
+    assert.equal(parseKeypress(Buffer.from([0x03])), "ctrl-c");
   });
 
   it("returns empty string for unknown keys", () => {
-    assert.equal(parseKey(Buffer.from("x")), "");
-    assert.equal(parseKey(Buffer.from("Z")), "");
+    assert.equal(parseKeypress(Buffer.from("x")), "");
+    assert.equal(parseKeypress(Buffer.from("Z")), "");
   });
 });
 
-// ── extractMetadataFromJsonl (integration — writes temp file) ──────────────
+// ── JSONL parsing pipeline ─────────────────────────────────────────────────
 
-describe("extractMetadataFromJsonl", () => {
-  // Import the function that reads files — it's in sync.ts, not sync-utils
-  // We test it indirectly by creating temp JSONL files
-
-  const tmpDir = path.join(os.tmpdir(), `orchid-test-${Date.now()}`);
-
-  const writeJsonl = (name: string, lines: Record<string, unknown>[]): string => {
-    fs.mkdirSync(tmpDir, { recursive: true });
-    const filePath = path.join(tmpDir, name);
-    fs.writeFileSync(filePath, lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
-    return filePath;
-  };
-
-  // We can't easily import extractMetadataFromJsonl from sync.ts without side effects,
-  // but we CAN test the building blocks it uses: tryParseJson, extractTextContent,
-  // extractTokensFromUsage. The integration of these is tested via the CLI e2e tests.
-
-  it("tryParseJson + extractTextContent pipeline works on JSONL lines", () => {
+describe("JSONL parsing pipeline", () => {
+  it("tryParseJson + extractMessageText pipeline works on JSONL lines", () => {
     const lines = [
       '{"type":"user","content":"Hello world","sessionId":"abc","cwd":"/tmp","gitBranch":"main","timestamp":"2026-01-01T00:00:00Z"}',
       '{"type":"assistant","content":"Hi there","usage":{"input_tokens":10,"output_tokens":20}}',
     ];
     const parsed = lines.map(tryParseJson).filter((obj): obj is Record<string, unknown> => obj !== null);
     assert.equal(parsed.length, 2);
-    assert.equal(extractTextContent(parsed[0].content), "Hello world");
-    assert.equal(extractTokensFromUsage(parsed[1]), 30);
+    assert.equal(extractMessageText(parsed[0].content), "Hello world");
+    assert.equal(sumTokensFromUsage(parsed[1]), 30);
   });
 
   it("handles complex content blocks", () => {
     const line = '{"type":"user","message":{"content":[{"type":"text","text":"first"},{"type":"text","text":"second"}]}}';
     const obj = tryParseJson(line)!;
     const msg = obj.message as Record<string, unknown>;
-    assert.equal(extractTextContent(msg.content), "first second");
-  });
-
-  // Clean up temp dir
-  it("cleanup", () => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    assert.equal(extractMessageText(msg.content), "first second");
   });
 });

@@ -1,6 +1,9 @@
 /**
- * Pure, testable utility functions extracted from the sync command.
+ * Pure, testable utility functions for the sync command.
  * No side effects, no I/O — just data transformations.
+ *
+ * Naming: functions describe what they do at the call site.
+ * Multi-param domain functions take objects for clarity.
  */
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -30,26 +33,35 @@ export interface ProjectGroup {
   readonly latest: string;
 }
 
-// ── Formatting ─────────────────────────────────────────────────────────────
+export interface ScrollState {
+  readonly cursor: number;
+  readonly scroll: number;
+  readonly maxVisible: number;
+  readonly total: number;
+}
 
-export const formatBytes = (bytes: number): string =>
+// ── Display formatting (value → display string) ───────────────────────────
+
+export const displayFileSize = (bytes: number): string =>
   bytes < 1024
     ? `${bytes} B`
     : bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 
-export const formatTokens = (tokens: number): string =>
+export const displayTokenCount = (tokens: number): string =>
   tokens === 0 ? "—"
     : tokens < 1000 ? String(tokens)
     : tokens < 1_000_000 ? `${(tokens / 1000).toFixed(0)}k`
     : `${(tokens / 1_000_000).toFixed(1)}M`;
 
-export const formatDate = (iso: string): string => {
+export const displayShortDate = (iso: string): string => {
   const d = new Date(iso);
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${months[d.getMonth()]} ${d.getDate()}`;
 };
+
+// ── String layout helpers ──────────────────────────────────────────────────
 
 export const padRight = (str: string, len: number): string =>
   str.length >= len ? str.slice(0, len) : str + " ".repeat(len - str.length);
@@ -60,9 +72,9 @@ export const padLeft = (str: string, len: number): string =>
 export const truncate = (str: string, len: number): string =>
   str.length <= len ? str : str.slice(0, len - 1) + "…";
 
-// ── Project key parsing ────────────────────────────────────────────────────
+// ── Project key → display name ─────────────────────────────────────────────
 
-export const humanizeProjectKey = (key: string): string => {
+export const projectKeyToName = (key: string): string => {
   const match = key.match(/-Developer-/);
   if (match && match.index !== undefined) {
     const afterDev = key.slice(match.index + match[0].length);
@@ -82,7 +94,7 @@ export const tryParseJson = (line: string): Record<string, unknown> | null => {
   catch { return null; }
 };
 
-export const extractTextContent = (content: unknown): string => {
+export const extractMessageText = (content: unknown): string => {
   if (typeof content === "string") return content;
   if (Array.isArray(content)) {
     return content
@@ -95,7 +107,7 @@ export const extractTextContent = (content: unknown): string => {
   return "";
 };
 
-export const extractTokensFromUsage = (obj: Record<string, unknown>): number => {
+export const sumTokensFromUsage = (obj: Record<string, unknown>): number => {
   const usage = (obj.usage || (typeof obj.message === "object" && obj.message !== null
     ? (obj.message as Record<string, unknown>).usage : null)) as Record<string, unknown> | null;
   if (!usage) return 0;
@@ -106,9 +118,9 @@ export const extractTokensFromUsage = (obj: Record<string, unknown>): number => 
   return input + output + cacheCreate + cacheRead;
 };
 
-// ── Grouping ───────────────────────────────────────────────────────────────
+// ── Session grouping ───────────────────────────────────────────────────────
 
-export const groupByProject = (sessions: readonly LocalSession[]): readonly ProjectGroup[] => {
+export const groupSessionsByProject = (sessions: readonly LocalSession[]): readonly ProjectGroup[] => {
   const grouped = sessions.reduce<Record<string, LocalSession[]>>(
     (acc, s) => ({ ...acc, [s.projectKey]: [...(acc[s.projectKey] || []), s] }), {}
   );
@@ -124,14 +136,20 @@ export const groupByProject = (sessions: readonly LocalSession[]): readonly Proj
     .sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime());
 };
 
-// ── Synced state ───────────────────────────────────────────────────────────
+// ── Synced state (immutable updates) ───────────────────────────────────────
 
-export const markSynced = (sessions: readonly LocalSession[], syncedIds: ReadonlySet<string>): readonly LocalSession[] =>
-  sessions.map((s) => syncedIds.has(s.sessionId) ? { ...s, synced: true } : s);
+export const markSessionsSynced = (params: {
+  readonly sessions: readonly LocalSession[];
+  readonly syncedIds: ReadonlySet<string>;
+}): readonly LocalSession[] =>
+  params.sessions.map((s) => params.syncedIds.has(s.sessionId) ? { ...s, synced: true } : s);
 
-export const markGroupSynced = (group: ProjectGroup, syncedIds: ReadonlySet<string>): ProjectGroup => ({
-  ...group,
-  sessions: markSynced(group.sessions, syncedIds),
+export const markGroupSessionsSynced = (params: {
+  readonly group: ProjectGroup;
+  readonly syncedIds: ReadonlySet<string>;
+}): ProjectGroup => ({
+  ...params.group,
+  sessions: markSessionsSynced({ sessions: params.group.sessions, syncedIds: params.syncedIds }),
 });
 
 // ── TUI state ──────────────────────────────────────────────────────────────
@@ -139,14 +157,14 @@ export const markGroupSynced = (group: ProjectGroup, syncedIds: ReadonlySet<stri
 export const clamp = (val: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, val));
 
-export const computeScroll = (cursor: number, currentScroll: number, maxVisible: number, total: number): number => {
-  const maxScroll = Math.max(0, total - maxVisible);
-  if (cursor < currentScroll) return cursor;
-  if (cursor >= currentScroll + maxVisible) return Math.min(cursor - maxVisible + 1, maxScroll);
-  return Math.min(currentScroll, maxScroll);
+export const computeScrollOffset = (state: ScrollState): number => {
+  const maxScroll = Math.max(0, state.total - state.maxVisible);
+  if (state.cursor < state.scroll) return state.cursor;
+  if (state.cursor >= state.scroll + state.maxVisible) return Math.min(state.cursor - state.maxVisible + 1, maxScroll);
+  return Math.min(state.scroll, maxScroll);
 };
 
-export const parseKey = (buf: Buffer): string => {
+export const parseKeypress = (buf: Buffer): string => {
   const hex = buf.toString("hex");
   const ch = buf.toString("utf-8");
   if (hex === "1b5b41" || ch === "k") return "up";

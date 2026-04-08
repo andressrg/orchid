@@ -2,6 +2,12 @@
 
 DO NOT STOP WORKING AND LOOPING EVER. I WILL TELL YOU WHEN TO STOP
 
+## Coding Style:
+
+- **Functional programming** — no `for` loops, no mutation. Use `map`, `reduce`, `filter`, `flatMap`, `Promise.all`. Always use `const`, never `let`.
+- **Descriptive function names** — names should be self-documenting at the call site. `displayFileSize(bytes)` not `formatBytes(bytes)`. `projectKeyToName(key)` not `humanizeProjectKey(key)`.
+- **Object params for multi-arg domain functions** — functions with 2+ domain-specific params take a single object: `markSessionsSynced({ sessions, syncedIds })` not `markSynced(sessions, syncedIds)`. Simple utilities (`clamp`, `padRight`) with well-known signatures are fine with positional params.
+
 ## CRITICAL NOTES:
 
 - Read the ./PLAN.md -> here is where the main goal is
