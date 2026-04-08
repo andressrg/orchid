@@ -438,6 +438,7 @@ const interactiveList = <T>(config: {
   readonly headerLines: readonly string[];
   readonly footerLine: (selectedCount: number, total: number) => string;
   readonly selectable: boolean;
+  readonly isItemSelectable?: (item: T, index: number) => boolean;
 }): Promise<ListAction> =>
   new Promise((resolve) => {
     const maxVisible = clamp((process.stdout.rows || 24) - config.headerLines.length - 4, 5, 40);
@@ -500,13 +501,20 @@ const interactiveList = <T>(config: {
         stateRef[0] = { ...state, cursor: total - 1 };
         render();
       } else if (key === "space" && config.selectable) {
-        const next = new Set(state.selected);
-        if (next.has(state.cursor)) { next.delete(state.cursor); } else { next.add(state.cursor); }
-        stateRef[0] = { ...state, selected: next, cursor: clamp(state.cursor + 1, 0, total - 1) };
+        const canSelect = !config.isItemSelectable || config.isItemSelectable(config.items[state.cursor], state.cursor);
+        if (canSelect) {
+          const next = new Set(state.selected);
+          if (next.has(state.cursor)) { next.delete(state.cursor); } else { next.add(state.cursor); }
+          stateRef[0] = { ...state, selected: next, cursor: clamp(state.cursor + 1, 0, total - 1) };
+        } else {
+          stateRef[0] = { ...state, cursor: clamp(state.cursor + 1, 0, total - 1) };
+        }
         render();
       } else if (key === "select-all" && config.selectable) {
-        const allSelected = state.selected.size === total;
-        const next = allSelected ? new Set<number>() : new Set(Array.from({ length: total }, (_, i) => i));
+        const selectableIndices = Array.from({ length: total }, (_, i) => i)
+          .filter((i) => !config.isItemSelectable || config.isItemSelectable(config.items[i], i));
+        const allSelected = selectableIndices.every((i) => state.selected.has(i));
+        const next = allSelected ? new Set<number>() : new Set(selectableIndices);
         stateRef[0] = { ...state, selected: next };
         render();
       } else if (key === "enter") {
@@ -585,6 +593,7 @@ const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
       return `  ${dim("j/k")} navigate  ${dim("space")} select  ${dim("a")} toggle all  ${dim("s")} sync${selLabel}  ${dim("esc")} back`;
     },
     selectable: true,
+    isItemSelectable: (s) => !s.synced && s.filePath !== null,
   });
 
   if (action.type === "back") return group;
