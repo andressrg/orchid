@@ -1,16 +1,29 @@
 {
-  "name": "orchid-cli",
+  "name": "orchidkeep",
   "version": "0.1.0",
-  "private": true,
+  "description": "Capture and query AI coding conversations — CLI for orchidkeep.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andressrg/orchid",
+    "directory": "cli"
+  },
+  "homepage": "https://www.orchidkeep.com",
+  "keywords": ["ai", "claude", "conversations", "code-review", "developer-tools"],
   "bin": {
     "orchid": "./bin/orchid"
   },
+  "files": [
+    "bin",
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/main.ts",
     "test": "tsx --test test/*.test.ts",
     "test:e2e": "tsx test/e2e.ts",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "prepublishOnly": "tsc"
   },
   "dependencies": {},
   "devDependencies": {
