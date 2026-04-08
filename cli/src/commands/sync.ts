@@ -598,15 +598,10 @@ const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
 
   if (action.type === "back") return group;
 
-  if (action.type === "enter") {
-    console.log();
-    const result = await syncSessions([group.sessions[action.index]]);
-    const updated = markGroupSynced(group, result.syncedIds);
-    return browseProject(updated);
-  }
-
-  if (action.type === "sync") {
-    const toSync = action.indices.map((i) => group.sessions[i]);
+  if (action.type === "enter" || action.type === "sync") {
+    const toSync = action.type === "sync"
+      ? action.indices.map((i) => group.sessions[i])
+      : [group.sessions[action.index]];
     console.log();
     const result = await syncSessions(toSync);
     const updated = markGroupSynced(group, result.syncedIds);
