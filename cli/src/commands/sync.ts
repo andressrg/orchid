@@ -3,33 +3,14 @@ import * as path from "path";
 import * as os from "os";
 import { execSync } from "child_process";
 import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
+import {
+  type LocalSession, type ProjectGroup,
+  formatBytes, formatTokens, formatDate, padRight, padLeft, truncate,
+  humanizeProjectKey, tryParseJson, extractTextContent, extractTokensFromUsage,
+  groupByProject, markSynced, markGroupSynced, clamp, computeScroll, parseKey,
+} from "../sync-utils";
 
 // ── Types ──────────────────────────────────────────────────────────────────
-
-interface LocalSession {
-  readonly filePath: string | null;
-  readonly sessionId: string;
-  readonly projectKey: string;
-  readonly projectName: string;
-  readonly cwd: string;
-  readonly gitBranch: string;
-  readonly firstTimestamp: string;
-  readonly lastTimestamp: string;
-  readonly fileSize: number;
-  readonly messageCount: number;
-  readonly totalTokens: number;
-  readonly summary: string;
-  readonly synced: boolean;
-}
-
-interface ProjectGroup {
-  readonly projectName: string;
-  readonly projectKey: string;
-  readonly sessions: readonly LocalSession[];
-  readonly totalSize: number;
-  readonly earliest: string;
-  readonly latest: string;
-}
 
 interface SyncResult {
   readonly synced: number;
@@ -68,78 +49,6 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
-
-const formatBytes = (bytes: number): string =>
-  bytes < 1024
-    ? `${bytes} B`
-    : bytes < 1024 * 1024
-      ? `${(bytes / 1024).toFixed(1)} KB`
-      : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-
-const formatTokens = (tokens: number): string =>
-  tokens === 0 ? "—"
-    : tokens < 1000 ? String(tokens)
-    : tokens < 1_000_000 ? `${(tokens / 1000).toFixed(0)}k`
-    : `${(tokens / 1_000_000).toFixed(1)}M`;
-
-const formatDate = (iso: string): string => {
-  const d = new Date(iso);
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${months[d.getMonth()]} ${d.getDate()}`;
-};
-
-const padRight = (str: string, len: number): string =>
-  str.length >= len ? str.slice(0, len) : str + " ".repeat(len - str.length);
-
-const padLeft = (str: string, len: number): string =>
-  str.length >= len ? str.slice(0, len) : " ".repeat(len - str.length) + str;
-
-const truncate = (str: string, len: number): string =>
-  str.length <= len ? str : str.slice(0, len - 1) + "…";
-
-const humanizeProjectKey = (key: string): string => {
-  const match = key.match(/-Developer-/);
-  if (match && match.index !== undefined) {
-    const afterDev = key.slice(match.index + match[0].length);
-    const firstDash = afterDev.indexOf("-");
-    return firstDash !== -1
-      ? `${afterDev.slice(0, firstDash)}/${afterDev.slice(firstDash + 1)}`
-      : afterDev;
-  }
-  const parts = key.split("-").filter(Boolean);
-  return parts.length >= 2 ? parts.slice(-2).join("/") : key;
-};
-
-// ── Discovery ──────────────────────────────────────────────────────────────
-
-const tryParseJson = (line: string): Record<string, unknown> | null => {
-  try { return JSON.parse(line) as Record<string, unknown>; }
-  catch { return null; }
-};
-
-const extractTextContent = (content: unknown): string => {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block: { type?: string; text?: string }) =>
-        typeof block === "string" ? block
-          : block?.type === "text" && typeof block.text === "string" ? block.text : "")
-      .filter(Boolean)
-      .join(" ");
-  }
-  return "";
-};
-
-const extractTokensFromUsage = (obj: Record<string, unknown>): number => {
-  const usage = (obj.usage || (typeof obj.message === "object" && obj.message !== null
-    ? (obj.message as Record<string, unknown>).usage : null)) as Record<string, unknown> | null;
-  if (!usage) return 0;
-  const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
-  const output = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
-  const cacheCreate = typeof usage.cache_creation_input_tokens === "number" ? usage.cache_creation_input_tokens : 0;
-  const cacheRead = typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : 0;
-  return input + output + cacheCreate + cacheRead;
-};
 
 const extractMetadataFromJsonl = (
   filePath: string
@@ -265,21 +174,6 @@ const discoverLocalSessions = (syncedIds: ReadonlySet<string>): readonly LocalSe
     .sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
 };
 
-const groupByProject = (sessions: readonly LocalSession[]): readonly ProjectGroup[] => {
-  const grouped = sessions.reduce<Record<string, LocalSession[]>>(
-    (acc, s) => ({ ...acc, [s.projectKey]: [...(acc[s.projectKey] || []), s] }), {}
-  );
-  return Object.entries(grouped)
-    .map(([key, sess]) => {
-      const sorted = [...sess].sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
-      return {
-        projectKey: key, projectName: sorted[0].projectName, sessions: sorted,
-        totalSize: sorted.reduce((sum, s) => sum + s.fileSize, 0),
-        earliest: sorted[sorted.length - 1].firstTimestamp, latest: sorted[0].lastTimestamp,
-      };
-    })
-    .sort((a, b) => new Date(b.latest).getTime() - new Date(a.latest).getTime());
-};
 
 // ── Server interaction ─────────────────────────────────────────────────────
 
@@ -382,16 +276,6 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
   return { ...result, skipped: skippedCount, syncedIds: new Set(successIds) };
 };
 
-// ── Mark sessions as synced (immutable update) ─────────────────────────────
-
-const markSynced = (sessions: readonly LocalSession[], syncedIds: ReadonlySet<string>): readonly LocalSession[] =>
-  sessions.map((s) => syncedIds.has(s.sessionId) ? { ...s, synced: true } : s);
-
-const markGroupSynced = (group: ProjectGroup, syncedIds: ReadonlySet<string>): ProjectGroup => ({
-  ...group,
-  sessions: markSynced(group.sessions, syncedIds),
-});
-
 // ── Vim-style Interactive TUI ──────────────────────────────────────────────
 
 interface ListState {
@@ -405,32 +289,6 @@ type ListAction =
   | { type: "sync"; indices: readonly number[] }
   | { type: "back" }
   | { type: "quit" };
-
-const parseKey = (buf: Buffer): string => {
-  const hex = buf.toString("hex");
-  const ch = buf.toString("utf-8");
-  if (hex === "1b5b41" || ch === "k") return "up";
-  if (hex === "1b5b42" || ch === "j") return "down";
-  if (hex === "0d" || hex === "0a") return "enter";
-  if (ch === " ") return "space";
-  if (ch === "a") return "select-all";
-  if (ch === "s") return "sync";
-  if (ch === "g") return "top";
-  if (ch === "G") return "bottom";
-  if (hex === "1b" || ch === "q") return "back";
-  if (hex === "03") return "ctrl-c";
-  return "";
-};
-
-const clamp = (val: number, min: number, max: number): number =>
-  Math.max(min, Math.min(max, val));
-
-const computeScroll = (cursor: number, currentScroll: number, maxVisible: number, total: number): number => {
-  const maxScroll = Math.max(0, total - maxVisible);
-  if (cursor < currentScroll) return cursor;
-  if (cursor >= currentScroll + maxVisible) return Math.min(cursor - maxVisible + 1, maxScroll);
-  return Math.min(currentScroll, maxScroll);
-};
 
 const interactiveList = <T>(config: {
   readonly items: readonly T[];
