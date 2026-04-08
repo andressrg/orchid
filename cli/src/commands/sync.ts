@@ -505,9 +505,7 @@ const interactiveList = <T>(config: {
         if (canSelect) {
           const next = new Set(state.selected);
           if (next.has(state.cursor)) { next.delete(state.cursor); } else { next.add(state.cursor); }
-          stateRef[0] = { ...state, selected: next, cursor: clamp(state.cursor + 1, 0, total - 1) };
-        } else {
-          stateRef[0] = { ...state, cursor: clamp(state.cursor + 1, 0, total - 1) };
+          stateRef[0] = { ...state, selected: next };
         }
         render();
       } else if (key === "select-all" && config.selectable) {
