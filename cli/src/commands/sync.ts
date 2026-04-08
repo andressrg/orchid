@@ -17,7 +17,9 @@ interface LocalSession {
   readonly lastTimestamp: string;
   readonly fileSize: number;
   readonly messageCount: number;
+  readonly totalTokens: number;
   readonly summary: string;
+  readonly synced: boolean;
 }
 
 interface ProjectGroup {
@@ -33,6 +35,7 @@ interface SyncResult {
   readonly synced: number;
   readonly failed: number;
   readonly skipped: number;
+  readonly syncedIds: ReadonlySet<string>;
 }
 
 interface SessionIndexEntry {
@@ -65,7 +68,6 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
-const inverse = (s: string) => `\x1b[7m${s}\x1b[0m`;
 
 const formatBytes = (bytes: number): string =>
   bytes < 1024
@@ -73,6 +75,12 @@ const formatBytes = (bytes: number): string =>
     : bytes < 1024 * 1024
       ? `${(bytes / 1024).toFixed(1)} KB`
       : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+const formatTokens = (tokens: number): string =>
+  tokens === 0 ? "—"
+    : tokens < 1000 ? String(tokens)
+    : tokens < 1_000_000 ? `${(tokens / 1000).toFixed(0)}k`
+    : `${(tokens / 1_000_000).toFixed(1)}M`;
 
 const formatDate = (iso: string): string => {
   const d = new Date(iso);
@@ -122,9 +130,20 @@ const extractTextContent = (content: unknown): string => {
   return "";
 };
 
+const extractTokensFromUsage = (obj: Record<string, unknown>): number => {
+  const usage = (obj.usage || (typeof obj.message === "object" && obj.message !== null
+    ? (obj.message as Record<string, unknown>).usage : null)) as Record<string, unknown> | null;
+  if (!usage) return 0;
+  const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
+  const output = typeof usage.output_tokens === "number" ? usage.output_tokens : 0;
+  const cacheCreate = typeof usage.cache_creation_input_tokens === "number" ? usage.cache_creation_input_tokens : 0;
+  const cacheRead = typeof usage.cache_read_input_tokens === "number" ? usage.cache_read_input_tokens : 0;
+  return input + output + cacheCreate + cacheRead;
+};
+
 const extractMetadataFromJsonl = (
   filePath: string
-): Omit<LocalSession, "filePath" | "fileSize" | "projectKey" | "projectName"> | null => {
+): Omit<LocalSession, "filePath" | "fileSize" | "projectKey" | "projectName" | "synced"> | null => {
   const fd = (() => { try { return fs.openSync(filePath, "r"); } catch { return null; } })();
   if (fd === null) return null;
 
@@ -137,7 +156,7 @@ const extractMetadataFromJsonl = (
 
   const meta = parsed.reduce<{
     sessionId: string; cwd: string; gitBranch: string;
-    firstTimestamp: string; messageCount: number; firstUserMessage: string;
+    firstTimestamp: string; messageCount: number; totalTokens: number; firstUserMessage: string;
   }>(
     (acc, obj) => {
       const isUserMsg = obj.type === "user" || obj.type === "human";
@@ -152,16 +171,19 @@ const extractMetadataFromJsonl = (
         gitBranch: acc.gitBranch || (obj.gitBranch as string) || "",
         firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || "",
         messageCount: acc.messageCount + (isUserMsg || obj.type === "assistant" ? 1 : 0),
+        totalTokens: acc.totalTokens + extractTokensFromUsage(obj),
         firstUserMessage: acc.firstUserMessage || userText,
       };
     },
-    { sessionId: "", cwd: "", gitBranch: "", firstTimestamp: "", messageCount: 0, firstUserMessage: "" }
+    { sessionId: "", cwd: "", gitBranch: "", firstTimestamp: "", messageCount: 0, totalTokens: 0, firstUserMessage: "" }
   );
 
   const sessionId = meta.sessionId || path.basename(filePath, ".jsonl");
   const fileSize = fs.statSync(filePath).size;
   const estimatedMessages = meta.messageCount > 0 && bytesRead > 0
     ? Math.round((meta.messageCount / bytesRead) * fileSize) : meta.messageCount;
+  const estimatedTokens = meta.totalTokens > 0 && bytesRead > 0
+    ? Math.round((meta.totalTokens / bytesRead) * fileSize) : meta.totalTokens;
   const lastTimestamp = (() => {
     try { return fs.statSync(filePath).mtime.toISOString(); }
     catch { return meta.firstTimestamp; }
@@ -172,7 +194,7 @@ const extractMetadataFromJsonl = (
     sessionId, cwd: meta.cwd || "unknown", gitBranch: meta.gitBranch || "unknown",
     firstTimestamp: meta.firstTimestamp || new Date().toISOString(),
     lastTimestamp: lastTimestamp || meta.firstTimestamp || new Date().toISOString(),
-    messageCount: estimatedMessages, summary,
+    messageCount: estimatedMessages, totalTokens: estimatedTokens, summary,
   };
 };
 
@@ -181,7 +203,7 @@ const readSessionIndex = (indexPath: string): SessionIndex | null => {
   catch { return null; }
 };
 
-const indexEntryToSession = (entry: SessionIndexEntry, projectKey: string, projectName: string): LocalSession => ({
+const indexEntryToSession = (entry: SessionIndexEntry, projectKey: string, projectName: string, synced: boolean): LocalSession => ({
   filePath: fs.existsSync(entry.fullPath) ? entry.fullPath : null,
   sessionId: entry.sessionId, projectKey, projectName,
   cwd: entry.projectPath || "unknown",
@@ -191,7 +213,9 @@ const indexEntryToSession = (entry: SessionIndexEntry, projectKey: string, proje
   fileSize: entry.fullPath && fs.existsSync(entry.fullPath)
     ? ((() => { try { return fs.statSync(entry.fullPath).size; } catch { return 0; } })()) : 0,
   messageCount: entry.messageCount || 0,
+  totalTokens: 0,
   summary: entry.summary || entry.firstPrompt?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || "",
+  synced,
 });
 
 const tryReadDir = (dir: string): fs.Dirent[] => {
@@ -204,7 +228,7 @@ const tryStatSize = (filePath: string): number | null => {
   catch { return null; }
 };
 
-const discoverLocalSessions = (): readonly LocalSession[] => {
+const discoverLocalSessions = (syncedIds: ReadonlySet<string>): readonly LocalSession[] => {
   const claudeProjectsDir = path.join(os.homedir(), ".claude", "projects");
   if (!fs.existsSync(claudeProjectsDir)) return [];
 
@@ -221,7 +245,11 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
           if (fileSize === null || fileSize < 100) return null;
           const meta = extractMetadataFromJsonl(filePath);
           if (!meta) return null;
-          return { ...meta, filePath, fileSize, projectKey: projEntry.name, projectName } as LocalSession;
+          return {
+            ...meta, filePath, fileSize,
+            projectKey: projEntry.name, projectName,
+            synced: syncedIds.has(meta.sessionId),
+          } as LocalSession;
         })
         .filter((s): s is LocalSession => s !== null);
 
@@ -230,7 +258,7 @@ const discoverLocalSessions = (): readonly LocalSession[] => {
       const index = readSessionIndex(indexPath);
       const indexSessions = (index?.entries || [])
         .filter((e) => !jsonlSessionIds.has(e.sessionId))
-        .map((e) => indexEntryToSession(e, projEntry.name, projectName));
+        .map((e) => indexEntryToSession(e, projEntry.name, projectName, syncedIds.has(e.sessionId)));
 
       return [...jsonlSessions, ...indexSessions];
     })
@@ -308,16 +336,26 @@ const syncSessionToServer = async (session: LocalSession): Promise<"synced" | "s
 };
 
 const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResult> => {
-  const syncable = sessions.filter((s) => s.filePath !== null);
+  const syncable = sessions.filter((s) => s.filePath !== null && !s.synced);
   const skippedCount = sessions.length - syncable.length;
 
-  if (skippedCount > 0) console.log(`  ${dim(`Skipping ${skippedCount} archived sessions (no transcript on disk)`)}`);
-  if (syncable.length === 0) {
-    console.log(`  ${dim("Nothing to sync — all selected sessions are archived.")}\n`);
-    return { synced: 0, failed: 0, skipped: skippedCount };
+  if (skippedCount > 0 && syncable.length === 0) {
+    const archivedCount = sessions.filter((s) => s.filePath === null).length;
+    const alreadySynced = sessions.filter((s) => s.synced).length;
+    const reasons = [
+      ...(archivedCount > 0 ? [`${archivedCount} archived`] : []),
+      ...(alreadySynced > 0 ? [`${alreadySynced} already synced`] : []),
+    ].join(", ");
+    console.log(`  ${dim(`Nothing to sync (${reasons}).`)}\n`);
+    return { synced: 0, failed: 0, skipped: skippedCount, syncedIds: new Set() };
+  }
+
+  if (skippedCount > 0) {
+    console.log(`  ${dim(`Skipping ${skippedCount} sessions (archived or already synced)`)}`);
   }
 
   const total = syncable.length;
+  const successIds: string[] = [];
   const result = await syncable.reduce<Promise<{ synced: number; failed: number }>>(
     async (accPromise, session, i) => {
       const acc = await accPromise;
@@ -325,6 +363,7 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
       process.stdout.write(`  ${dim(`[${i + 1}/${total}]`)} Syncing ${label}… `);
       try {
         await syncSessionToServer(session);
+        successIds.push(session.sessionId);
         process.stdout.write(`${green("✓")} ${dim(formatBytes(session.fileSize))}\n`);
         return { synced: acc.synced + 1, failed: acc.failed };
       } catch (err) {
@@ -340,8 +379,18 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
       ? `\n  ${green("Done!")} ${bold(String(result.synced))} sessions synced.\n`
       : `\n  ${yellow("Done.")} ${bold(String(result.synced))} synced, ${red(String(result.failed))} failed.\n`
   );
-  return { ...result, skipped: skippedCount };
+  return { ...result, skipped: skippedCount, syncedIds: new Set(successIds) };
 };
+
+// ── Mark sessions as synced (immutable update) ─────────────────────────────
+
+const markSynced = (sessions: readonly LocalSession[], syncedIds: ReadonlySet<string>): readonly LocalSession[] =>
+  sessions.map((s) => syncedIds.has(s.sessionId) ? { ...s, synced: true } : s);
+
+const markGroupSynced = (group: ProjectGroup, syncedIds: ReadonlySet<string>): ProjectGroup => ({
+  ...group,
+  sessions: markSynced(group.sessions, syncedIds),
+});
 
 // ── Vim-style Interactive TUI ──────────────────────────────────────────────
 
@@ -369,7 +418,7 @@ const parseKey = (buf: Buffer): string => {
   if (ch === "g") return "top";
   if (ch === "G") return "bottom";
   if (hex === "1b" || ch === "q") return "back";
-  if (hex === "03") return "ctrl-c"; // ctrl+c
+  if (hex === "03") return "ctrl-c";
   return "";
 };
 
@@ -394,9 +443,8 @@ const interactiveList = <T>(config: {
     const maxVisible = clamp((process.stdout.rows || 24) - config.headerLines.length - 4, 5, 40);
     const total = config.items.length;
 
-    // Encapsulated state for event-driven TUI — reducer is pure, this is the event loop boundary
     const stateRef: [ListState] = [{ cursor: 0, selected: new Set(), scroll: 0 }];
-    const renderedRef: [number] = [0]; // lines rendered last frame
+    const renderedRef: [number] = [0];
 
     const render = () => {
       const state = stateRef[0];
@@ -417,11 +465,8 @@ const interactiveList = <T>(config: {
         config.footerLine(state.selected.size, total),
       ];
 
-      // Build output as single buffer write to prevent flicker:
-      // Move cursor to top of previous render, then overwrite each line in place
       const moveUp = renderedRef[0] > 0 ? `\x1b[${renderedRef[0]}A` : "";
       const output = moveUp + lines.map((line) => `\x1b[2K${line}`).join("\n") + "\n";
-      // Clear any leftover lines if new render is shorter
       const extraClears = renderedRef[0] > lines.length
         ? Array.from({ length: renderedRef[0] - lines.length }, () => "\x1b[2K\n").join("")
         : "";
@@ -440,10 +485,7 @@ const interactiveList = <T>(config: {
       const key = parseKey(buf);
       const state = stateRef[0];
 
-      if (key === "ctrl-c") {
-        cleanup();
-        process.exit(0);
-      }
+      if (key === "ctrl-c") { cleanup(); process.exit(0); }
 
       if (key === "up") {
         stateRef[0] = { ...state, cursor: clamp(state.cursor - 1, 0, total - 1) };
@@ -494,7 +536,6 @@ const interactiveList = <T>(config: {
 const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selected: boolean): string => {
   const pointer = active ? cyan("▸") : " ";
   const dateRange = `${formatDate(g.earliest)} – ${formatDate(g.latest)}`;
-  // Pad with plain text first, then apply bold — ANSI codes break padRight width calculation
   const paddedName = padRight(g.projectName, 34);
   const name = active ? bold(paddedName) : paddedName;
   const content = `  ${pointer} ${name}${padLeft(String(g.sessions.length), 8)}${padLeft(formatBytes(g.totalSize), 12)}  ${dim(dateRange)}`;
@@ -503,32 +544,43 @@ const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selec
 
 const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, selected: boolean): string => {
   const pointer = active ? cyan("▸") : " ";
-  const checkbox = selected ? green("[✓]") : dim("[ ]");
-  // Pad plain text first, then apply ANSI — keeps column alignment consistent
-  const rawLabel = s.summary ? truncate(s.summary, 38) : s.sessionId.slice(0, 12) + "…";
-  const paddedLabel = padRight(rawLabel, 40);
-  const label = !s.summary ? dim(paddedLabel) : paddedLabel;
-  const archived = s.filePath === null ? dim(" ✱") : "";
-  const content = `  ${pointer} ${checkbox} ${label}${padRight(s.gitBranch.slice(0, 16), 18)}${padRight(formatDate(s.lastTimestamp), 10)}${padLeft(String(s.messageCount), 5)}${archived}`;
-  return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
+  const status = s.synced ? green(" ✓ ") : selected ? green("[✓]") : dim("[ ]");
+  const rawLabel = s.summary ? truncate(s.summary, 34) : s.sessionId.slice(0, 12) + "…";
+  const paddedLabel = padRight(rawLabel, 36);
+  const label = s.synced ? dim(paddedLabel) : !s.summary ? dim(paddedLabel) : paddedLabel;
+  const branch = padRight(s.gitBranch.slice(0, 14), 16);
+  const date = padRight(formatDate(s.lastTimestamp), 8);
+  const msgs = padLeft(String(s.messageCount), 5);
+  const tokens = padLeft(formatTokens(s.totalTokens), 7);
+  const archived = s.filePath === null && !s.synced ? dim(" ✱") : "";
+  const content = `  ${pointer} ${status} ${label}${branch}${date}${msgs}${tokens}${archived}`;
+  return s.synced
+    ? (active ? `\x1b[48;5;236m${dim(content)}\x1b[0m` : dim(content))
+    : (active ? `\x1b[48;5;236m${content}\x1b[0m` : content);
 };
 
 // ── Main flows ─────────────────────────────────────────────────────────────
 
 const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
-  const syncableCount = group.sessions.filter((s) => s.filePath !== null).length;
+  const syncableCount = group.sessions.filter((s) => s.filePath !== null && !s.synced).length;
+  const syncedCount = group.sessions.filter((s) => s.synced).length;
+  const subtitle = [
+    `${group.sessions.length} sessions`,
+    ...(syncableCount > 0 ? [`${syncableCount} syncable`] : []),
+    ...(syncedCount > 0 ? [`${syncedCount} synced`] : []),
+  ].join(", ");
 
   const action = await interactiveList({
     items: group.sessions,
     renderRow: renderSessionRow,
     headerLines: [
       "",
-      `  ${bold(group.projectName)} ${dim(`— ${group.sessions.length} sessions (${syncableCount} syncable)`)}`,
+      `  ${bold(group.projectName)} ${dim(`— ${subtitle}`)}`,
       "",
-      `  ${dim("    ")}${dim(padRight("SUMMARY", 44))}${dim(padRight("BRANCH", 18))}${dim(padRight("DATE", 10))}${dim(padLeft("MSGS", 5))}`,
+      `  ${dim("    ")}${dim(padRight("SUMMARY", 40))}${dim(padRight("BRANCH", 16))}${dim(padRight("DATE", 8))}${dim(padLeft("MSGS", 5))}${dim(padLeft("TOKENS", 7))}`,
       `  ${dim("─".repeat(82))}`,
     ],
-    footerLine: (sel, total) => {
+    footerLine: (sel, _total) => {
       const selLabel = sel > 0 ? ` (${sel} selected)` : "";
       return `  ${dim("j/k")} navigate  ${dim("space")} select  ${dim("a")} toggle all  ${dim("s")} sync${selLabel}  ${dim("esc")} back`;
     },
@@ -538,32 +590,26 @@ const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
   if (action.type === "back") return group;
 
   if (action.type === "enter") {
-    // Sync single session
     console.log();
-    await syncSessions([group.sessions[action.index]]);
-    const remaining = group.sessions.filter((_, i) => i !== action.index || !group.sessions[action.index].filePath);
-    return remaining.length > 0
-      ? browseProject({ ...group, sessions: remaining })
-      : { ...group, sessions: [] };
+    const result = await syncSessions([group.sessions[action.index]]);
+    const updated = markGroupSynced(group, result.syncedIds);
+    return browseProject(updated);
   }
 
   if (action.type === "sync") {
     const toSync = action.indices.map((i) => group.sessions[i]);
     console.log();
-    await syncSessions(toSync);
-    const syncedIds = new Set(toSync.filter((s) => s.filePath !== null).map((s) => s.sessionId));
-    const remaining = group.sessions.filter((s) => !syncedIds.has(s.sessionId));
-    return remaining.length > 0
-      ? browseProject({ ...group, sessions: remaining })
-      : { ...group, sessions: [] };
+    const result = await syncSessions(toSync);
+    const updated = markGroupSynced(group, result.syncedIds);
+    return browseProject(updated);
   }
 
   return group;
 };
 
 const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> => {
-  const allUnsynced = groups.flatMap((g) => g.sessions);
-  const syncableCount = allUnsynced.filter((s) => s.filePath !== null).length;
+  const allSessions = groups.flatMap((g) => g.sessions);
+  const syncableCount = allSessions.filter((s) => s.filePath !== null && !s.synced).length;
 
   const action = await interactiveList({
     items: groups,
@@ -572,7 +618,7 @@ const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> =
       "",
       `  ${magenta("orchid sync")} ${dim("— discover local Claude Code sessions")}`,
       "",
-      `  ${bold(String(allUnsynced.length))} sessions across ${bold(String(groups.length))} projects ${dim(`(${syncableCount} syncable)`)}`,
+      `  ${bold(String(allSessions.length))} sessions across ${bold(String(groups.length))} projects ${dim(`(${syncableCount} syncable)`)}`,
       "",
       `  ${dim(" ")}${dim(padRight("PROJECT", 36))}${dim(padLeft("SESSIONS", 8))}${dim(padLeft("SIZE", 12))}  ${dim("DATE RANGE")}`,
       `  ${dim("─".repeat(82))}`,
@@ -585,18 +631,16 @@ const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> =
   if (action.type === "back" || action.type === "quit") return;
 
   if (action.type === "enter") {
-    const group = groups[action.index];
-    const updated = await browseProject(group);
+    const updated = await browseProject(groups[action.index]);
     const updatedGroups = groups.map((g, i) => (i === action.index ? updated : g));
-    const active = updatedGroups.filter((g) => g.sessions.length > 0);
-    if (active.length > 0) return runDiscoverLoop(active);
-    return;
+    return runDiscoverLoop(updatedGroups);
   }
 
   if (action.type === "sync") {
     console.log();
-    await syncSessions(allUnsynced);
-    return;
+    const result = await syncSessions(allSessions);
+    const updatedGroups = groups.map((g) => markGroupSynced(g, result.syncedIds));
+    return runDiscoverLoop(updatedGroups);
   }
 };
 
@@ -606,26 +650,19 @@ const runDiscover = async (): Promise<void> => {
   console.log();
   process.stdout.write(`  ${dim("Scanning ~/.claude/projects…")}`);
 
-  const allSessions = discoverLocalSessions();
-  process.stdout.write(`\r  ${dim(`Found ${allSessions.length} local sessions.`)}              \n`);
+  process.stdout.write(`\r  ${dim("Checking server for already-synced sessions…")}              `);
+  const syncedIds = await fetchSyncedSessionIds();
+  process.stdout.write(`\r  ${dim(`${syncedIds.size} sessions already synced on server.`)}              \n`);
+
+  const allSessions = discoverLocalSessions(syncedIds);
+  console.log(`  ${dim(`Found ${allSessions.length} local sessions.`)}`);
 
   if (allSessions.length === 0) {
     console.log(`\n  ${dim("No Claude Code sessions found in ~/.claude/projects/")}`);
     return;
   }
 
-  process.stdout.write(`  ${dim("Checking server for already-synced sessions…")}`);
-  const syncedIds = await fetchSyncedSessionIds();
-  process.stdout.write(`\r  ${dim(`${syncedIds.size} sessions already synced on server.`)}              \n`);
-
-  const unsyncedSessions = allSessions.filter((s) => !syncedIds.has(s.sessionId));
-
-  if (unsyncedSessions.length === 0) {
-    console.log(`\n  ${green("All sessions are already synced!")} Nothing to do.`);
-    return;
-  }
-
-  const groups = groupByProject(unsyncedSessions);
+  const groups = groupByProject(allSessions);
   await runDiscoverLoop(groups);
 };
 
@@ -641,13 +678,14 @@ const syncFile = async (filePath: string): Promise<void> => {
   if (!meta) { console.error(`${red("Error:")} Could not parse metadata from ${resolved}`); process.exit(1); }
 
   const projectKey = path.basename(path.dirname(resolved));
-  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: humanizeProjectKey(projectKey) };
+  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: humanizeProjectKey(projectKey), synced: false };
 
   console.log(`\n  ${magenta("orchid sync")} ${dim("— syncing single session")}\n`);
   console.log(`  Session:  ${session.sessionId}`);
   console.log(`  Summary:  ${session.summary || dim("(no summary)")}`);
   console.log(`  Branch:   ${session.gitBranch}`);
-  console.log(`  Size:     ${formatBytes(session.fileSize)}\n`);
+  console.log(`  Size:     ${formatBytes(session.fileSize)}`);
+  console.log(`  Tokens:   ${formatTokens(session.totalTokens)}\n`);
 
   process.stdout.write(`  Syncing… `);
   try {
