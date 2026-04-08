@@ -60,3 +60,13 @@ export function getAuthHeaders(): Record<string, string> {
   const { token } = getConfig();
   return { Authorization: `Bearer ${token}` };
 }
+
+/** Returns config or null if not authenticated (no process.exit). */
+export function tryGetConfig(): { apiUrl: string; token: string; webUrl: string } | null {
+  const file = readConfigFile();
+  const apiUrl = process.env.ORCHID_API_URL || file.api_url;
+  const token = process.env.ORCHID_TOKEN || file.token;
+  if (!apiUrl || !token) return null;
+  const webUrl = process.env.ORCHID_WEB_URL || file.web_url || apiUrl.replace(/\/api$/, "");
+  return { apiUrl, token, webUrl };
+}

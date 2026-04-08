@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/main.ts",
+    "test": "tsx --test test/*.test.ts",
     "test:e2e": "tsx test/e2e.ts",
     "check": "tsc --noEmit"
   },
