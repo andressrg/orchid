@@ -441,7 +441,9 @@ const interactiveList = <T>(config: {
   readonly isItemSelectable?: (item: T, index: number) => boolean;
 }): Promise<ListAction> =>
   new Promise((resolve) => {
-    const maxVisible = clamp((process.stdout.rows || 24) - config.headerLines.length - 4, 5, 40);
+    // Reserve space for: header lines + scroll indicator (1) + blank (1) + footer (1)
+    const overhead = config.headerLines.length + 3;
+    const maxVisible = clamp((process.stdout.rows || 24) - overhead, 5, config.items.length);
     const total = config.items.length;
 
     const stateRef: [ListState] = [{ cursor: 0, selected: new Set(), scroll: 0 }];
