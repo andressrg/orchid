@@ -1,23 +1,55 @@
-import * as readline from "readline";
 import { getApiUrl, writeConfigFile } from "../config";
 
-export async function runLogin(): Promise<void> {
+const readHidden = (prompt: string): Promise<string> =>
+  new Promise((resolve) => {
+    process.stdout.write(prompt);
+    process.stdin.setRawMode?.(true);
+    process.stdin.resume();
+    process.stdin.setEncoding("utf-8");
+
+    const chunks: string[] = [];
+
+    const onData = (ch: string) => {
+      // Enter
+      if (ch === "\r" || ch === "\n") {
+        process.stdin.setRawMode?.(false);
+        process.stdin.pause();
+        process.stdin.removeListener("data", onData);
+        process.stdout.write("\n");
+        resolve(chunks.join(""));
+        return;
+      }
+      // Ctrl+C
+      if (ch === "\x03") {
+        process.stdin.setRawMode?.(false);
+        process.stdout.write("\n");
+        process.exit(1);
+      }
+      // Backspace
+      if (ch === "\x7f" || ch === "\b") {
+        if (chunks.length > 0) {
+          chunks.pop();
+          process.stdout.write("\b \b");
+        }
+        return;
+      }
+      // Paste or regular char — mask each character
+      [...ch].forEach((c) => {
+        chunks.push(c);
+        process.stdout.write("•");
+      });
+    };
+
+    process.stdin.on("data", onData);
+  });
+
+export const runLogin = async (): Promise<void> => {
   const apiUrl = getApiUrl();
 
   console.log("Paste your Personal Access Token.");
   console.log(`Generate one at: ${apiUrl.replace(/\/api$/, "")}/settings/tokens\n`);
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  const token = await new Promise<string>((resolve) => {
-    rl.question("Token: ", (answer) => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
+  const token = (await readHidden("Token: ")).trim();
 
   if (!token) {
     console.error("No token provided.");
@@ -29,7 +61,6 @@ export async function runLogin(): Promise<void> {
     process.exit(1);
   }
 
-  // Validate the token
   process.stderr.write("Validating token...\n");
   const res = await fetch(`${apiUrl.replace(/\/$/, "")}/tokens/validate`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -42,4 +73,4 @@ export async function runLogin(): Promise<void> {
 
   writeConfigFile({ token });
   console.log("Logged in successfully.");
-}
+};
