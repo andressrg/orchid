@@ -487,78 +487,19 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
   }
 });
 
-// Commits
+// Commits for a session (from transcript parsing)
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
-    if (!session) return c.json({ error: 'Session not found' }, 404);
+    const result = await pool.query(
+      `SELECT commit_sha, branch, remote, message, committed_at
+       FROM session_commits
+       WHERE session_id = $1
+       ORDER BY committed_at DESC`,
+      [id],
+    );
 
-    const remotes: string[] = (session.gitRemotes as string[]) || [];
-    if (remotes.length === 0) {
-      return c.json({ commits: [], message: 'No git remotes associated with this session' });
-    }
-
-    const ghHeaders: Record<string, string> = { Accept: 'application/vnd.github+json' };
-    if (GITHUB_TOKEN) ghHeaders.Authorization = `Bearer ${GITHUB_TOKEN}`;
-
-    const since = session.startedAt
-      ? new Date(new Date(session.startedAt).getTime() - 3600000).toISOString()
-      : undefined;
-    const until =
-      session.status === 'done' && session.updatedAt
-        ? new Date(new Date(session.updatedAt).getTime() + 300000).toISOString()
-        : undefined;
-
-    const allCommits: Array<{
-      sha: string; message: string; author: string; date: string; url: string; repo: string;
-      additions: number; deletions: number;
-      files: Array<{ filename: string; status: string; additions: number; deletions: number }>;
-    }> = [];
-
-    for (const remote of remotes) {
-      const match = remote.match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?$/);
-      if (!match) continue;
-      const [, owner, repo] = match;
-      let apiUrl = `https://api.github.com/repos/${owner}/${repo}/commits?per_page=50`;
-      if (session.branch && session.branch !== 'detached') apiUrl += `&sha=${encodeURIComponent(session.branch)}`;
-      if (since) apiUrl += `&since=${since}`;
-      if (until) apiUrl += `&until=${until}`;
-
-      try {
-        const ghRes = await fetch(apiUrl, { headers: ghHeaders });
-        if (!ghRes.ok) continue;
-        const commits = (await ghRes.json()) as Array<{
-          sha: string; commit: { message: string; author: { name: string; date: string } }; html_url: string;
-        }>;
-
-        for (const commit of commits.slice(0, 10)) {
-          let files: Array<{ filename: string; status: string; additions: number; deletions: number }> = [];
-          let additions = 0, deletions = 0;
-          try {
-            const detailRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${commit.sha}`, { headers: ghHeaders });
-            if (detailRes.ok) {
-              const detail = (await detailRes.json()) as {
-                stats?: { additions: number; deletions: number };
-                files?: Array<{ filename: string; status: string; additions: number; deletions: number }>;
-              };
-              additions = detail.stats?.additions || 0;
-              deletions = detail.stats?.deletions || 0;
-              files = (detail.files || []).map((f) => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions }));
-            }
-          } catch { /* skip */ }
-
-          allCommits.push({
-            sha: commit.sha, message: commit.commit.message, author: commit.commit.author.name,
-            date: commit.commit.author.date, url: commit.html_url, repo: `${owner}/${repo}`,
-            additions, deletions, files,
-          });
-        }
-      } catch { /* skip */ }
-    }
-
-    allCommits.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    return c.json({ commits: allCommits });
+    return c.json({ commits: result.rows });
   } catch (err) {
     console.error('GET /api/sessions/:id/commits error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -679,24 +620,6 @@ app.get('/commits/sessions', async (c) => {
   }
 });
 
-// List stored commit-session relationships for a session
-app.get('/sessions/:id/stored-commits', async (c) => {
-  const id = c.req.param('id');
-  try {
-    const result = await pool.query(
-      `SELECT commit_sha, branch, remote, message, committed_at
-       FROM session_commits
-       WHERE session_id = $1
-       ORDER BY committed_at DESC`,
-      [id],
-    );
-
-    return c.json({ commits: result.rows });
-  } catch (err) {
-    console.error('GET /api/sessions/:id/stored-commits error:', err);
-    return c.json({ error: 'Internal server error' }, 500);
-  }
-});
 
 // GitHub webhook
 app.post('/webhook/github', async (c) => {
