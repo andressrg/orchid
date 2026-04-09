@@ -1,10 +1,12 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
+import { after } from 'next/server';
 import pool, { db } from './db';
 import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
+import { extractCommitsFromTranscript } from './extract-commits';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -194,6 +196,29 @@ app.put('/sessions/:id', async (c) => {
        RETURNING *`,
       [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount, userId, teamId],
     );
+
+    // After responding, extract commit SHAs from the transcript and store them
+    if (transcript && (status === 'done' || !status)) {
+      after(async () => {
+        try {
+          const commits = extractCommitsFromTranscript(transcript as string);
+          for (const commit of commits) {
+            await pool.query(
+              `INSERT INTO session_commits (session_id, commit_sha, branch, message, committed_at)
+               VALUES ($1, $2, $3, $4, NOW())
+               ON CONFLICT (session_id, commit_sha) DO NOTHING`,
+              [id, commit.sha, commit.branch, commit.message],
+            );
+          }
+          if (commits.length > 0) {
+            console.log(`Extracted ${commits.length} commits from session ${id}`);
+          }
+        } catch (err) {
+          console.error('after() commit extraction error:', err);
+        }
+      });
+    }
+
     return c.json(result.rows[0]);
   } catch (err) {
     console.error('PUT /api/sessions/:id error:', err);
