@@ -627,35 +627,39 @@ app.get("/sessions/:id/commits", requireApiKey, async (req: Request, res: Respon
   }
 });
 
-// Record a commit-session relationship (called by CLI hook)
-app.post("/session-commits", requireApiKey, async (req: Request, res: Response) => {
-  const { session_id, commit_sha, branch, remote, message, committed_at } = req.body;
+// Batch reverse lookup: find sessions for multiple commit SHAs
+app.get("/commits/sessions", requireApiKey, async (req: Request, res: Response) => {
+  const shasParam = (req.query.shas as string) || "";
+  const shas = shasParam.split(",").map((s) => s.trim()).filter(Boolean);
 
-  if (!session_id || !commit_sha) {
-    res.status(400).json({ error: "session_id and commit_sha are required" });
+  if (shas.length === 0) {
+    res.status(400).json({ error: "shas query parameter is required (comma-separated)" });
     return;
   }
 
   try {
-    await pool.query(
-      `INSERT INTO session_commits (session_id, commit_sha, branch, remote, message, committed_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (session_id, commit_sha) DO UPDATE SET
-         branch = COALESCE(EXCLUDED.branch, session_commits.branch),
-         remote = COALESCE(EXCLUDED.remote, session_commits.remote),
-         message = COALESCE(EXCLUDED.message, session_commits.message),
-         committed_at = COALESCE(EXCLUDED.committed_at, session_commits.committed_at)`,
-      [session_id, commit_sha, branch || null, remote || null, message || null, committed_at || new Date().toISOString()]
+    const conditions = shas.map((_, i) => `sc.commit_sha LIKE $${i + 1}`).join(" OR ");
+    const params = shas.map((sha) => `${sha}%`);
+
+    const result = await pool.query(
+      `SELECT DISTINCT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
+              s.user_name, s.user_email, s.status, s.started_at, s.updated_at, s.working_dir,
+              s.git_remotes, s.tool
+       FROM session_commits sc
+       JOIN sessions s ON s.id = sc.session_id
+       WHERE ${conditions}
+       ORDER BY sc.committed_at DESC`,
+      params
     );
 
-    res.json({ ok: true, session_id, commit_sha });
+    res.json({ sessions: result.rows });
   } catch (err) {
-    console.error("POST /session-commits error:", err);
+    console.error("GET /commits/sessions error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Reverse lookup: find sessions that produced a given commit SHA (supports prefix match)
+// Single commit reverse lookup (supports prefix match)
 app.get("/commits/:sha/sessions", requireApiKey, async (req: Request, res: Response) => {
   const { sha } = req.params;
 
