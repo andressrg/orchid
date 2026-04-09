@@ -532,8 +532,7 @@ app.get("/commits/sessions", requireApiKey, async (req: Request, res: Response) 
   }
 
   try {
-    const conditions = shas.map((_, i) => `sc.commit_sha LIKE $${i + 1}`).join(" OR ");
-    const params = shas.map((sha) => `${sha}%`);
+    const prefixes = shas.map((sha) => `${sha}%`);
 
     const result = await pool.query(
       `SELECT DISTINCT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
@@ -541,9 +540,9 @@ app.get("/commits/sessions", requireApiKey, async (req: Request, res: Response) 
               s.git_remotes, s.tool
        FROM session_commits sc
        JOIN sessions s ON s.id = sc.session_id
-       WHERE ${conditions}
+       JOIN unnest($1::text[]) AS prefix ON sc.commit_sha LIKE prefix
        ORDER BY sc.committed_at DESC`,
-      params
+      [prefixes]
     );
 
     res.json({ sessions: result.rows });

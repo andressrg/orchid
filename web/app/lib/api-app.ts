@@ -203,14 +203,17 @@ app.put('/sessions/:id', async (c) => {
         try {
           const commits = extractCommitsFromTranscript(transcript as string);
           if (commits.length > 0) {
-            const cols = 5;
-            const values = commits.map((_, i) => `($${i * cols + 1}, $${i * cols + 2}, $${i * cols + 3}, $${i * cols + 4}, $${i * cols + 5})`).join(', ');
-            const params = commits.flatMap((c) => [id, c.sha, c.branch, c.message, c.committedAt]);
             await pool.query(
               `INSERT INTO session_commits (session_id, commit_sha, branch, message, committed_at)
-               VALUES ${values}
+               SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[])
                ON CONFLICT (session_id, commit_sha) DO NOTHING`,
-              params,
+              [
+                commits.map(() => id),
+                commits.map((c) => c.sha),
+                commits.map((c) => c.branch),
+                commits.map((c) => c.message),
+                commits.map((c) => c.committedAt),
+              ],
             );
             console.log(`Extracted ${commits.length} commits from session ${id}`);
           }
@@ -600,8 +603,7 @@ app.get('/commits/sessions', async (c) => {
   }
 
   try {
-    const conditions = shas.map((_, i) => `sc.commit_sha LIKE $${i + 1}`).join(' OR ');
-    const params = shas.map((sha) => `${sha}%`);
+    const prefixes = shas.map((sha) => `${sha}%`);
 
     const result = await pool.query(
       `SELECT DISTINCT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
@@ -609,9 +611,9 @@ app.get('/commits/sessions', async (c) => {
               os.working_dir, os.git_remotes, os.tool
        FROM session_commits sc
        JOIN orchid_session os ON os.id = sc.session_id
-       WHERE ${conditions}
+       JOIN unnest($1::text[]) AS prefix ON sc.commit_sha LIKE prefix
        ORDER BY sc.committed_at DESC`,
-      params,
+      [prefixes],
     );
 
     return c.json({ sessions: result.rows });
