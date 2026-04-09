@@ -41,6 +41,21 @@ export const orchidSession = pgTable('orchid_session', {
   index('idx_orchid_session_user').on(t.userId),
 ]);
 
+export const sessionCommit = pgTable('session_commits', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
+  sessionId: text('session_id').notNull().references(() => orchidSession.id, { onDelete: 'cascade' }),
+  commitSha: text('commit_sha').notNull(),
+  branch: text('branch'),
+  remote: text('remote'),
+  message: text('message'),
+  committedAt: timestamp('committed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index('idx_session_commits_sha').on(t.commitSha),
+  index('idx_session_commits_session').on(t.sessionId),
+]);
+
 export const apiKey = pgTable('api_key', {
   id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),

@@ -151,6 +151,46 @@ protected routes.
 
 ---
 
+### `orchid data sessions-for <sha1>,<sha2>,<sha3>` — Find sessions for commits
+
+Given one or more commit SHAs (comma-separated), find the AI sessions that produced them. This is the key command for PR review — an agent can resolve every commit in a PR to its originating conversation in a single call.
+
+```bash
+# Single commit
+orchid data sessions-for abc123f
+
+# Multiple commits (comma-separated)
+orchid data sessions-for abc123f,def456a,789bcd0
+
+# Typical PR review workflow — pipe all PR commits at once
+orchid data sessions-for $(git log main..HEAD --format="%H" | paste -sd,)
+```
+
+**Output:**
+
+```
+🌸 3 sessions for 5 commits
+
+9764166e-11ea-4fa9-8f9e-4a4b0d55c25a
+  User: andres
+  Branch: feat/sync-discover
+  Status: done | Started: 3d ago
+  Commit: f289a29 Add orchid sync --discover
+  Commit: 955dce7 Refactor sync.ts to functional style
+  http://24.144.97.81/sessions/9764166e-11ea-4fa9-8f9e-4a4b0d55c25a
+
+3df7f610-78c1-4c05-8307-80459c40b992
+  User: andres
+  Branch: feat/cli-hooks
+  Status: done | Started: 1d ago
+  Commit: cf14a7a Add hooks command
+  http://24.144.97.81/sessions/3df7f610-78c1-4c05-8307-80459c40b992
+```
+
+Sessions are deduplicated — if multiple commits came from the same session, the session appears once with all matched commits listed.
+
+---
+
 ### `orchid review <branch-or-topic>` — Conversation-aware code review
 
 Finds conversations related to a branch or topic and summarizes them for code review context.
@@ -255,6 +295,16 @@ orchid review feature/new-auth
 orchid explain abc123f
 # or search for the topic:
 orchid data search "why we chose websockets"
+```
+
+### Review a PR with full conversation context (agent workflow)
+
+```bash
+# An agent reviewing a PR can resolve all commits to sessions in one call:
+orchid data sessions-for $(git log main..HEAD --format="%H" | paste -sd,)
+
+# Then read the relevant sessions:
+orchid data show <session-id> --turns
 ```
 
 ### Let an agent use conversation history

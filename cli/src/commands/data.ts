@@ -471,6 +471,77 @@ async function dataAsk(args: string[]): Promise<void> {
   prompt();
 }
 
+interface SessionCommitResult {
+  session_id: string;
+  commit_sha: string;
+  branch: string;
+  remote: string;
+  message: string;
+  committed_at: string;
+  user_name: string;
+  user_email: string;
+  status: string;
+  started_at: string;
+  updated_at: string;
+  working_dir: string;
+  tool: string;
+}
+
+async function dataSessionsFor(args: string[]): Promise<void> {
+  const raw = args.filter((a) => !a.startsWith("-")).join(",");
+  const shas = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (shas.length === 0) {
+    console.error("Usage: orchid data sessions-for <sha1>,<sha2>,<sha3>");
+    console.error("\nFind which AI sessions produced one or more commits.");
+    console.error("Separate multiple SHAs with commas.");
+    process.exit(1);
+  }
+
+  const { apiUrl, webUrl } = getConfig();
+  const base = apiUrl.replace(/\/$/, "");
+  const url = `${base}/commits/sessions?shas=${shas.map(encodeURIComponent).join(",")}`;
+
+  const res = await fetch(url, { headers: { ...getAuthHeaders() } });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+
+  const data = (await res.json()) as { sessions: SessionCommitResult[] };
+
+  if (data.sessions.length === 0) {
+    console.log(`No sessions found for ${shas.length === 1 ? `commit ${shas[0]}` : `${shas.length} commits`}`);
+    return;
+  }
+
+  // Deduplicate sessions (multiple commits can map to the same session)
+  const seen = new Set<string>();
+  const unique = data.sessions.filter((s) => {
+    if (seen.has(s.session_id)) return false;
+    seen.add(s.session_id);
+    return true;
+  });
+
+  const label = shas.length === 1 ? `commit ${shas[0].slice(0, 8)}` : `${shas.length} commits`;
+  console.log(`\x1b[35m🌸 ${unique.length} session${unique.length > 1 ? "s" : ""} for ${label}\x1b[0m\n`);
+
+  const webBase = (webUrl || apiUrl).replace(/\/$/, "").replace(/:3000$/, "");
+  for (const s of unique) {
+    // Find which of the queried commits belong to this session
+    const matchedCommits = data.sessions
+      .filter((r) => r.session_id === s.session_id)
+      .map((r) => `${r.commit_sha.slice(0, 8)} ${r.message || ""}`.trim());
+
+    console.log(`\x1b[1m${s.session_id}\x1b[0m`);
+    console.log(`  \x1b[90mUser:\x1b[0m ${s.user_name || "unknown"}`);
+    console.log(`  \x1b[90mBranch:\x1b[0m ${s.branch || "unknown"}`);
+    console.log(`  \x1b[90mStatus:\x1b[0m ${s.status} | Started: ${timeAgo(s.started_at)}`);
+    matchedCommits.forEach((c) => console.log(`  \x1b[90mCommit:\x1b[0m ${c}`));
+    console.log(`  \x1b[34m${webBase}/sessions/${encodeURIComponent(s.session_id)}\x1b[0m`);
+    console.log();
+  }
+}
+
 export function runData(args: string[]): void {
   const subcommand = args[0];
 
@@ -481,12 +552,13 @@ Usage:
   orchid data <command>
 
 Commands:
-  list        List all stored sessions
-  show        Show a session transcript
-  search      Search across sessions
-  summary     AI-generated session summary
-  decisions   AI-extracted architectural decision log
-  ask         Ask questions about a session's conversation`);
+  list            List all stored sessions
+  show            Show a session transcript
+  search          Search across sessions
+  sessions-for    Find sessions that produced a commit
+  summary         AI-generated session summary
+  decisions       AI-extracted architectural decision log
+  ask             Ask questions about a session's conversation`);
     return;
   }
 
@@ -505,6 +577,12 @@ Commands:
       break;
     case "search":
       dataSearch(args.slice(1)).catch((err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
+      break;
+    case "sessions-for":
+      dataSessionsFor(args.slice(1)).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
