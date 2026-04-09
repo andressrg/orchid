@@ -499,9 +499,7 @@ async function dataSessionsFor(args: string[]): Promise<void> {
 
   const { apiUrl, webUrl } = getConfig();
   const base = apiUrl.replace(/\/$/, "");
-  const url = shas.length === 1
-    ? `${base}/commits/${encodeURIComponent(shas[0])}/sessions`
-    : `${base}/commits/sessions?shas=${shas.map(encodeURIComponent).join(",")}`;
+  const url = `${base}/commits/sessions?shas=${shas.map(encodeURIComponent).join(",")}`;
 
   const res = await fetch(url, { headers: { ...getAuthHeaders() } });
   if (!res.ok) {

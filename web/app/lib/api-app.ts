@@ -649,8 +649,6 @@ app.get('/decisions', async (c) => {
 });
 
 // Reverse lookup: find sessions for one or more commit SHAs
-// Supports: GET /commits/abc123/sessions (single)
-//           GET /commits/sessions?shas=abc123,def456 (batch)
 app.get('/commits/sessions', async (c) => {
   const shasParam = c.req.query('shas') || '';
   const shas = shasParam.split(',').map((s) => s.trim()).filter(Boolean);
@@ -677,27 +675,6 @@ app.get('/commits/sessions', async (c) => {
     return c.json({ sessions: result.rows });
   } catch (err) {
     console.error('GET /api/commits/sessions error:', err);
-    return c.json({ error: 'Internal server error' }, 500);
-  }
-});
-
-app.get('/commits/:sha/sessions', async (c) => {
-  const sha = c.req.param('sha');
-  try {
-    const result = await pool.query(
-      `SELECT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
-              os.user_name, os.user_email, os.status, os.started_at, os.updated_at,
-              os.working_dir, os.git_remotes, os.tool
-       FROM session_commits sc
-       JOIN orchid_session os ON os.id = sc.session_id
-       WHERE sc.commit_sha LIKE $1
-       ORDER BY sc.committed_at DESC`,
-      [`${sha}%`],
-    );
-
-    return c.json({ sessions: result.rows });
-  } catch (err) {
-    console.error('GET /api/commits/:sha/sessions error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });
