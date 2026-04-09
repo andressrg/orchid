@@ -6,6 +6,7 @@ import { runExplain } from "./commands/explain";
 import { runConfig } from "./commands/config";
 import { runLogin } from "./commands/login";
 import { runLogout } from "./commands/logout";
+import { runHooks } from "./commands/hooks";
 
 const VERSION = "0.1.0";
 
@@ -19,6 +20,7 @@ Commands:
   logout    Remove stored credentials
   claude    Launch Claude Code and sync the conversation
   sync      Sync past conversations (--discover to scan all)
+  hooks     Manage Claude Code hooks (install, uninstall, status)
   config    Set up CLI configuration (~/.orchid/config.json)
   data      Query stored sessions (list, show, search, summary)
   review    Conversation-aware code review
@@ -63,6 +65,12 @@ function main() {
       break;
     case "config":
       runConfig(subArgs).catch((err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
+      break;
+    case "hooks":
+      runHooks(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });

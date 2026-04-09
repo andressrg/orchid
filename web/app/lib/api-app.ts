@@ -623,6 +623,74 @@ app.get('/decisions', async (c) => {
   }
 });
 
+// Record a commit-session relationship (called by CLI hook)
+app.post('/session-commits', async (c) => {
+  const { session_id, commit_sha, branch, remote, message, committed_at } = await c.req.json();
+
+  if (!session_id || !commit_sha) {
+    return c.json({ error: 'session_id and commit_sha are required' }, 400);
+  }
+
+  try {
+    await pool.query(
+      `INSERT INTO session_commits (session_id, commit_sha, branch, remote, message, committed_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (session_id, commit_sha) DO UPDATE SET
+         branch = COALESCE(EXCLUDED.branch, session_commits.branch),
+         remote = COALESCE(EXCLUDED.remote, session_commits.remote),
+         message = COALESCE(EXCLUDED.message, session_commits.message),
+         committed_at = COALESCE(EXCLUDED.committed_at, session_commits.committed_at)`,
+      [session_id, commit_sha, branch || null, remote || null, message || null, committed_at || new Date().toISOString()],
+    );
+
+    return c.json({ ok: true, session_id, commit_sha });
+  } catch (err) {
+    console.error('POST /api/session-commits error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// Reverse lookup: find sessions that produced a given commit SHA
+app.get('/commits/:sha/sessions', async (c) => {
+  const sha = c.req.param('sha');
+  try {
+    const result = await pool.query(
+      `SELECT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
+              os.user_name, os.user_email, os.status, os.started_at, os.updated_at,
+              os.working_dir, os.git_remotes, os.tool
+       FROM session_commits sc
+       JOIN orchid_session os ON os.id = sc.session_id
+       WHERE sc.commit_sha LIKE $1
+       ORDER BY sc.committed_at DESC`,
+      [`${sha}%`],
+    );
+
+    return c.json({ sessions: result.rows });
+  } catch (err) {
+    console.error('GET /api/commits/:sha/sessions error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// List stored commit-session relationships for a session
+app.get('/sessions/:id/stored-commits', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const result = await pool.query(
+      `SELECT commit_sha, branch, remote, message, committed_at
+       FROM session_commits
+       WHERE session_id = $1
+       ORDER BY committed_at DESC`,
+      [id],
+    );
+
+    return c.json({ commits: result.rows });
+  } catch (err) {
+    console.error('GET /api/sessions/:id/stored-commits error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // GitHub webhook
 app.post('/webhook/github', async (c) => {
   const event = c.req.header('x-github-event');

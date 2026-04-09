@@ -471,6 +471,60 @@ async function dataAsk(args: string[]): Promise<void> {
   prompt();
 }
 
+interface SessionCommitResult {
+  session_id: string;
+  commit_sha: string;
+  branch: string;
+  remote: string;
+  message: string;
+  committed_at: string;
+  user_name: string;
+  user_email: string;
+  status: string;
+  started_at: string;
+  updated_at: string;
+  working_dir: string;
+  tool: string;
+}
+
+async function dataSessionsFor(args: string[]): Promise<void> {
+  const sha = args.find((a) => !a.startsWith("-"));
+  if (!sha) {
+    console.error("Usage: orchid data sessions-for <commit-sha>");
+    console.error("\nFind which AI sessions produced a specific commit.");
+    process.exit(1);
+  }
+
+  const { apiUrl, webUrl } = getConfig();
+  const url = `${apiUrl.replace(/\/$/, "")}/commits/${encodeURIComponent(sha)}/sessions`;
+
+  const res = await fetch(url, { headers: { ...getAuthHeaders() } });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`${res.status}: ${text}`);
+  }
+
+  const data = (await res.json()) as { sessions: SessionCommitResult[] };
+
+  if (data.sessions.length === 0) {
+    console.log(`No sessions found for commit ${sha}`);
+    return;
+  }
+
+  console.log(`\x1b[35m🌸 Sessions for commit ${sha.slice(0, 8)}\x1b[0m\n`);
+
+  for (const s of data.sessions) {
+    const base = (webUrl || apiUrl).replace(/\/$/, "").replace(/:3000$/, "");
+    console.log(`\x1b[1m${s.session_id}\x1b[0m`);
+    console.log(`  \x1b[90mUser:\x1b[0m ${s.user_name || "unknown"}`);
+    console.log(`  \x1b[90mBranch:\x1b[0m ${s.branch || "unknown"}`);
+    console.log(`  \x1b[90mCommit:\x1b[0m ${s.commit_sha.slice(0, 8)} — ${s.message || "(no message)"}`);
+    console.log(`  \x1b[90mStatus:\x1b[0m ${s.status} | Started: ${timeAgo(s.started_at)}`);
+    console.log(`  \x1b[34m${base}/sessions/${encodeURIComponent(s.session_id)}\x1b[0m`);
+    console.log();
+  }
+}
+
 export function runData(args: string[]): void {
   const subcommand = args[0];
 
@@ -481,12 +535,13 @@ Usage:
   orchid data <command>
 
 Commands:
-  list        List all stored sessions
-  show        Show a session transcript
-  search      Search across sessions
-  summary     AI-generated session summary
-  decisions   AI-extracted architectural decision log
-  ask         Ask questions about a session's conversation`);
+  list            List all stored sessions
+  show            Show a session transcript
+  search          Search across sessions
+  sessions-for    Find sessions that produced a commit
+  summary         AI-generated session summary
+  decisions       AI-extracted architectural decision log
+  ask             Ask questions about a session's conversation`);
     return;
   }
 
@@ -505,6 +560,12 @@ Commands:
       break;
     case "search":
       dataSearch(args.slice(1)).catch((err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
+      break;
+    case "sessions-for":
+      dataSessionsFor(args.slice(1)).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
