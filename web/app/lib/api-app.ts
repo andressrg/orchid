@@ -202,15 +202,15 @@ app.put('/sessions/:id', async (c) => {
       after(async () => {
         try {
           const commits = extractCommitsFromTranscript(transcript as string);
-          for (const commit of commits) {
-            await pool.query(
-              `INSERT INTO session_commits (session_id, commit_sha, branch, message, committed_at)
-               VALUES ($1, $2, $3, $4, NOW())
-               ON CONFLICT (session_id, commit_sha) DO NOTHING`,
-              [id, commit.sha, commit.branch, commit.message],
-            );
-          }
           if (commits.length > 0) {
+            const values = commits.map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`).join(', ');
+            const params = commits.flatMap((c) => [id, c.sha, c.branch, c.message]);
+            await pool.query(
+              `INSERT INTO session_commits (session_id, commit_sha, branch, message)
+               VALUES ${values}
+               ON CONFLICT (session_id, commit_sha) DO NOTHING`,
+              params,
+            );
             console.log(`Extracted ${commits.length} commits from session ${id}`);
           }
         } catch (err) {

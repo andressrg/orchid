@@ -19,30 +19,35 @@ export interface ExtractedCommit {
   readonly toolUseId: string;
 }
 
-interface JsonlEntry {
-  message?: {
-    role?: string;
-    content?: unknown;
-  };
-  type?: string;
-  role?: string;
-  content?: unknown;
+interface TextBlock {
+  readonly type: 'text';
+  readonly text: string;
 }
 
 interface ToolUseBlock {
-  type: 'tool_use';
-  id: string;
-  name: string;
-  input?: { command?: string };
+  readonly type: 'tool_use';
+  readonly id: string;
+  readonly name: string;
+  readonly input?: { readonly command?: string };
 }
 
 interface ToolResultBlock {
-  type: 'tool_result';
-  tool_use_id: string;
-  content?: unknown;
+  readonly type: 'tool_result';
+  readonly tool_use_id: string;
+  readonly content?: string | readonly TextBlock[];
 }
 
-type ContentBlock = ToolUseBlock | ToolResultBlock | { type: string };
+type ContentBlock = ToolUseBlock | ToolResultBlock | { readonly type: string };
+
+interface JsonlEntry {
+  readonly message?: {
+    readonly role?: string;
+    readonly content?: string | readonly ContentBlock[];
+  };
+  readonly type?: string;
+  readonly role?: string;
+  readonly content?: string | readonly ContentBlock[];
+}
 
 /** Commands that produce commits */
 const COMMIT_COMMAND_PATTERNS = [
@@ -62,7 +67,7 @@ const isCommitCommand = (command: string): boolean =>
  */
 const COMMIT_OUTPUT_REGEX = /\[([\w/.:-]+)\s+([a-f0-9]{7,40})\]\s+(.+)/;
 
-const extractTextFromContent = (content: unknown): string => {
+const extractTextFromContent = (content: string | readonly TextBlock[] | undefined): string => {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
@@ -76,67 +81,78 @@ const extractTextFromContent = (content: unknown): string => {
   return '';
 };
 
-const getContentBlocks = (entry: JsonlEntry): ContentBlock[] => {
+const getContentBlocks = (entry: JsonlEntry): readonly ContentBlock[] => {
   const content = entry.message?.content ?? entry.content;
-  if (Array.isArray(content)) return content as ContentBlock[];
+  if (Array.isArray(content)) return content as readonly ContentBlock[];
   return [];
 };
 
-export const extractCommitsFromTranscript = (transcript: string): readonly ExtractedCommit[] => {
-  const lines = transcript.split('\n').filter((l) => l.trim());
+const tryParseJsonlLine = (line: string): JsonlEntry | null => {
+  try {
+    return JSON.parse(line) as JsonlEntry;
+  } catch {
+    return null;
+  }
+};
 
-  // Phase 1: collect tool_use IDs for commit commands
-  const commitToolUseIds = new Set<string>();
+const isCommitToolUse = (block: ContentBlock): block is ToolUseBlock =>
+  block.type === 'tool_use' &&
+  'name' in block &&
+  (block as ToolUseBlock).name === 'Bash' &&
+  'input' in block &&
+  Boolean((block as ToolUseBlock).input?.command) &&
+  isCommitCommand((block as ToolUseBlock).input!.command!);
 
-  // Phase 2: match tool_results to those IDs and extract SHAs
-  const commits: ExtractedCommit[] = [];
-  const seenShas = new Set<string>();
+const isToolResult = (block: ContentBlock): block is ToolResultBlock =>
+  block.type === 'tool_result' && 'tool_use_id' in block;
 
-  // Single pass: we can do both phases in one pass since tool_use always
-  // comes before its corresponding tool_result in the transcript
-  for (const line of lines) {
-    let entry: JsonlEntry;
-    try {
-      entry = JSON.parse(line) as JsonlEntry;
-    } catch {
-      continue;
-    }
+interface ParseState {
+  readonly commitToolUseIds: ReadonlySet<string>;
+  readonly commits: readonly ExtractedCommit[];
+  readonly seenShas: ReadonlySet<string>;
+}
 
-    const blocks = getContentBlocks(entry);
+const processBlock = (state: ParseState, block: ContentBlock): ParseState => {
+  if (isCommitToolUse(block)) {
+    return {
+      ...state,
+      commitToolUseIds: new Set([...state.commitToolUseIds, block.id]),
+    };
+  }
 
-    for (const block of blocks) {
-      // Track Bash tool_use blocks with git commit commands
-      if (
-        block.type === 'tool_use' &&
-        'name' in block &&
-        block.name === 'Bash' &&
-        'input' in block &&
-        block.input?.command &&
-        isCommitCommand(block.input.command)
-      ) {
-        commitToolUseIds.add((block as ToolUseBlock).id);
-      }
-
-      // Match tool_results to known commit tool_uses
-      if (
-        block.type === 'tool_result' &&
-        'tool_use_id' in block &&
-        commitToolUseIds.has((block as ToolResultBlock).tool_use_id)
-      ) {
-        const resultText = extractTextFromContent((block as ToolResultBlock).content);
-        const match = COMMIT_OUTPUT_REGEX.exec(resultText);
-        if (match && !seenShas.has(match[2])) {
-          seenShas.add(match[2]);
-          commits.push({
-            sha: match[2],
-            branch: match[1],
-            message: match[3].split('\n')[0].trim(),
-            toolUseId: (block as ToolResultBlock).tool_use_id,
-          });
-        }
-      }
+  if (isToolResult(block) && state.commitToolUseIds.has(block.tool_use_id)) {
+    const resultText = extractTextFromContent(block.content);
+    const match = COMMIT_OUTPUT_REGEX.exec(resultText);
+    if (match && !state.seenShas.has(match[2])) {
+      return {
+        ...state,
+        seenShas: new Set([...state.seenShas, match[2]]),
+        commits: [...state.commits, {
+          sha: match[2],
+          branch: match[1],
+          message: match[3].split('\n')[0].trim(),
+          toolUseId: block.tool_use_id,
+        }],
+      };
     }
   }
 
-  return commits;
+  return state;
+};
+
+export const extractCommitsFromTranscript = (transcript: string): readonly ExtractedCommit[] => {
+  const initialState: ParseState = {
+    commitToolUseIds: new Set(),
+    commits: [],
+    seenShas: new Set(),
+  };
+
+  return transcript
+    .split('\n')
+    .filter((l) => l.trim())
+    .map(tryParseJsonlLine)
+    .filter((entry): entry is JsonlEntry => entry !== null)
+    .flatMap(getContentBlocks)
+    .reduce(processBlock, initialState)
+    .commits;
 };
