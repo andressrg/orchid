@@ -42,9 +42,9 @@ const ensureDir = (dir: string): void => {
 
 // ── Hook definitions ──────────────────────────────────────────────────────
 
-type HookMode = "auto" | "prompt";
+export type HookMode = "auto" | "prompt";
 
-const buildHookConfig = (mode: HookMode) => ({
+export const buildHookConfig = (mode: HookMode) => ({
   [ORCHID_HOOK_MARKER]: true,
   mode,
   SessionStart: [
@@ -198,9 +198,9 @@ const showStatus = (): void => {
 
 // ── Hook merge/remove helpers ─────────────────────────────────────────────
 
-const ORCHID_HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"] as const;
+export const ORCHID_HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"] as const;
 
-const mergeHooks = (
+export const mergeHooks = (
   existing: Record<string, unknown>,
   orchid: Record<string, unknown>
 ): Record<string, unknown> => {
@@ -228,7 +228,7 @@ const mergeHooks = (
   return result;
 };
 
-const removeOrchidHooks = (existing: Record<string, unknown>): Record<string, unknown> => {
+export const removeOrchidHooks = (existing: Record<string, unknown>): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
 
   Object.entries(existing)
@@ -245,7 +245,7 @@ const removeOrchidHooks = (existing: Record<string, unknown>): Record<string, un
   return result;
 };
 
-const isOrchidHookEntry = (entry: unknown): boolean => {
+export const isOrchidHookEntry = (entry: unknown): boolean => {
   if (!entry || typeof entry !== "object") return false;
   const hooks = (entry as Record<string, unknown>).hooks as unknown[];
   if (!Array.isArray(hooks)) return false;
