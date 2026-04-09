@@ -151,19 +151,19 @@ protected routes.
 
 ---
 
-### `orchid data sessions-for <sha1> [sha2] [sha3] ...` — Find sessions for commits
+### `orchid data sessions-for <sha1>,<sha2>,<sha3>` — Find sessions for commits
 
-Given one or more commit SHAs, find the AI sessions that produced them. This is the key command for PR review — an agent can resolve every commit in a PR to its originating conversation in a single call.
+Given one or more commit SHAs (comma-separated), find the AI sessions that produced them. This is the key command for PR review — an agent can resolve every commit in a PR to its originating conversation in a single call.
 
 ```bash
 # Single commit
 orchid data sessions-for abc123f
 
-# Multiple commits (e.g., all commits in a PR)
-orchid data sessions-for abc123f def456a 789bcd0
+# Multiple commits (comma-separated)
+orchid data sessions-for abc123f,def456a,789bcd0
 
 # Typical PR review workflow — pipe all PR commits at once
-git log main..HEAD --format="%H" | xargs orchid data sessions-for
+orchid data sessions-for $(git log main..HEAD --format="%H" | paste -sd,)
 ```
 
 **Output:**
@@ -301,7 +301,7 @@ orchid data search "why we chose websockets"
 
 ```bash
 # An agent reviewing a PR can resolve all commits to sessions in one call:
-git log main..HEAD --format="%H" | xargs orchid data sessions-for
+orchid data sessions-for $(git log main..HEAD --format="%H" | paste -sd,)
 
 # Then read the relevant sessions:
 orchid data show <session-id> --turns

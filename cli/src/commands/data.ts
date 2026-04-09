@@ -488,10 +488,12 @@ interface SessionCommitResult {
 }
 
 async function dataSessionsFor(args: string[]): Promise<void> {
-  const shas = args.filter((a) => !a.startsWith("-"));
+  const raw = args.filter((a) => !a.startsWith("-")).join(",");
+  const shas = raw.split(",").map((s) => s.trim()).filter(Boolean);
   if (shas.length === 0) {
-    console.error("Usage: orchid data sessions-for <sha1> [sha2] [sha3] ...");
+    console.error("Usage: orchid data sessions-for <sha1>,<sha2>,<sha3>");
     console.error("\nFind which AI sessions produced one or more commits.");
+    console.error("Separate multiple SHAs with commas.");
     process.exit(1);
   }
 
