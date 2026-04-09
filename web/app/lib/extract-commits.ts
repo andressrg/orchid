@@ -17,6 +17,7 @@ export interface ExtractedCommit {
   readonly branch: string;
   readonly message: string;
   readonly toolUseId: string;
+  readonly committedAt: string | null;
 }
 
 interface TextBlock {
@@ -40,6 +41,7 @@ interface ToolResultBlock {
 type ContentBlock = ToolUseBlock | ToolResultBlock | { readonly type: string };
 
 interface JsonlEntry {
+  readonly timestamp?: string;
   readonly message?: {
     readonly role?: string;
     readonly content?: string | readonly ContentBlock[];
@@ -47,6 +49,11 @@ interface JsonlEntry {
   readonly type?: string;
   readonly role?: string;
   readonly content?: string | readonly ContentBlock[];
+}
+
+interface TimestampedBlock {
+  readonly block: ContentBlock;
+  readonly timestamp: string | null;
 }
 
 /** Commands that produce commits */
@@ -81,9 +88,12 @@ const extractTextFromContent = (content: string | readonly TextBlock[] | undefin
   return '';
 };
 
-const getContentBlocks = (entry: JsonlEntry): readonly ContentBlock[] => {
+const getTimestampedBlocks = (entry: JsonlEntry): readonly TimestampedBlock[] => {
   const content = entry.message?.content ?? entry.content;
-  if (Array.isArray(content)) return content as readonly ContentBlock[];
+  const timestamp = entry.timestamp ?? null;
+  if (Array.isArray(content)) {
+    return (content as readonly ContentBlock[]).map((block) => ({ block, timestamp }));
+  }
   return [];
 };
 
@@ -112,7 +122,7 @@ interface ParseState {
   readonly seenShas: ReadonlySet<string>;
 }
 
-const processBlock = (state: ParseState, block: ContentBlock): ParseState => {
+const processTimestampedBlock = (state: ParseState, { block, timestamp }: TimestampedBlock): ParseState => {
   if (isCommitToolUse(block)) {
     return {
       ...state,
@@ -132,6 +142,7 @@ const processBlock = (state: ParseState, block: ContentBlock): ParseState => {
           branch: match[1],
           message: match[3].split('\n')[0].trim(),
           toolUseId: block.tool_use_id,
+          committedAt: timestamp,
         }],
       };
     }
@@ -152,7 +163,7 @@ export const extractCommitsFromTranscript = (transcript: string): readonly Extra
     .filter((l) => l.trim())
     .map(tryParseJsonlLine)
     .filter((entry): entry is JsonlEntry => entry !== null)
-    .flatMap(getContentBlocks)
-    .reduce(processBlock, initialState)
+    .flatMap(getTimestampedBlocks)
+    .reduce(processTimestampedBlock, initialState)
     .commits;
 };

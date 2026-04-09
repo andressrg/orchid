@@ -42,12 +42,15 @@ export const orchidSession = pgTable('orchid_session', {
 ]);
 
 export const sessionCommit = pgTable('session_commits', {
+  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
   sessionId: text('session_id').notNull().references(() => orchidSession.id, { onDelete: 'cascade' }),
   commitSha: text('commit_sha').notNull(),
   branch: text('branch'),
   remote: text('remote'),
   message: text('message'),
-  committedAt: timestamp('committed_at', { withTimezone: true }).defaultNow(),
+  committedAt: timestamp('committed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('idx_session_commits_sha').on(t.commitSha),
   index('idx_session_commits_session').on(t.sessionId),

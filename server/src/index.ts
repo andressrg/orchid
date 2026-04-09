@@ -507,10 +507,10 @@ Answer the user's question based on this conversation. Be specific and cite rele
 app.get("/sessions/:id/commits", requireApiKey, async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      `SELECT commit_sha, branch, remote, message, committed_at
+      `SELECT session_commits.commit_sha, session_commits.branch, session_commits.remote, session_commits.message, session_commits.committed_at
        FROM session_commits
-       WHERE session_id = $1
-       ORDER BY committed_at DESC`,
+       WHERE session_commits.session_id = $1
+       ORDER BY session_commits.committed_at DESC`,
       [req.params.id]
     );
 

@@ -203,10 +203,11 @@ app.put('/sessions/:id', async (c) => {
         try {
           const commits = extractCommitsFromTranscript(transcript as string);
           if (commits.length > 0) {
-            const values = commits.map((_, i) => `($${i * 4 + 1}, $${i * 4 + 2}, $${i * 4 + 3}, $${i * 4 + 4})`).join(', ');
-            const params = commits.flatMap((c) => [id, c.sha, c.branch, c.message]);
+            const cols = 5;
+            const values = commits.map((_, i) => `($${i * cols + 1}, $${i * cols + 2}, $${i * cols + 3}, $${i * cols + 4}, $${i * cols + 5})`).join(', ');
+            const params = commits.flatMap((c) => [id, c.sha, c.branch, c.message, c.committedAt]);
             await pool.query(
-              `INSERT INTO session_commits (session_id, commit_sha, branch, message)
+              `INSERT INTO session_commits (session_id, commit_sha, branch, message, committed_at)
                VALUES ${values}
                ON CONFLICT (session_id, commit_sha) DO NOTHING`,
               params,
@@ -492,10 +493,10 @@ app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
     const result = await pool.query(
-      `SELECT commit_sha, branch, remote, message, committed_at
+      `SELECT session_commits.commit_sha, session_commits.branch, session_commits.remote, session_commits.message, session_commits.committed_at
        FROM session_commits
-       WHERE session_id = $1
-       ORDER BY committed_at DESC`,
+       WHERE session_commits.session_id = $1
+       ORDER BY session_commits.committed_at DESC`,
       [id],
     );
 

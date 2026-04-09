@@ -53,6 +53,7 @@ describe('extractCommitsFromTranscript', () => {
       branch: 'main',
       message: 'Add feature',
       toolUseId: 'tool_1',
+      committedAt: null,
     });
   });
 
@@ -309,6 +310,7 @@ describe('extractCommitsFromTranscript', () => {
       branch: 'feat/cli-hooks',
       message: 'Add hooks command',
       toolUseId: 'toolu_01RsKtog8W2hnNp4YoSVEjuC',
+      committedAt: null,
     });
   });
 
@@ -347,5 +349,30 @@ describe('extractCommitsFromTranscript', () => {
     const commits = extractCommitsFromTranscript(transcript);
     expect(commits).toHaveLength(1);
     expect(commits[0].sha).toBe('aaf7777');
+  });
+
+  it('captures the JSONL entry timestamp as committedAt', () => {
+    const transcript = [
+      JSON.stringify({
+        timestamp: '2026-04-06T01:27:57.242Z',
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git commit -m "Timestamped"' } }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: '2026-04-06T01:28:01.000Z',
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '[main abc1234] Timestamped\n 1 file changed' }],
+        },
+      }),
+    ].join('\n');
+
+    const commits = extractCommitsFromTranscript(transcript);
+    expect(commits).toHaveLength(1);
+    expect(commits[0].committedAt).toBe('2026-04-06T01:28:01.000Z');
   });
 });
