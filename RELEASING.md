@@ -45,9 +45,22 @@ All CLI release tags use the `cli-v` prefix (e.g. `cli-v0.1.0`,
 `cli-v1.0.0`). This keeps CLI releases separate from any future tags for
 other packages in the monorepo.
 
+### Authentication: npm Trusted Publishers
+
+CI uses [npm Trusted Publishers](https://docs.npmjs.com/trusted-publishers)
+(OIDC) — no static NPM_TOKEN needed. GitHub Actions authenticates directly
+with npm via short-lived tokens.
+
+**First-time setup** (already done):
+1. Publish the package once manually to create it on npm
+2. Go to npmjs.com → `orchid-code` → Settings → Trusted Publishers
+3. Add: repo `andressrg/orchid`, workflow `publish-cli.yml`
+
+After that, all future publishes go through CI automatically.
+
 ### Troubleshooting
 
-- **CI publish failed?** Check the Actions tab for the failed run. The most
-  common cause is a missing or expired `NPM_TOKEN` secret.
-- **Tag already exists?** If you need to re-publish the same version, delete
-  the tag locally and remotely, then re-tag and push.
+- **CI publish failed?** Check the Actions tab. If trusted publishers isn't
+  configured, the OIDC auth will fail — follow the setup above.
+- **Tag already exists?** Delete the tag locally and remotely, then re-tag
+  and push.
