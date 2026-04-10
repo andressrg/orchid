@@ -1,5 +1,5 @@
 {
-  "name": "orchid-code",
+  "name": "orchid-cli",
   "version": "0.1.0",
   "description": "Capture and query AI coding conversations — CLI for orchidkeep.com",
   "license": "MIT",

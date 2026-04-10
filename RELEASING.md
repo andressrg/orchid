@@ -1,11 +1,11 @@
 # Releasing
 
-## CLI (`orchid-code` on npm)
+## CLI (`orchid-cli` on npm)
 
 ### Install / Update
 
 ```bash
-npm install -g orchid-code
+npm install -g orchid-cli
 ```
 
 ### How to release a new version
@@ -53,7 +53,7 @@ with npm via short-lived tokens.
 
 **First-time setup** (already done):
 1. Publish the package once manually to create it on npm
-2. Go to npmjs.com → `orchid-code` → Settings → Trusted Publishers
+2. Go to npmjs.com → `orchid-cli` → Settings → Trusted Publishers
 3. Add: repo `andressrg/orchid`, workflow `publish-cli.yml`
 
 After that, all future publishes go through CI automatically.
