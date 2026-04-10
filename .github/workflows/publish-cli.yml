@@ -23,6 +23,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          registry-url: "https://registry.npmjs.org"
 
       - run: pnpm install --frozen-lockfile
 
@@ -32,8 +33,8 @@ jobs:
       - name: Build CLI
         run: cd cli && pnpm build
 
-      - name: Configure npm registry
-        run: npm config set registry https://registry.npmjs.org/
+      - name: Clear token auth so npm uses OIDC
+        run: npm config delete '//registry.npmjs.org/:_authToken'
 
       - name: Publish to npm
         run: cd cli && npm publish --access public
