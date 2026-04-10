@@ -2,7 +2,7 @@
   "name": "orchid-cli",
   "version": "0.1.0",
   "description": "Capture and query AI coding conversations — CLI for orchidkeep.com",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",
     "url": "https://github.com/andressrg/orchid",
@@ -15,7 +15,8 @@
   },
   "files": [
     "bin",
-    "dist"
+    "dist",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
