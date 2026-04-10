@@ -1,4 +1,4 @@
-# orchid-cli
+# orchid
 
 Code tells you *what*. Git tells you *when*. Orchid tells you **why**.
 
