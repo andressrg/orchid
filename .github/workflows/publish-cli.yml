@@ -35,8 +35,7 @@ jobs:
       - name: Verify package contents
         run: cd cli && npm pack --dry-run
 
-      # Uses npm Trusted Publishers (OIDC) — no NPM_TOKEN needed.
-      # Configure at: npmjs.com → orchid-code → Settings → Trusted Publishers
-      # Repo: andressrg/orchid, Workflow: publish-cli.yml
       - name: Publish to npm
         run: cd cli && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
