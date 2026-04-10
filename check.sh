@@ -2,7 +2,7 @@
 set -e
 
 echo "=== CLI ==="
-(cd cli && pnpm run check)
+(cd cli && pnpm run check && pnpm test)
 
 echo ""
 echo "=== Server ==="
