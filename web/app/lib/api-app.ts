@@ -30,7 +30,6 @@ app.use('*', async (c, next) => {
     const decompressed = gunzipSync(compressed);
     const headers = new Headers(c.req.raw.headers);
     headers.delete('content-encoding');
-    // @ts-expect-error -- replacing internal raw request with decompressed body
     c.req.raw = new Request(c.req.raw.url, {
       method: c.req.raw.method,
       headers,
