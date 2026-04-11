@@ -129,6 +129,9 @@ cd web && pnpm db:migrate
 # Run the web app
 cd web && pnpm dev
 
+# Install CLI locally (for dev, instead of npm)
+cd cli && pnpm install && pnpm build && npm link
+
 # Run tests
 cd web && pnpm test           # Unit tests
 cd cli && pnpm test           # CLI tests
