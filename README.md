@@ -6,8 +6,7 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ## Live Demo
 
-- **Web UI**: http://24.144.97.81
-- **API**: http://24.144.97.81:3000
+- **Web UI**: [orchid-web.vercel.app](https://orchid-web.vercel.app)
 
 ![Sessions Dashboard](web/public/screenshot-sessions.png)
 
@@ -57,22 +56,24 @@ orchid explain <commit-sha>            # Explain why a commit was made
 ## Tech Stack
 
 ```
-CLI:        TypeScript (wrapper + file watcher + HTTP sync)
-Server:     Node.js + Express + PostgreSQL
+CLI:        TypeScript (wrapper + file watcher + HTTP sync), published as orchid-cli on npm
+Server:     Node.js + Hono (API routes inside Next.js)
 Frontend:   Next.js 16 + Tailwind CSS
-AI:         OpenAI GPT-4o-mini for summaries and reviews
-Hosting:    DigitalOcean droplet + Caddy reverse proxy + PM2
+Database:   PostgreSQL on Neon (serverless)
+Auth:       Better Auth (cookie sessions + personal access tokens)
+ORM:        Drizzle ORM
+AI:         OpenAI GPT-5.4-nano for summaries and reviews
+Hosting:    Vercel (web + API) + Neon (database)
 ```
 
 ## Quick Start
 
 ```bash
-# Set environment
-export ORCHID_API_URL=http://24.144.97.81:3000
-export ORCHID_API_KEY=orchid-poc-api-key-2024
+# Install CLI from npm
+npm install -g orchid-cli
 
-# Install CLI
-cd cli && npm install && npm run build && npm link
+# Login to your Orchid account
+orchid login
 
 # Start coding with conversation capture
 orchid claude
@@ -80,59 +81,62 @@ orchid claude
 
 ## Infrastructure
 
-| Instance          | Role                    | IP             | Specs                      |
-| ----------------- | ----------------------- | -------------- | -------------------------- |
-| **orchid-deploy** | Web app + API + DB      | `24.144.97.81` | 4 vCPU, 8GB RAM, 160GB SSD |
-
-Services managed by PM2:
-- `orchid-server` — Express API on port 3000
-- `orchid-web` — Next.js on port 3001 (Caddy proxies port 80 → 3001)
+| Service      | Provider | Details                                      |
+| ------------ | -------- | -------------------------------------------- |
+| **Web + API** | Vercel   | Next.js app with API routes, auto-deploys from `main` |
+| **Database** | Neon     | Serverless PostgreSQL                        |
+| **CLI**      | npm      | Published as `orchid-cli`                    |
 
 ## Deploying
 
-### Prerequisites
+### Web + API (Vercel)
 
-- SSH key at `/tmp/orchid-deploy/id_ed25519` (copy from `.secrets` in repo root)
-- Target droplet: `24.144.97.81` with Node.js 22, PostgreSQL 16, PM2, and Caddy installed
+Deploys are automatic — push to `main` and Vercel builds and deploys. Preview deployments are created for every PR.
 
-### One-command deploy
+### Database migrations
 
 ```bash
-bash scripts/deploy.sh
+cd web
+pnpm db:generate   # Generate migration from schema changes
+pnpm db:migrate    # Apply migrations to Neon
 ```
 
-This rsyncs both `server/` and `web/` to the droplet, builds, and restarts PM2 processes.
+### CLI releases
 
-### Manual deploy
+See [RELEASING.md](RELEASING.md) for the full CLI release process. In short:
 
 ```bash
-KEY="/tmp/orchid-deploy/id_ed25519"
-HOST="root@24.144.97.81"
-SSH="ssh -i $KEY -o StrictHostKeyChecking=no $HOST"
-
-# Server
-rsync -avz --delete --exclude node_modules --exclude dist \
-  -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-  server/ $HOST:/opt/orchid-server/
-$SSH 'cd /opt/orchid-server && npm install && npm run build && pm2 restart orchid-server'
-
-# Web
-rsync -avz --delete --exclude node_modules --exclude .next --exclude dist \
-  -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-  web/ $HOST:/opt/orchid-web/
-$SSH 'cd /opt/orchid-web && npm install && NEXT_PUBLIC_API_URL=http://24.144.97.81:3000 NEXT_PUBLIC_API_KEY=orchid-poc-api-key-2024 npm run build && pm2 restart orchid-web'
+cd cli
+npm version patch   # bumps version, creates git tag
+git push && git push --tags   # CI publishes to npm
 ```
 
-### Useful commands on the droplet
+## Development
 
 ```bash
-pm2 status                    # Check process status
-pm2 logs orchid-server        # Server logs
-pm2 logs orchid-web           # Web logs
-pm2 restart all               # Restart everything
-curl http://localhost:3000/health  # API health check
+# Install dependencies (pnpm workspace)
+pnpm install
+
+# Start local postgres (run in foreground to monitor logs)
+docker compose up
+
+# Set database URL
+export DATABASE_URL="postgresql://orchid:orchid@localhost:5432/orchid"
+
+# Run migrations
+cd web && pnpm db:migrate
+
+# Run the web app
+cd web && pnpm dev
+
+# Run tests
+cd web && pnpm test           # Unit tests
+cd cli && pnpm test           # CLI tests
+
+# Type check all packages
+bash check.sh
 ```
 
 ---
 
-*Built for the hackathon. See [PLAN.md](PLAN.md) for the full spec.*
+*See [PLAN.md](PLAN.md) for the full spec and [DOCS.md](DOCS.md) for CLI documentation.*
