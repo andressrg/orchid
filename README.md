@@ -140,6 +140,25 @@ cd cli && pnpm test           # CLI tests
 bash check.sh
 ```
 
+### Concurrent Local Stacks
+
+To run multiple isolated local environments at once, use the foreground stack launcher:
+
+```bash
+pnpm dev:stack
+pnpm dev:stack review-pr-42
+```
+
+Each invocation:
+
+- picks free app and Postgres ports automatically
+- creates an isolated Postgres database and compose project
+- runs database migrations against that database
+- starts Postgres and the Next.js app in the foreground
+- streams prefixed logs from both services into the same terminal
+
+This keeps the stack visible to an AI agent without detached containers or hidden logs.
+
 ---
 
 *See [PLAN.md](PLAN.md) for the full spec and [DOCS.md](DOCS.md) for CLI documentation.*

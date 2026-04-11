@@ -1,0 +1,7 @@
+{
+  "name": "orchid-monorepo",
+  "private": true,
+  "scripts": {
+    "dev:stack": "node scripts/dev-stack.mjs"
+  }
+}
