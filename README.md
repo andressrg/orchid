@@ -117,7 +117,16 @@ git push && git push --tags   # CI publishes to npm
 # Install dependencies (pnpm workspace)
 pnpm install
 
-# Run the web app locally
+# Start local postgres
+docker compose up -d
+
+# Set database URL
+export DATABASE_URL="postgresql://orchid:orchid@localhost:5432/orchid"
+
+# Run migrations
+cd web && pnpm db:migrate
+
+# Run the web app
 cd web && pnpm dev
 
 # Run tests
