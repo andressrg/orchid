@@ -139,6 +139,14 @@ nav a:hover {
   background: var(--bg-hover) !important;
 }
 
+.sign-out-btn {
+  color: var(--text-tertiary);
+}
+
+.sign-out-btn:hover {
+  color: var(--text-secondary);
+}
+
 /* ============================================
    Landing Page Styles
    ============================================ */
