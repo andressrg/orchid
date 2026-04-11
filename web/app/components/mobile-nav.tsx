@@ -8,17 +8,16 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
   return (
     <>
       {/* Mobile header */}
-      <div className="md:hidden flex items-center h-12 px-3 border-b" style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}>
+      <div className="md:hidden flex items-center h-12 px-3 border-b border-night-750 bg-night-900">
         <button
           onClick={() => setOpen(true)}
-          className="p-1.5 rounded-md"
-          style={{ color: 'var(--text-secondary)' }}
+          className="p-1.5 rounded-md text-night-300"
         >
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <path d="M3 5h14M3 10h14M3 15h14" />
           </svg>
         </button>
-        <span className="ml-2 text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+        <span className="ml-2 text-sm font-semibold text-night-100">
           Orchid
         </span>
       </div>
@@ -33,8 +32,7 @@ export function MobileNav({ children }: { children: React.ReactNode }) {
 
       {/* Drawer */}
       <div
-        className={`md:hidden fixed inset-y-0 left-0 z-50 w-[260px] transform transition-transform duration-200 ${open ? 'translate-x-0' : '-translate-x-full'}`}
-        style={{ background: 'var(--bg-secondary)' }}
+        className={`md:hidden fixed inset-y-0 left-0 z-50 w-[260px] transform transition-transform duration-200 bg-night-900 ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
         <div className="h-full" onClick={() => setOpen(false)}>
           {children}
