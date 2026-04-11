@@ -12,13 +12,13 @@ const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
-const magenta = (s: string) => `\x1b[35m${s}\x1b[0m`;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
 const CLAUDE_SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
-const ORCHID_HOOKS_DIR = path.join(os.homedir(), ".orchid", "hooks");
-const ORCHID_HOOK_MARKER = "__orchid_managed";
+const ORCHID_DIR = path.join(os.homedir(), ".orchid");
+const ORCHID_HOOKS_DIR = path.join(ORCHID_DIR, "hooks");
+const ORCHID_HOOKS_CONFIG_PATH = path.join(ORCHID_DIR, "hooks-config.json");
 
 // ── Settings helpers ──────────────────────────────────────────────────────
 
@@ -40,13 +40,35 @@ const ensureDir = (dir: string): void => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 };
 
-// ── Hook definitions ──────────────────────────────────────────────────────
+// ── Orchid hooks config (stored separately from Claude settings) ──────────
 
 export type HookMode = "auto" | "prompt";
 
-export const buildHookConfig = (mode: HookMode) => ({
-  [ORCHID_HOOK_MARKER]: true,
-  mode,
+interface OrchidHooksConfig {
+  readonly installed: boolean;
+  readonly mode: HookMode;
+}
+
+const readHooksConfig = (): OrchidHooksConfig | null => {
+  try {
+    return JSON.parse(fs.readFileSync(ORCHID_HOOKS_CONFIG_PATH, "utf-8"));
+  } catch {
+    return null;
+  }
+};
+
+const writeHooksConfig = (config: OrchidHooksConfig): void => {
+  ensureDir(ORCHID_DIR);
+  fs.writeFileSync(ORCHID_HOOKS_CONFIG_PATH, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+};
+
+const removeHooksConfig = (): void => {
+  try { fs.unlinkSync(ORCHID_HOOKS_CONFIG_PATH); } catch { /* noop */ }
+};
+
+// ── Hook definitions ──────────────────────────────────────────────────────
+
+export const buildHookEntries = () => ({
   SessionStart: [
     {
       matcher: "startup",
@@ -93,26 +115,27 @@ const installHooks = (mode: HookMode): void => {
     process.exit(1);
   }
 
-  const settings = readSettings();
-  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown>;
+  const hooksConfig = readHooksConfig();
 
-  // Check if already installed
-  if (existingHooks[ORCHID_HOOK_MARKER]) {
-    const currentMode = existingHooks.mode as string;
-    if (currentMode === mode) {
-      console.log(`${green("✓")} Orchid hooks already installed ${dim(`(mode: ${mode})`)}`);
-      return;
-    }
-    console.log(`${yellow("→")} Updating hook mode from ${bold(currentMode)} to ${bold(mode)}`);
+  // Check if already installed with same mode
+  if (hooksConfig?.installed && hooksConfig.mode === mode) {
+    console.log(`${green("✓")} Orchid hooks already installed ${dim(`(mode: ${mode})`)}`);
+    return;
   }
 
-  const orchidHooks = buildHookConfig(mode);
+  if (hooksConfig?.installed) {
+    console.log(`${yellow("→")} Updating hook mode from ${bold(hooksConfig.mode)} to ${bold(mode)}`);
+  }
+
+  const settings = readSettings();
+  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown>;
+  const orchidEntries = buildHookEntries();
 
   // Merge with existing hooks — preserve non-orchid hooks on the same events
-  const mergedHooks = mergeHooks(existingHooks, orchidHooks);
-  settings.hooks = mergedHooks;
+  settings.hooks = mergeHooks(existingHooks, orchidEntries);
 
   writeSettings(settings);
+  writeHooksConfig({ installed: true, mode });
   ensureDir(ORCHID_HOOKS_DIR);
 
   console.log("");
@@ -135,13 +158,15 @@ const installHooks = (mode: HookMode): void => {
 // ── Uninstall ─────────────────────────────────────────────────────────────
 
 const uninstallHooks = (): void => {
-  const settings = readSettings();
-  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown>;
+  const hooksConfig = readHooksConfig();
 
-  if (!existingHooks[ORCHID_HOOK_MARKER]) {
+  if (!hooksConfig?.installed) {
     console.log(`${dim("Orchid hooks are not installed.")}`);
     return;
   }
+
+  const settings = readSettings();
+  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown>;
 
   // Remove orchid-managed hooks, keep others
   const cleaned = removeOrchidHooks(existingHooks);
@@ -152,6 +177,7 @@ const uninstallHooks = (): void => {
   }
 
   writeSettings(settings);
+  removeHooksConfig();
 
   // Clean up state files
   cleanupStateFiles();
@@ -164,15 +190,13 @@ const uninstallHooks = (): void => {
 // ── Status ────────────────────────────────────────────────────────────────
 
 const showStatus = (): void => {
-  const settings = readSettings();
-  const existingHooks = (settings.hooks ?? {}) as Record<string, unknown>;
+  const hooksConfig = readHooksConfig();
 
   console.log("");
 
-  if (existingHooks[ORCHID_HOOK_MARKER]) {
-    const mode = (existingHooks.mode as string) || "unknown";
+  if (hooksConfig?.installed) {
     console.log(`  ${green("●")} Orchid hooks are ${green("installed")}`);
-    console.log(`  ${dim("Mode:")}    ${bold(mode)}`);
+    console.log(`  ${dim("Mode:")}    ${bold(hooksConfig.mode)}`);
     console.log(`  ${dim("Config:")}  ${dim(CLAUDE_SETTINGS_PATH)}`);
 
     const config = tryGetConfig();
@@ -206,9 +230,9 @@ export const mergeHooks = (
 ): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
 
-  // Copy non-orchid, non-event keys from existing
+  // Copy all non-orchid-event keys from existing as-is
   Object.entries(existing)
-    .filter(([key]) => key !== ORCHID_HOOK_MARKER && key !== "mode" && !ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number]))
+    .filter(([key]) => !ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number]))
     .forEach(([key, value]) => { result[key] = value; });
 
   // For each event, merge: keep non-orchid entries, add orchid entries
@@ -221,26 +245,20 @@ export const mergeHooks = (
     if (merged.length > 0) result[event] = merged;
   });
 
-  // Copy orchid marker and mode
-  result[ORCHID_HOOK_MARKER] = orchid[ORCHID_HOOK_MARKER];
-  result.mode = orchid.mode;
-
   return result;
 };
 
 export const removeOrchidHooks = (existing: Record<string, unknown>): Record<string, unknown> => {
   const result: Record<string, unknown> = {};
 
-  Object.entries(existing)
-    .filter(([key]) => key !== ORCHID_HOOK_MARKER && key !== "mode")
-    .forEach(([key, value]) => {
-      if (ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number])) {
-        const filtered = (value as unknown[]).filter((entry) => !isOrchidHookEntry(entry));
-        if (filtered.length > 0) result[key] = filtered;
-      } else {
-        result[key] = value;
-      }
-    });
+  Object.entries(existing).forEach(([key, value]) => {
+    if (ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number])) {
+      const filtered = (value as unknown[]).filter((entry) => !isOrchidHookEntry(entry));
+      if (filtered.length > 0) result[key] = filtered;
+    } else {
+      result[key] = value;
+    }
+  });
 
   return result;
 };
@@ -340,22 +358,18 @@ const findTranscriptForSession = (sessionId: string, cwd: string): string | null
   const claudeProjectsDir = path.join(os.homedir(), ".claude", "projects");
   if (!fs.existsSync(claudeProjectsDir)) return null;
 
-  // Try direct lookup: the session ID is the filename
   try {
     const projectDirs = fs.readdirSync(claudeProjectsDir, { withFileTypes: true })
       .filter((e) => e.isDirectory());
 
-    // Search all project dirs for a file matching the session ID
-    const match = projectDirs.reduce<string | null>((found, projDir) => {
+    return projectDirs.reduce<string | null>((found, projDir) => {
       if (found) return found;
       const candidate = path.join(claudeProjectsDir, projDir.name, `${sessionId}.jsonl`);
       return fs.existsSync(candidate) ? candidate : null;
     }, null);
-
-    if (match) return match;
-  } catch { /* fallthrough */ }
-
-  return null;
+  } catch {
+    return null;
+  }
 };
 
 // ── Sync helper ───────────────────────────────────────────────────────────
@@ -416,32 +430,24 @@ const readStdinJson = (): Promise<Record<string, unknown>> =>
         resolve({});
       }
     });
-    // If stdin is already closed or not piped, resolve immediately
     if (process.stdin.readableEnded) resolve({});
-    setTimeout(() => resolve({}), 3000); // Safety timeout
+    setTimeout(() => resolve({}), 3000);
   });
 
 const handleOnStart = async (): Promise<void> => {
   const config = tryGetConfig();
-  if (!config) {
-    // Not configured — silently exit
-    process.exit(0);
-  }
+  if (!config) process.exit(0);
 
   const input = await readStdinJson();
   const sessionId = (input.session_id as string) || "";
   const cwd = (input.cwd as string) || process.cwd();
 
-  if (!sessionId) {
-    process.exit(0);
-  }
+  if (!sessionId) process.exit(0);
 
-  // Read current hook mode
-  const settings = readSettings();
-  const hooks = (settings.hooks ?? {}) as Record<string, unknown>;
-  const mode = (hooks.mode as string) || "auto";
+  // Read mode from orchid hooks config
+  const hooksConfig = readHooksConfig();
+  const mode = hooksConfig?.mode ?? "auto";
 
-  // Create session state
   const state: HookSessionState = {
     sessionId,
     cwd,
@@ -452,14 +458,12 @@ const handleOnStart = async (): Promise<void> => {
 
   writeSessionState(state);
 
-  // Output message to Claude's context
   if (mode === "auto") {
     process.stdout.write(
       `🌸 Orchid is syncing this conversation. ` +
       `View it live at ${config.webUrl}/sessions/${sessionId}\n`
     );
   } else {
-    // Prompt mode: ask Claude to offer syncing
     process.stdout.write(
       `🌸 Orchid sync is available for this conversation. ` +
       `If the user wants to sync, run: orchid hooks _enable-sync ${sessionId}\n` +
@@ -479,27 +483,21 @@ const handleOnStop = async (): Promise<void> => {
 
   if (!sessionId) process.exit(0);
 
-  // Check if sync is enabled for this session
   const state = readSessionState(sessionId);
   if (!state || !state.enabled) process.exit(0);
 
-  // Find transcript if we haven't yet
   const transcriptPath = state.transcriptPath || findTranscriptForSession(sessionId, cwd);
   if (!transcriptPath) process.exit(0);
 
-  // Update state with transcript path
   if (!state.transcriptPath) {
     writeSessionState({ ...state, transcriptPath });
   }
 
-  // Sync — silently (don't pollute Claude's context)
   try {
     await syncTranscript(sessionId, transcriptPath, cwd, "active");
   } catch {
     // Silent failure — don't interrupt the conversation
   }
-
-  // Output nothing to keep Claude's context clean
 };
 
 const handleOnEnd = async (): Promise<void> => {
@@ -514,7 +512,6 @@ const handleOnEnd = async (): Promise<void> => {
 
   const state = readSessionState(sessionId);
 
-  // If sync was enabled, do a final sync with status "done"
   if (state?.enabled) {
     const transcriptPath = state.transcriptPath || findTranscriptForSession(sessionId, cwd);
     if (transcriptPath) {
@@ -526,16 +523,14 @@ const handleOnEnd = async (): Promise<void> => {
       }
     }
   } else {
-    // Sync wasn't enabled — offer a reminder
     const transcriptPath = findTranscriptForSession(sessionId, cwd);
     if (transcriptPath) {
       process.stderr.write(
-        `🌸 Orchid: This conversation wasn't synced. Run ${cyan("orchid sync --discover")} to sync it later.\n`
+        `🌸 Orchid: This conversation wasn't synced. Run orchid sync --discover to sync it later.\n`
       );
     }
   }
 
-  // Clean up state file
   removeSessionState(sessionId);
 };
 
@@ -553,7 +548,6 @@ const handleEnableSync = async (sessionId: string): Promise<void> => {
 
   const state = readSessionState(sessionId);
   if (!state) {
-    // Create state if it doesn't exist (in case _on-start didn't fire)
     writeSessionState({
       sessionId,
       cwd: process.cwd(),
@@ -608,8 +602,6 @@ export const runHooks = async (args: readonly string[]): Promise<void> => {
     case "status":
       showStatus();
       break;
-
-    // Internal handlers (called by Claude Code hooks)
     case "_on-start":
       await handleOnStart();
       break;
@@ -622,7 +614,6 @@ export const runHooks = async (args: readonly string[]): Promise<void> => {
     case "_enable-sync":
       await handleEnableSync(args[1]);
       break;
-
     case "--help":
     case "-h":
     case undefined:

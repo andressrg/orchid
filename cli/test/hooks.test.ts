@@ -1,32 +1,36 @@
 import { describe, it } from "node:test";
 import * as assert from "node:assert/strict";
 import {
-  mergeHooks, removeOrchidHooks, isOrchidHookEntry, buildHookConfig,
+  mergeHooks, removeOrchidHooks, isOrchidHookEntry, buildHookEntries,
   ORCHID_HOOK_EVENTS,
 } from "../src/commands/hooks";
 
-// ── buildHookConfig ───────────────────────────────────────────────────────
+// ── buildHookEntries ──────────────────────────────────────────────────────
 
-describe("buildHookConfig", () => {
-  it("builds config with auto mode", () => {
-    const config = buildHookConfig("auto");
-    assert.equal(config.__orchid_managed, true);
-    assert.equal(config.mode, "auto");
-    assert.ok(Array.isArray(config.SessionStart));
-    assert.ok(Array.isArray(config.Stop));
-    assert.ok(Array.isArray(config.SessionEnd));
+describe("buildHookEntries", () => {
+  it("returns only valid hook event keys", () => {
+    const entries = buildHookEntries();
+    const keys = Object.keys(entries);
+    keys.forEach((key) => {
+      assert.ok(
+        ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number]),
+        `Unexpected key "${key}" — only valid hook events allowed`
+      );
+    });
   });
 
-  it("builds config with prompt mode", () => {
-    const config = buildHookConfig("prompt");
-    assert.equal(config.mode, "prompt");
+  it("includes SessionStart, Stop, and SessionEnd", () => {
+    const entries = buildHookEntries();
+    assert.ok(Array.isArray(entries.SessionStart));
+    assert.ok(Array.isArray(entries.Stop));
+    assert.ok(Array.isArray(entries.SessionEnd));
   });
 
   it("includes correct commands", () => {
-    const config = buildHookConfig("auto");
-    const startCmd = (config.SessionStart[0].hooks[0] as Record<string, unknown>).command;
-    const stopCmd = (config.Stop[0].hooks[0] as Record<string, unknown>).command;
-    const endCmd = (config.SessionEnd[0].hooks[0] as Record<string, unknown>).command;
+    const entries = buildHookEntries();
+    const startCmd = (entries.SessionStart[0].hooks[0] as Record<string, unknown>).command;
+    const stopCmd = (entries.Stop[0].hooks[0] as Record<string, unknown>).command;
+    const endCmd = (entries.SessionEnd[0].hooks[0] as Record<string, unknown>).command;
 
     assert.equal(startCmd, "orchid hooks _on-start");
     assert.equal(stopCmd, "orchid hooks _on-stop");
@@ -67,14 +71,15 @@ describe("isOrchidHookEntry", () => {
 
 describe("mergeHooks", () => {
   it("merges into empty existing hooks", () => {
-    const orchid = buildHookConfig("auto");
+    const orchid = buildHookEntries();
     const result = mergeHooks({}, orchid);
 
-    assert.equal(result.__orchid_managed, true);
-    assert.equal(result.mode, "auto");
     assert.equal((result.SessionStart as unknown[]).length, 1);
     assert.equal((result.Stop as unknown[]).length, 1);
     assert.equal((result.SessionEnd as unknown[]).length, 1);
+    // Should NOT contain non-event keys
+    assert.equal(result.__orchid_managed, undefined);
+    assert.equal(result.mode, undefined);
   });
 
   it("preserves non-overlapping hooks", () => {
@@ -82,7 +87,7 @@ describe("mergeHooks", () => {
       Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command: "echo notify" }] }],
       PostToolUse: [{ matcher: "Write|Edit", hooks: [{ type: "command", command: "echo format" }] }],
     };
-    const orchid = buildHookConfig("auto");
+    const orchid = buildHookEntries();
     const result = mergeHooks(existing, orchid);
 
     assert.ok(Array.isArray(result.Notification));
@@ -95,41 +100,33 @@ describe("mergeHooks", () => {
     const existing = {
       Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
     };
-    const orchid = buildHookConfig("auto");
+    const orchid = buildHookEntries();
     const result = mergeHooks(existing, orchid);
 
     const stopEntries = result.Stop as unknown[];
     assert.equal(stopEntries.length, 2);
 
-    // First is the original non-orchid entry
     const first = stopEntries[0] as Record<string, unknown>;
     assert.equal(((first.hooks as Record<string, unknown>[])[0]).command, "echo done");
 
-    // Second is the orchid entry
     const second = stopEntries[1] as Record<string, unknown>;
     assert.ok(((second.hooks as Record<string, unknown>[])[0]).command?.toString().includes("orchid hooks _on-stop"));
   });
 
   it("replaces existing orchid entries (no duplicates)", () => {
-    // Simulate existing orchid hooks already installed
-    const existingOrchid = buildHookConfig("auto");
+    // Simulate orchid hooks already present in settings
+    const existingOrchid = buildHookEntries();
     const existing = {
       ...existingOrchid,
       Notification: [{ matcher: "test", hooks: [{ type: "command", command: "echo test" }] }],
     };
 
-    const newOrchid = buildHookConfig("prompt");
+    const newOrchid = buildHookEntries();
     const result = mergeHooks(existing, newOrchid);
 
-    // Should only have 1 entry per orchid event (not 2)
     assert.equal((result.SessionStart as unknown[]).length, 1);
     assert.equal((result.Stop as unknown[]).length, 1);
     assert.equal((result.SessionEnd as unknown[]).length, 1);
-
-    // Mode should be updated
-    assert.equal(result.mode, "prompt");
-
-    // Non-orchid hooks preserved
     assert.ok(Array.isArray(result.Notification));
   });
 });
@@ -137,20 +134,17 @@ describe("mergeHooks", () => {
 // ── removeOrchidHooks ─────────────────────────────────────────────────────
 
 describe("removeOrchidHooks", () => {
-  it("removes orchid entries and marker", () => {
-    const orchid = buildHookConfig("auto");
-    const existing = { ...orchid };
+  it("removes orchid entries", () => {
+    const existing = buildHookEntries();
     const result = removeOrchidHooks(existing);
 
-    assert.equal(result.__orchid_managed, undefined);
-    assert.equal(result.mode, undefined);
     assert.equal(result.SessionStart, undefined);
     assert.equal(result.Stop, undefined);
     assert.equal(result.SessionEnd, undefined);
   });
 
   it("preserves non-orchid hooks on same events", () => {
-    const orchid = buildHookConfig("auto");
+    const orchid = buildHookEntries();
     const existing = {
       ...orchid,
       Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command: "echo notify" }] }],
@@ -162,22 +156,18 @@ describe("removeOrchidHooks", () => {
 
     const result = removeOrchidHooks(existing);
 
-    // Notification preserved
     assert.ok(Array.isArray(result.Notification));
 
-    // Stop should have only the non-orchid entry
     const stopEntries = result.Stop as unknown[];
     assert.equal(stopEntries.length, 1);
     assert.equal(((stopEntries[0] as Record<string, unknown>).hooks as Record<string, unknown>[])[0].command, "echo done");
 
-    // Orchid-only events should be gone
     assert.equal(result.SessionStart, undefined);
     assert.equal(result.SessionEnd, undefined);
   });
 
   it("returns empty object when only orchid hooks existed", () => {
-    const orchid = buildHookConfig("auto");
-    const result = removeOrchidHooks(orchid);
+    const result = removeOrchidHooks(buildHookEntries());
     assert.equal(Object.keys(result).length, 0);
   });
 });
