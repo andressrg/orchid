@@ -106,11 +106,11 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
   const base = `/t/${teamSlug}`;
 
   return (
-    <aside className="flex flex-col w-[220px] shrink-0 border-r border-edge-subtle h-full bg-surface-secondary">
+    <aside className="flex flex-col w-[220px] shrink-0 border-r border-night-750 h-full bg-night-900">
       {/* Logo */}
-      <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-edge-subtle">
+      <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-night-750">
         <OrchidLogo />
-        <span className="text-sm font-semibold tracking-tight text-content">
+        <span className="text-sm font-semibold tracking-tight text-night-100">
           Orchid
         </span>
       </div>
@@ -121,7 +121,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
           <select
             value={teamSlug}
             onChange={(e) => router.push(`/t/${e.target.value}/dashboard`)}
-            className="w-full rounded-md border px-2 py-1.5 text-[12px] font-medium bg-surface-tertiary border-edge-subtle text-content"
+            className="w-full rounded-md border px-2 py-1.5 text-[12px] font-medium bg-night-850 border-night-750 text-night-100"
           >
             {teams.map((t) => (
               <option key={t.slug} value={t.slug}>
@@ -144,7 +144,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
             <Link
               key={item.path}
               href={href}
-              className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${active ? 'bg-surface-active text-content' : 'text-content-secondary'}`}
+              className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${active ? 'bg-night-700 text-night-100' : 'text-night-300'}`}
             >
               {item.icon}
               {item.label}
@@ -156,7 +156,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       {/* Command palette hint */}
       <div className="px-2 mb-1">
         <div
-          className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] cursor-pointer transition-colors text-content-tertiary"
+          className="flex items-center gap-2 px-2.5 py-1.5 rounded-md text-[11px] cursor-pointer transition-colors text-night-400"
           onClick={() => {
             window.dispatchEvent(
               new KeyboardEvent('keydown', { key: 'k', metaKey: true, bubbles: true }),
@@ -177,7 +177,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
             <path d="M10 10l3 3" />
           </svg>
           <span>Quick Find</span>
-          <kbd className="ml-auto text-[9px] px-1 py-0.5 rounded bg-surface-tertiary">
+          <kbd className="ml-auto text-[9px] px-1 py-0.5 rounded bg-night-850">
             {'\u2318'}K
           </kbd>
         </div>
@@ -185,7 +185,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
 
       {/* How it works */}
       <div className="px-4 pt-2 pb-3 flex-1">
-        <div className="text-[10px] uppercase font-medium tracking-wider mb-2 text-content-tertiary">
+        <div className="text-[10px] uppercase font-medium tracking-wider mb-2 text-night-400">
           How it works
         </div>
         <div className="space-y-2">
@@ -199,10 +199,10 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
                 {step}
               </span>
               <div>
-                <span className="text-[11px] font-medium text-content-secondary">
+                <span className="text-[11px] font-medium text-night-300">
                   {text}
                 </span>
-                <span className="text-[10px] ml-1 text-content-tertiary">
+                <span className="text-[10px] ml-1 text-night-400">
                   {desc}
                 </span>
               </div>
@@ -212,8 +212,8 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       </div>
 
       {/* CLI hint */}
-      <div className="mx-3 mb-3 p-2.5 rounded-md border bg-surface border-edge-subtle">
-        <div className="text-[10px] font-medium mb-1 text-content-tertiary">
+      <div className="mx-3 mb-3 p-2.5 rounded-md border bg-night-950 border-night-750">
+        <div className="text-[10px] font-medium mb-1 text-night-400">
           Quick start
         </div>
         <code className="text-[11px] font-mono text-orchid">
@@ -224,7 +224,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       {/* Settings */}
       <Link
         href={`${base}/settings/team`}
-        className={`flex items-center gap-2.5 mx-2 mb-1 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${pathname.includes('/settings') ? 'bg-surface-active text-content' : 'text-content-secondary'}`}
+        className={`flex items-center gap-2.5 mx-2 mb-1 px-2.5 py-1.5 rounded-md text-[13px] font-medium transition-colors ${pathname.includes('/settings') ? 'bg-night-700 text-night-100' : 'text-night-300'}`}
       >
         <svg
           width="16"
@@ -244,22 +244,22 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
 
       {/* User */}
       {user && (
-        <div className="flex items-center gap-2.5 px-4 py-3 border-t border-edge-subtle">
+        <div className="flex items-center gap-2.5 px-4 py-3 border-t border-night-750">
           <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 bg-orchid-muted text-orchid">
             {user.name?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium truncate text-content">
+            <div className="text-[12px] font-medium truncate text-night-100">
               {user.name}
             </div>
-            <div className="text-[10px] truncate text-content-tertiary">
+            <div className="text-[10px] truncate text-night-400">
               {user.email}
             </div>
           </div>
           <button
             onClick={() => authClient.signOut().then(() => router.push('/login'))}
             title="Sign out"
-            className="p-1 rounded-md transition-colors shrink-0 text-content-tertiary hover:text-content-secondary"
+            className="p-1 rounded-md transition-colors shrink-0 text-night-400 hover:text-night-300"
           >
             <svg
               width="14"
