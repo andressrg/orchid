@@ -109,20 +109,15 @@ export function CommandPalette({ teamSlug = '' }: { teamSlug?: string }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]"
-      style={{ background: "rgba(0, 0, 0, 0.6)" }}
+      className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] bg-black/60"
       onClick={() => setOpen(false)}
     >
       <div
-        className="w-full max-w-lg rounded-xl border shadow-2xl overflow-hidden animate-fade-in"
-        style={{
-          background: "var(--bg-secondary)",
-          borderColor: "var(--border)",
-        }}
+        className="w-full max-w-lg rounded-xl border border-night-600 shadow-2xl overflow-hidden animate-fade-in bg-night-900"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-4 border-b" style={{ borderColor: "var(--border-subtle)" }}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--text-tertiary)" }}>
+        <div className="flex items-center gap-2 px-4 border-b border-night-750">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-night-400">
             <circle cx="7" cy="7" r="4" />
             <path d="M10 10l3 3" />
           </svg>
@@ -133,13 +128,9 @@ export function CommandPalette({ teamSlug = '' }: { teamSlug?: string }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            className="w-full py-3 text-[13px] outline-none"
-            style={{ background: "transparent", color: "var(--text-primary)" }}
+            className="w-full py-3 text-[13px] outline-none bg-transparent text-night-100"
           />
-          <kbd
-            className="text-[10px] px-1.5 py-0.5 rounded shrink-0"
-            style={{ background: "var(--bg-tertiary)", color: "var(--text-tertiary)" }}
-          >
+          <kbd className="text-[10px] px-1.5 py-0.5 rounded shrink-0 bg-night-850 text-night-400">
             ESC
           </kbd>
         </div>
@@ -147,23 +138,20 @@ export function CommandPalette({ teamSlug = '' }: { teamSlug?: string }) {
           {items.map((item, i) => (
             <button
               key={item.href}
-              className="w-full flex items-center gap-3 px-4 py-2 text-left transition-colors"
-              style={{
-                background: i === selectedIndex ? "var(--bg-hover)" : "transparent",
-              }}
+              className={`w-full flex items-center gap-3 px-4 py-2 text-left transition-colors ${i === selectedIndex ? 'bg-night-800' : ''}`}
               onClick={() => navigate(item.href)}
               onMouseEnter={() => setSelectedIndex(i)}
             >
               <div className="flex-1">
-                <div className="text-[13px] font-medium" style={{ color: "var(--text-primary)" }}>
+                <div className="text-[13px] font-medium text-night-100">
                   {item.label}
                 </div>
-                <div className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+                <div className="text-[11px] text-night-400">
                   {item.desc}
                 </div>
               </div>
               {i === selectedIndex && (
-                <span className="text-[10px]" style={{ color: "var(--text-tertiary)" }}>
+                <span className="text-[10px] text-night-400">
                   Enter
                 </span>
               )}
