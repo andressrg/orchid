@@ -24,8 +24,33 @@
 }
 
 @theme inline {
-  --color-background: var(--bg-primary);
-  --color-foreground: var(--text-primary);
+  /* Custom grays — purple-tinted dark scale */
+  --color-night-950: #0a0a0f;
+  --color-night-900: #111118;
+  --color-night-850: #1a1a24;
+  --color-night-800: #1e1e2a;
+  --color-night-750: #1e1e2e;
+  --color-night-700: #252535;
+  --color-night-600: #2a2a3a;
+  --color-night-400: #5c5c72;
+  --color-night-300: #8b8b9e;
+  --color-night-100: #e8e8ed;
+
+  /* Brand */
+  --color-orchid: #da70d6;
+  --color-orchid-muted: rgba(218, 112, 214, 0.15);
+  --color-accent: #7c5bf5;
+  --color-accent-hover: #6a4be0;
+  --color-accent-muted: rgba(124, 91, 245, 0.15);
+
+  /* Status */
+  --color-success: #3ecf71;
+  --color-success-muted: rgba(62, 207, 113, 0.15);
+  --color-warning: #f5c542;
+  --color-warning-muted: rgba(245, 197, 66, 0.15);
+  --color-danger: #ef4444;
+
+  /* Fonts */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
