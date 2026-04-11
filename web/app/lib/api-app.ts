@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { gunzipSync } from 'node:zlib';
 import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
 import { after } from 'next/server';
 import pool, { db } from './db';
@@ -21,6 +22,23 @@ type AuthContext = {
 const app = new Hono<{ Variables: AuthContext }>().basePath('/api');
 
 app.use('*', cors());
+
+// Decompress gzip request bodies (CLI sends Content-Encoding: gzip for large transcripts)
+app.use('*', async (c, next) => {
+  if (c.req.header('content-encoding') === 'gzip') {
+    const compressed = Buffer.from(await c.req.raw.arrayBuffer());
+    const decompressed = gunzipSync(compressed);
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete('content-encoding');
+    // @ts-expect-error -- replacing internal raw request with decompressed body
+    c.req.raw = new Request(c.req.raw.url, {
+      method: c.req.raw.method,
+      headers,
+      body: decompressed,
+    });
+  }
+  return next();
+});
 
 // Better Auth handler
 app.on(['POST', 'GET'], '/auth/*', (c) => {
