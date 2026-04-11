@@ -152,10 +152,10 @@ export default function LandingPage() {
             <span className="text-[15px] font-semibold tracking-tight">Orchid</span>
           </div>
           <div className="flex items-center gap-6">
-            <a href="#how-it-works" className="landing-nav-link">How it works</a>
-            <a href="#use-cases" className="landing-nav-link">Use cases</a>
-            <Link href="/dashboard" className="landing-cta-small">
-              Open Dashboard
+            <a href="#how-it-works" className="landing-nav-link hidden sm:block">How it works</a>
+            <a href="#use-cases" className="landing-nav-link hidden sm:block">Use cases</a>
+            <Link href="/dashboard" className="landing-cta-small text-[13px] sm:text-[14px] px-3 sm:px-4 py-1.5 sm:py-2">
+              Dashboard
             </Link>
           </div>
         </div>
