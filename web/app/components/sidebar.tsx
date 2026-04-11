@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { authClient } from '../lib/auth-client';
 
 function OrchidLogo() {
   return (
@@ -305,6 +306,26 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
               {user.email}
             </div>
           </div>
+          <button
+            onClick={() => authClient.signOut().then(() => router.push('/login'))}
+            title="Sign out"
+            className="p-1 rounded-md transition-colors shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M6 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+              <path d="M10 12l4-4-4-4" />
+              <path d="M14 8H6" />
+            </svg>
+          </button>
         </div>
       )}
     </aside>
