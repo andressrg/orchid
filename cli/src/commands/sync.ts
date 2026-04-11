@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { execSync } from "child_process";
+import { gzipSync } from "zlib";
 import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
 import {
   type LocalSession, type ProjectGroup,
@@ -214,14 +215,16 @@ const syncSessionToServer = async (session: LocalSession): Promise<"synced" | "s
   })();
   const gitMeta = collectGitMetadataForDir(session.cwd);
   const url = `${apiUrl.replace(/\/$/, "")}/sessions/${session.sessionId}`;
+  const json = JSON.stringify({
+    user_name: gitMeta.user_name, user_email: gitMeta.user_email,
+    working_dir: session.cwd, git_remotes: gitMeta.git_remotes,
+    branch: session.gitBranch, tool: "claude-code", transcript, status: "done",
+  });
+  const compressed = gzipSync(Buffer.from(json, "utf-8"));
   const res = await fetch(url, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...getAuthHeaders() },
-    body: JSON.stringify({
-      user_name: gitMeta.user_name, user_email: gitMeta.user_email,
-      working_dir: session.cwd, git_remotes: gitMeta.git_remotes,
-      branch: session.gitBranch, tool: "claude-code", transcript, status: "done",
-    }),
+    headers: { "Content-Type": "application/json", "Content-Encoding": "gzip", ...getAuthHeaders() },
+    body: compressed,
   });
   if (!res.ok) {
     const text = await res.text();

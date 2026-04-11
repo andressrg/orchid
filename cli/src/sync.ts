@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { gzipSync } from "zlib";
 import { getConfig, getAuthHeaders } from "./config";
 import { GitMetadata } from "./commands/claude";
 
@@ -30,7 +31,7 @@ async function syncToServer(
     return;
   }
 
-  const body = JSON.stringify({
+  const json = JSON.stringify({
     user_name: metadata.user_name,
     user_email: metadata.user_email,
     working_dir: metadata.working_dir,
@@ -41,15 +42,18 @@ async function syncToServer(
     status,
   });
 
+  const compressed = gzipSync(Buffer.from(json, "utf-8"));
+
   const url = `${apiUrl.replace(/\/$/, "")}/sessions/${sessionId}`;
 
   const res = await fetch(url, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
+      "Content-Encoding": "gzip",
       ...getAuthHeaders(),
     },
-    body,
+    body: compressed,
   });
 
   if (!res.ok) {
