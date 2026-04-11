@@ -1,0 +1,50 @@
+service: orchid-server
+image: andressrg/orchid-server
+
+servers:
+  web:
+    hosts:
+      - "[2a01:4f8:1c18:6af2::1]"
+    options:
+      network: "private"
+
+ssh:
+  user: deploy
+
+proxy:
+  ssl: true
+  host: api-dev.orchidkeep.com
+  app_port: 3000
+  healthcheck:
+    path: /health
+
+registry:
+  server: localhost
+
+builder:
+  context: .
+  dockerfile: server/Dockerfile
+
+env:
+  clear:
+    PORT: "3000"
+  secret:
+    - DATABASE_URL
+    - API_KEY
+    - OPENAI_API_KEY
+
+accessories:
+  postgres:
+    image: postgres:17-alpine
+    roles:
+      - web
+    env:
+      clear:
+        POSTGRES_USER: orchid
+        POSTGRES_DB: orchid
+      secret:
+        - POSTGRES_PASSWORD
+    directories:
+      - /mnt/data/postgres:/var/lib/postgresql/data
+    options:
+      network: "private"

@@ -1,0 +1,10 @@
+encryptionsalt: v1:OIJk/P6wOW0=:v1:ru0bQNUWOpE51iYd:JGCWCxePPcUyPlzdNwb1Z7fVC8DPPA==
+config:
+  hcloud:token:
+    secure: v1:PI8qk1O89UERq2mw:BipfN+V6o4jPz3YScIoV88rgbirXRX3ZecOoR2o0zcy5Yf/o3J3stoavJEYenN4aLPj2Q9mqf8lvHm2A7hvctRTfF5mDgDA5l0ZsbipLx/s=
+  orchid:dbPassword:
+    secure: v1:STsjx4erTLItLLoy:P7ltnyE8bFV0eBCCk5hDSm5+G3NRPK/XwI5MraE34gN7nPFHS42nsg1nJPK3NfdW
+  orchid:apiKey:
+    secure: v1:pugVRucFJifxlD4I:i67rr+6aya0ppBzQ3U/JJK48K8w58CYdhOLZa/WQAGod4FioY0RMtqtuf+H+TgXS
+  orchid:serverType: cx22
+  orchid:location: nbg1

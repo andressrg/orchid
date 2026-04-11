@@ -61,7 +61,7 @@ CLI:        TypeScript (wrapper + file watcher + HTTP sync)
 Server:     Node.js + Express + PostgreSQL
 Frontend:   Next.js 16 + Tailwind CSS
 AI:         OpenAI GPT-4o-mini for summaries and reviews
-Hosting:    DigitalOcean droplet + Caddy reverse proxy + PM2
+Hosting:    Vercel (web) + DigitalOcean droplet (API + DB)
 ```
 
 ## Quick Start
@@ -86,7 +86,8 @@ orchid claude
 
 Services managed by PM2:
 - `orchid-server` — Express API on port 3000
-- `orchid-web` — Next.js on port 3001 (Caddy proxies port 80 → 3001)
+
+Web UI is deployed to Vercel (auto-deploys on push to main).
 
 ## Deploying
 
@@ -101,26 +102,21 @@ Services managed by PM2:
 bash scripts/deploy.sh
 ```
 
-This rsyncs both `server/` and `web/` to the droplet, builds, and restarts PM2 processes.
+This rsyncs `server/` to the droplet, builds, and restarts the PM2 process.
 
-### Manual deploy
+The web UI deploys automatically to Vercel on push to main.
+
+### Manual server deploy
 
 ```bash
 KEY="/tmp/orchid-deploy/id_ed25519"
 HOST="root@24.144.97.81"
 SSH="ssh -i $KEY -o StrictHostKeyChecking=no $HOST"
 
-# Server
 rsync -avz --delete --exclude node_modules --exclude dist \
   -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
   server/ $HOST:/opt/orchid-server/
-$SSH 'cd /opt/orchid-server && npm install && npm run build && pm2 restart orchid-server'
-
-# Web
-rsync -avz --delete --exclude node_modules --exclude .next --exclude dist \
-  -e "ssh -i $KEY -o StrictHostKeyChecking=no" \
-  web/ $HOST:/opt/orchid-web/
-$SSH 'cd /opt/orchid-web && npm install && NEXT_PUBLIC_API_URL=http://24.144.97.81:3000 NEXT_PUBLIC_API_KEY=orchid-poc-api-key-2024 npm run build && pm2 restart orchid-web'
+$SSH 'cd /opt/orchid-server && pnpm install && pnpm run build && pm2 restart orchid-server'
 ```
 
 ### Useful commands on the droplet
@@ -128,8 +124,7 @@ $SSH 'cd /opt/orchid-web && npm install && NEXT_PUBLIC_API_URL=http://24.144.97.
 ```bash
 pm2 status                    # Check process status
 pm2 logs orchid-server        # Server logs
-pm2 logs orchid-web           # Web logs
-pm2 restart all               # Restart everything
+pm2 restart orchid-server     # Restart server
 curl http://localhost:3000/health  # API health check
 ```
 
