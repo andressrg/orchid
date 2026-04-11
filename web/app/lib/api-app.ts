@@ -1,6 +1,9 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { gunzipSync } from 'node:zlib';
+import { promisify } from 'node:util';
+import { gunzip } from 'node:zlib';
+
+const gunzipAsync = promisify(gunzip);
 import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
 import { after } from 'next/server';
 import pool, { db } from './db';
@@ -27,7 +30,7 @@ app.use('*', cors());
 app.use('*', async (c, next) => {
   if (c.req.header('content-encoding') === 'gzip') {
     const compressed = Buffer.from(await c.req.raw.arrayBuffer());
-    const decompressed = gunzipSync(compressed);
+    const decompressed = await gunzipAsync(compressed);
     const headers = new Headers(c.req.raw.headers);
     headers.delete('content-encoding');
     c.req.raw = new Request(c.req.raw.url, {
