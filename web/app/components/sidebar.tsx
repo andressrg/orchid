@@ -309,7 +309,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
           <button
             onClick={() => authClient.signOut().then(() => router.push('/login'))}
             title="Sign out"
-            className="sign-out-btn p-1 rounded-md transition-colors shrink-0"
+            className="p-1 rounded-md transition-colors shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
           >
             <svg
               width="14"
