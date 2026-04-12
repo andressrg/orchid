@@ -36,20 +36,18 @@ function timeAgo(dateStr: string): string {
   return `${diffDay}d ago`;
 }
 
+const fileStatusStyles: Record<string, { classes: string; label: string }> = {
+  added: { classes: "bg-success-muted text-success", label: "A" },
+  modified: { classes: "bg-warning-muted text-warning", label: "M" },
+  removed: { classes: "bg-danger/15 text-danger", label: "D" },
+  renamed: { classes: "bg-accent-muted text-accent", label: "R" },
+};
+
 function FileStatusBadge({ status }: { status: string }) {
-  const colors: Record<string, { bg: string; text: string; label: string }> = {
-    added: { bg: "var(--green-muted)", text: "var(--green)", label: "A" },
-    modified: { bg: "var(--yellow-muted)", text: "var(--yellow)", label: "M" },
-    removed: { bg: "rgba(239, 68, 68, 0.15)", text: "var(--red)", label: "D" },
-    renamed: { bg: "var(--accent-muted)", text: "var(--accent)", label: "R" },
-  };
-  const c = colors[status] || colors.modified;
+  const s = fileStatusStyles[status] || fileStatusStyles.modified;
   return (
-    <span
-      className="text-[10px] font-mono font-bold w-4 h-4 flex items-center justify-center rounded"
-      style={{ background: c.bg, color: c.text }}
-    >
-      {c.label}
+    <span className={`text-[10px] font-mono font-bold w-4 h-4 flex items-center justify-center rounded ${s.classes}`}>
+      {s.label}
     </span>
   );
 }
@@ -59,28 +57,25 @@ function CommitCard({ commit, isExpanded, onToggle }: { commit: Commit; isExpand
   const totalChanges = commit.additions + commit.deletions;
 
   return (
-    <div
-      className="rounded-lg border transition-colors"
-      style={{ background: "var(--bg-secondary)", borderColor: "var(--border-subtle)" }}
-    >
+    <div className="rounded-lg border transition-colors bg-night-900 border-night-750">
       <div className="px-4 py-3 cursor-pointer" onClick={onToggle}>
         <div className="flex items-start gap-3">
           {/* Commit dot */}
           <div className="mt-1.5 shrink-0">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "var(--accent)" }} />
+            <div className="w-2.5 h-2.5 rounded-full bg-accent" />
           </div>
 
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[13px] font-medium truncate" style={{ color: "var(--text-primary)" }}>
+              <span className="text-[13px] font-medium truncate text-night-100">
                 {firstLine}
               </span>
             </div>
-            <div className="flex items-center gap-3 text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+            <div className="flex items-center gap-3 text-[11px] text-night-400">
               <span className="font-mono">{commit.sha.slice(0, 7)}</span>
               <span>{commit.author}</span>
               <span>{timeAgo(commit.date)}</span>
-              <span className="font-mono" style={{ color: "var(--text-secondary)" }}>
+              <span className="font-mono text-night-300">
                 {commit.repo}
               </span>
             </div>
@@ -88,28 +83,28 @@ function CommitCard({ commit, isExpanded, onToggle }: { commit: Commit; isExpand
 
           <div className="flex items-center gap-2 shrink-0">
             {commit.additions > 0 && (
-              <span className="text-[11px] font-mono" style={{ color: "var(--green)" }}>
+              <span className="text-[11px] font-mono text-success">
                 +{commit.additions}
               </span>
             )}
             {commit.deletions > 0 && (
-              <span className="text-[11px] font-mono" style={{ color: "var(--red)" }}>
+              <span className="text-[11px] font-mono text-danger">
                 −{commit.deletions}
               </span>
             )}
             {totalChanges > 0 && (
               <div className="flex gap-px ml-1">
                 {Array.from({ length: Math.min(5, Math.ceil(commit.additions / Math.max(totalChanges, 1) * 5)) }).map((_, i) => (
-                  <div key={`a-${i}`} className="w-1.5 h-1.5 rounded-sm" style={{ background: "var(--green)" }} />
+                  <div key={`a-${i}`} className="w-1.5 h-1.5 rounded-sm bg-success" />
                 ))}
                 {Array.from({ length: Math.min(5, Math.ceil(commit.deletions / Math.max(totalChanges, 1) * 5)) }).map((_, i) => (
-                  <div key={`d-${i}`} className="w-1.5 h-1.5 rounded-sm" style={{ background: "var(--red)" }} />
+                  <div key={`d-${i}`} className="w-1.5 h-1.5 rounded-sm bg-danger" />
                 ))}
               </div>
             )}
             <svg
               width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
-              style={{ color: "var(--text-tertiary)", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.15s" }}
+              className={`text-night-400 transition-transform duration-150 ${isExpanded ? 'rotate-180' : ''}`}
             >
               <path d="M4 6l4 4 4-4" />
             </svg>
@@ -118,32 +113,28 @@ function CommitCard({ commit, isExpanded, onToggle }: { commit: Commit; isExpand
       </div>
 
       {isExpanded && commit.files.length > 0 && (
-        <div
-          className="px-4 py-3 border-t animate-fade-in"
-          style={{ borderColor: "var(--border-subtle)" }}
-        >
+        <div className="px-4 py-3 border-t animate-fade-in border-night-750">
           <div className="space-y-1.5">
             {commit.files.map((file, i) => (
               <div key={i} className="flex items-center gap-2 text-[12px]">
                 <FileStatusBadge status={file.status} />
-                <span className="font-mono truncate" style={{ color: "var(--text-secondary)" }}>
+                <span className="font-mono truncate text-night-300">
                   {file.filename}
                 </span>
-                <span className="ml-auto shrink-0 font-mono text-[11px]" style={{ color: "var(--text-tertiary)" }}>
-                  {file.additions > 0 && <span style={{ color: "var(--green)" }}>+{file.additions}</span>}
+                <span className="ml-auto shrink-0 font-mono text-[11px] text-night-400">
+                  {file.additions > 0 && <span className="text-success">+{file.additions}</span>}
                   {file.additions > 0 && file.deletions > 0 && " "}
-                  {file.deletions > 0 && <span style={{ color: "var(--red)" }}>−{file.deletions}</span>}
+                  {file.deletions > 0 && <span className="text-danger">−{file.deletions}</span>}
                 </span>
               </div>
             ))}
           </div>
-          <div className="mt-3 pt-2 border-t" style={{ borderColor: "var(--border-subtle)" }}>
+          <div className="mt-3 pt-2 border-t border-night-750">
             <a
               href={commit.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[11px] font-medium transition-opacity hover:opacity-80"
-              style={{ color: "var(--accent)" }}
+              className="text-[11px] font-medium transition-opacity hover:opacity-80 text-accent"
             >
               View on GitHub →
             </a>
@@ -187,7 +178,7 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
       <div className="px-6 py-8">
         <div className="space-y-3 max-w-3xl mx-auto">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="rounded-lg h-20 animate-pulse" style={{ background: "var(--bg-secondary)" }} />
+            <div key={i} className="rounded-lg h-20 animate-pulse bg-night-900" />
           ))}
         </div>
       </div>
@@ -197,13 +188,13 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
   if (error && commits.length === 0) {
     return (
       <div className="px-6 py-16 text-center">
-        <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3" style={{ color: "var(--text-tertiary)" }}>
+        <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3 text-night-400">
           <circle cx="8" cy="4" r="2" />
           <circle cx="4" cy="12" r="2" />
           <circle cx="12" cy="12" r="2" />
           <path d="M8 6v2M6.5 11L7.5 8.5M9.5 11L8.5 8.5" />
         </svg>
-        <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>{error}</p>
+        <p className="text-[13px] text-night-300">{error}</p>
       </div>
     );
   }
@@ -211,13 +202,13 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
   if (commits.length === 0) {
     return (
       <div className="px-6 py-16 text-center">
-        <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3" style={{ color: "var(--text-tertiary)" }}>
+        <svg width="32" height="32" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1" className="mx-auto mb-3 text-night-400">
           <circle cx="8" cy="4" r="2" />
           <circle cx="4" cy="12" r="2" />
           <circle cx="12" cy="12" r="2" />
           <path d="M8 6v2M6.5 11L7.5 8.5M9.5 11L8.5 8.5" />
         </svg>
-        <p className="text-[13px]" style={{ color: "var(--text-secondary)" }}>No commits found during this session</p>
+        <p className="text-[13px] text-night-300">No commits found during this session</p>
       </div>
     );
   }
@@ -229,29 +220,25 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
   return (
     <div className="px-6 py-6 max-w-3xl mx-auto animate-fade-in">
       {/* Stats bar */}
-      <div
-        className="flex items-center gap-4 mb-5 px-4 py-3 rounded-lg border"
-        style={{ background: "var(--bg-secondary)", borderColor: "var(--border-subtle)" }}
-      >
+      <div className="flex items-center gap-4 mb-5 px-4 py-3 rounded-lg border bg-night-900 border-night-750">
         <div className="flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--accent)" }}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-accent">
             <circle cx="8" cy="4" r="2" />
             <circle cx="4" cy="12" r="2" />
             <circle cx="12" cy="12" r="2" />
             <path d="M8 6v2M6.5 11L7.5 8.5M9.5 11L8.5 8.5" />
           </svg>
-          <span className="text-[12px] font-medium" style={{ color: "var(--text-primary)" }}>
+          <span className="text-[12px] font-medium text-night-100">
             {commits.length} commit{commits.length !== 1 ? "s" : ""}
           </span>
         </div>
-        <span className="text-[11px] font-mono" style={{ color: "var(--green)" }}>+{totalAdditions}</span>
-        <span className="text-[11px] font-mono" style={{ color: "var(--red)" }}>−{totalDeletions}</span>
+        <span className="text-[11px] font-mono text-success">+{totalAdditions}</span>
+        <span className="text-[11px] font-mono text-danger">−{totalDeletions}</span>
         <div className="ml-auto flex items-center gap-2">
           {repos.map((repo) => (
             <span
               key={repo}
-              className="text-[10px] font-mono px-2 py-0.5 rounded"
-              style={{ background: "var(--accent-muted)", color: "var(--accent)" }}
+              className="text-[10px] font-mono px-2 py-0.5 rounded bg-accent-muted text-accent"
             >
               {repo}
             </span>
