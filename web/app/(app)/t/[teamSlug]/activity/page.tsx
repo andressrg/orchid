@@ -1,4 +1,6 @@
-import { getSessions, timeAgo } from '@/app/lib/api';
+import { timeAgo } from '@/app/lib/api';
+import { getServerAuth } from '@/app/lib/server-auth';
+import { listSessions } from '@/app/lib/queries';
 import Link from 'next/link';
 
 export const dynamic = "force-dynamic";
@@ -72,16 +74,10 @@ export default async function ActivityPage({
 }) {
   const { teamSlug } = await params;
 
-  let sessions;
-  try {
-    sessions = await getSessions(teamSlug);
-  } catch {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p style={{ color: "var(--text-secondary)" }}>Unable to load activity data.</p>
-      </div>
-    );
-  }
+  const serverAuth = await getServerAuth(teamSlug);
+  if (!serverAuth) return null;
+
+  const sessions = await listSessions(serverAuth.teamId);
 
   // Group by user
   const byUser = new Map<string, typeof sessions>();

@@ -1,3 +1,5 @@
+import { headers as getHeaders } from 'next/headers';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 export interface Session {
@@ -33,8 +35,12 @@ async function apiFetch<T>(
   const qs = params.toString();
   const url = `${API_URL}/api${path}${qs ? `?${qs}` : ''}`;
 
+  // Forward cookies from the incoming request for server-side fetches
+  const incomingHeaders = await getHeaders();
+  const cookie = incomingHeaders.get('cookie') || '';
+
   const res = await fetch(url, {
-    credentials: 'include',
+    headers: cookie ? { Cookie: cookie } : {},
     cache: 'no-store',
   });
 
