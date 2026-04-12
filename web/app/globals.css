@@ -136,6 +136,16 @@ body {
   border-color: var(--border) !important;
 }
 
+/* Suggested question pill hover */
+.suggested-q {
+  color: var(--text-secondary);
+  border-color: var(--border-subtle);
+}
+.suggested-q:hover {
+  color: var(--orchid-pink);
+  border-color: var(--orchid-pink);
+}
+
 /* Typing indicator */
 @keyframes typingBounce {
   0%, 80%, 100% { transform: translateY(0); }
