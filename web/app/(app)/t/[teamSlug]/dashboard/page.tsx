@@ -1,8 +1,7 @@
 import Link from 'next/link';
-import { headers } from 'next/headers';
 import { timeAgo } from '@/app/lib/api';
-import { auth } from '@/app/lib/auth';
-import { listSessions, getTeamStats, resolveTeamId } from '@/app/lib/queries';
+import { getServerAuth } from '@/app/lib/server-auth';
+import { listSessions, getTeamStats } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
 
 function StatusBadge({ status }: { status: string }) {
@@ -69,14 +68,11 @@ export default async function SessionsPage({
   params: Promise<{ teamSlug: string }>;
 }) {
   const { teamSlug } = await params;
-  const session = await auth.api.getSession({ headers: await headers() });
-  if (!session) return null;
+  const serverAuth = await getServerAuth(teamSlug);
+  if (!serverAuth) return null;
 
-  const teamId = await resolveTeamId(teamSlug, session.user.id);
-  if (!teamId) return null;
-
-  const sessions = await listSessions(teamId);
-  let stats = await getTeamStats(teamId);
+  const sessions = await listSessions(serverAuth.teamId);
+  let stats = await getTeamStats(serverAuth.teamId);
 
   if (!stats) {
     stats = {

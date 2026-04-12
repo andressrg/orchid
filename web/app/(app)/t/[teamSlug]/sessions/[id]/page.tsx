@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { getSession, parseTranscript, timeAgo, formatDuration } from '@/app/lib/api';
+import { parseTranscript, timeAgo, formatDuration } from '@/app/lib/api';
+import { getServerAuth } from '@/app/lib/server-auth';
+import { getSessionById } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
 import { AISummary } from '@/app/components/ai-summary';
 import { CopyLink } from '@/app/components/copy-link';
@@ -32,10 +34,11 @@ export default async function SessionPage({
   const { turn } = await searchParams;
   const highlightTurn = turn ? parseInt(turn, 10) : null;
 
-  let session;
-  try {
-    session = await getSession(decodeURIComponent(id), teamSlug);
-  } catch {
+  const serverAuth = await getServerAuth(teamSlug);
+  if (!serverAuth) return null;
+
+  const session = await getSessionById(decodeURIComponent(id), serverAuth.teamId);
+  if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center" style={{ color: "var(--text-secondary)" }}>

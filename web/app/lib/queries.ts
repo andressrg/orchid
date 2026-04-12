@@ -84,11 +84,25 @@ export async function getTeamStats(teamId: string) {
 
 // Get a single session (scoped to team)
 export async function getSessionById(sessionId: string, teamId: string) {
-  const [session] = await db
+  const [row] = await db
     .select()
     .from(orchidSession)
     .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
-  return session || null;
+  if (!row) return null;
+  return {
+    id: row.id,
+    user_name: row.userName || '',
+    user_email: row.userEmail || '',
+    working_dir: row.workingDir || '',
+    git_remotes: (row.gitRemotes as string[]) || [],
+    branch: row.branch || '',
+    tool: row.tool || '',
+    started_at: row.startedAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+    status: row.status,
+    transcript: row.transcript || '',
+    message_count: row.messageCount || 0,
+  };
 }
 
 // Search sessions
