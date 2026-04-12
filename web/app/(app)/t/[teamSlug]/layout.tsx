@@ -39,6 +39,9 @@ export default async function TeamLayout({
   const [team] = await db.select({ id: organization.id, name: organization.name, slug: organization.slug }).from(organization).where(eq(organization.id, teamId));
   const allTeams = await getUserTeams(session.user.id);
 
+  // Set active organization so client components (settings page) can read it
+  await auth.api.setActiveOrganization({ headers: await headers(), body: { organizationId: teamId } });
+
   const sidebarContent = (
     <Sidebar
       user={session.user}
