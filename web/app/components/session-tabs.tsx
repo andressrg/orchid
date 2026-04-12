@@ -17,31 +17,19 @@ function MessageBubble({ role, text, userName, turnNumber }: { role: string; tex
     <div className="animate-fade-in group" style={{ animationDelay: `${turnNumber * 0.03}s` }}>
       <div className="flex items-center gap-2 mb-2">
         <div
-          className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{
-            background: isUser ? "var(--accent-muted)" : "var(--orchid-pink-muted)",
-            color: isUser ? "var(--accent)" : "var(--orchid-pink)",
-          }}
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold ${isUser ? 'bg-accent-muted text-accent' : 'bg-orchid-muted text-orchid'}`}
         >
           {isUser ? userName[0]?.toUpperCase() || "H" : "AI"}
         </div>
-        <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
+        <span className="text-[11px] font-medium text-night-300">
           {isUser ? userName : "Claude"}
         </span>
-        <span
-          className="text-[9px] font-mono px-1 py-0.5 rounded"
-          style={{ background: "var(--bg-primary)", color: "var(--text-tertiary)" }}
-        >
+        <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-night-950 text-night-400">
           #{turnNumber}
         </span>
       </div>
       <div
-        className="rounded-lg px-4 py-3 text-[13px] leading-[1.7]"
-        style={{
-          background: isUser ? "var(--bg-tertiary)" : "var(--bg-secondary)",
-          borderLeft: isUser ? "2px solid var(--accent)" : "2px solid var(--orchid-pink)",
-          color: "var(--text-primary)",
-        }}
+        className={`rounded-lg px-4 py-3 text-[13px] leading-[1.7] text-night-100 ${isUser ? 'bg-night-850 border-l-2 border-accent' : 'bg-night-900 border-l-2 border-orchid'}`}
       >
         {paragraphs.map((para, i) => {
           if (para.startsWith("```")) {
@@ -51,17 +39,11 @@ function MessageBubble({ role, text, userName, turnNumber }: { role: string; tex
             return (
               <div key={i} className="my-3">
                 {lang && (
-                  <div
-                    className="text-[10px] font-mono px-3 py-1 rounded-t border-b"
-                    style={{ background: "var(--bg-primary)", color: "var(--text-tertiary)", borderColor: "var(--border-subtle)" }}
-                  >
+                  <div className="text-[10px] font-mono px-3 py-1 rounded-t border-b bg-night-950 text-night-400 border-night-750">
                     {lang}
                   </div>
                 )}
-                <pre
-                  className="font-mono text-[12px] p-3 rounded-b overflow-x-auto"
-                  style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}
-                >
+                <pre className="font-mono text-[12px] p-3 rounded-b overflow-x-auto bg-night-950 text-night-300">
                   <code>{code}</code>
                 </pre>
               </div>
@@ -74,7 +56,7 @@ function MessageBubble({ role, text, userName, turnNumber }: { role: string; tex
               <div key={i} className="my-2 space-y-1.5">
                 {items.map((item, j) => (
                   <div key={j} className="flex gap-2">
-                    <span className="shrink-0 font-mono text-[12px]" style={{ color: "var(--accent)", opacity: 0.6 }}>
+                    <span className="shrink-0 font-mono text-[12px] text-accent opacity-60">
                       {item.match(/^\d+\./)?.[0] || ""}
                     </span>
                     <span dangerouslySetInnerHTML={{ __html: item.replace(/^\d+\.\s*/, "").replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--text-primary)">$1</strong>') }} />
@@ -90,7 +72,7 @@ function MessageBubble({ role, text, userName, turnNumber }: { role: string; tex
               <div key={i} className="my-2 space-y-1">
                 {items.map((item, j) => (
                   <div key={j} className="flex gap-2">
-                    <span className="shrink-0" style={{ color: "var(--orchid-pink)", opacity: 0.5 }}>&bull;</span>
+                    <span className="shrink-0 text-orchid opacity-50">&bull;</span>
                     <span dangerouslySetInnerHTML={{ __html: item.replace(/^[-*]\s*/, "").replace(/\*\*(.*?)\*\*/g, '<strong style="color: var(--text-primary)">$1</strong>').replace(/`([^`]+)`/g, '<code style="background: var(--bg-primary); padding: 1px 4px; border-radius: 3px; font-size: 12px; color: var(--orchid-pink)">$1</code>') }} />
                   </div>
                 ))}
@@ -153,28 +135,19 @@ export function SessionTabs({ sessionId, turns, userName, isActive }: SessionTab
   return (
     <div>
       {/* Tab bar */}
-      <div
-        className="flex items-center gap-0 px-6 border-b"
-        style={{ borderColor: "var(--border-subtle)", background: "var(--bg-secondary)" }}
-      >
+      <div className="flex items-center gap-0 px-6 border-b border-night-750 bg-night-900">
         {TABS.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className="flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium transition-colors relative cursor-pointer"
-            style={{
-              color: activeTab === tab.id ? "var(--text-primary)" : "var(--text-tertiary)",
-            }}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-[12px] font-medium transition-colors relative cursor-pointer ${activeTab === tab.id ? 'text-night-100' : 'text-night-400'}`}
           >
-            <span style={{ color: activeTab === tab.id ? "var(--orchid-pink)" : "inherit" }}>
+            <span className={activeTab === tab.id ? 'text-orchid' : ''}>
               {tab.icon}
             </span>
             {tab.label}
             {activeTab === tab.id && (
-              <div
-                className="absolute bottom-0 left-2 right-2 h-[2px] rounded-t"
-                style={{ background: "var(--orchid-pink)" }}
-              />
+              <div className="absolute bottom-0 left-2 right-2 h-[2px] rounded-t bg-orchid" />
             )}
           </button>
         ))}
@@ -184,7 +157,7 @@ export function SessionTabs({ sessionId, turns, userName, isActive }: SessionTab
       {activeTab === "conversation" && (
         <div className="px-6 py-6 max-w-3xl mx-auto">
           {turns.length === 0 ? (
-            <div className="text-center py-16" style={{ color: "var(--text-secondary)" }}>
+            <div className="text-center py-16 text-night-300">
               <p className="text-sm">No conversation messages found in this session.</p>
             </div>
           ) : (
@@ -200,30 +173,17 @@ export function SessionTabs({ sessionId, turns, userName, isActive }: SessionTab
           {isActive && (
             <div className="mt-8 space-y-4">
               <div className="flex items-center gap-2">
-                <div
-                  className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
-                  style={{ background: "var(--orchid-pink-muted)", color: "var(--orchid-pink)" }}
-                >
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold bg-orchid-muted text-orchid">
                   AI
                 </div>
-                <div
-                  className="px-4 py-3 rounded-lg flex items-center gap-1.5"
-                  style={{ background: "var(--bg-secondary)", borderLeft: "2px solid var(--orchid-pink)" }}
-                >
+                <div className="px-4 py-3 rounded-lg flex items-center gap-1.5 bg-night-900 border-l-2 border-orchid">
                   <span className="typing-dot" />
                   <span className="typing-dot" />
                   <span className="typing-dot" />
                 </div>
               </div>
-              <div
-                className="flex items-center gap-2 text-[12px] px-4 py-3 rounded-lg border"
-                style={{
-                  borderColor: "var(--green)",
-                  background: "var(--green-muted)",
-                  color: "var(--green)",
-                }}
-              >
-                <span className="w-2 h-2 rounded-full animate-pulse-dot" style={{ background: "var(--green)" }} />
+              <div className="flex items-center gap-2 text-[12px] px-4 py-3 rounded-lg border border-success bg-success-muted text-success">
+                <span className="w-2 h-2 rounded-full animate-pulse-dot bg-success" />
                 This session is still active. Page refreshes automatically every 10 seconds.
               </div>
             </div>
