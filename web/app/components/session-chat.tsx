@@ -22,25 +22,16 @@ function ChatBubble({ message }: { message: ChatMessage }) {
     <div className="animate-fade-in">
       <div className="flex items-center gap-2 mb-1.5">
         <div
-          className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold"
-          style={{
-            background: isUser ? "var(--accent-muted)" : "var(--orchid-pink-muted)",
-            color: isUser ? "var(--accent)" : "var(--orchid-pink)",
-          }}
+          className={`w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold ${isUser ? 'bg-accent-muted text-accent' : 'bg-orchid-muted text-orchid'}`}
         >
           {isUser ? "Y" : "O"}
         </div>
-        <span className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>
+        <span className="text-[11px] font-medium text-night-400">
           {isUser ? "You" : "Orchid"}
         </span>
       </div>
       <div
-        className="rounded-lg px-3.5 py-2.5 text-[13px] leading-[1.7]"
-        style={{
-          background: isUser ? "var(--bg-tertiary)" : "var(--bg-secondary)",
-          borderLeft: isUser ? "2px solid var(--accent)" : "2px solid var(--orchid-pink)",
-          color: "var(--text-primary)",
-        }}
+        className={`rounded-lg px-3.5 py-2.5 text-[13px] leading-[1.7] text-night-100 ${isUser ? 'bg-night-850 border-l-2 border-accent' : 'bg-night-900 border-l-2 border-orchid'}`}
       >
         {paragraphs.map((para, i) => (
           <p key={i} className={i > 0 ? "mt-2" : ""} dangerouslySetInnerHTML={{ __html: para.replace(/\n/g, "<br/>") }} />
@@ -114,25 +105,24 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
     }
   }
 
+  const canSend = input.trim() && !loading;
+
   return (
     <div className="flex flex-col h-[calc(100vh-280px)] max-w-3xl mx-auto px-6 py-4">
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto space-y-4 pb-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center mb-4"
-              style={{ background: "var(--orchid-pink-muted)" }}
-            >
-              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--orchid-pink)" }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 bg-orchid-muted">
+              <svg width="24" height="24" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-orchid">
                 <path d="M2 4h12v8H4l-2 2V4z" strokeLinejoin="round" />
                 <path d="M5 7h6M5 9h4" strokeLinecap="round" />
               </svg>
             </div>
-            <p className="text-[14px] font-medium mb-1" style={{ color: "var(--text-primary)" }}>
+            <p className="text-[14px] font-medium mb-1 text-night-100">
               Ask about this session
             </p>
-            <p className="text-[12px] mb-6 text-center max-w-sm" style={{ color: "var(--text-tertiary)" }}>
+            <p className="text-[12px] mb-6 text-center max-w-sm text-night-400">
               Ask questions about the conversation and Orchid will reason through the transcript to find answers.
             </p>
             <div className="flex flex-wrap gap-2 justify-center max-w-lg">
@@ -140,20 +130,7 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
                 <button
                   key={i}
                   onClick={() => sendMessage(q)}
-                  className="text-[11px] px-3 py-1.5 rounded-full border transition-colors cursor-pointer"
-                  style={{
-                    background: "var(--bg-secondary)",
-                    borderColor: "var(--border-subtle)",
-                    color: "var(--text-secondary)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--orchid-pink)";
-                    e.currentTarget.style.color = "var(--orchid-pink)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--border-subtle)";
-                    e.currentTarget.style.color = "var(--text-secondary)";
-                  }}
+                  className="suggested-q text-[11px] px-3 py-1.5 rounded-full border transition-colors cursor-pointer bg-night-900"
                 >
                   {q}
                 </button>
@@ -168,18 +145,12 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
             {loading && (
               <div className="animate-fade-in">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <div
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold"
-                    style={{ background: "var(--orchid-pink-muted)", color: "var(--orchid-pink)" }}
-                  >
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold bg-orchid-muted text-orchid">
                     O
                   </div>
-                  <span className="text-[11px] font-medium" style={{ color: "var(--text-tertiary)" }}>Orchid</span>
+                  <span className="text-[11px] font-medium text-night-400">Orchid</span>
                 </div>
-                <div
-                  className="rounded-lg px-3.5 py-2.5 inline-flex items-center gap-1.5"
-                  style={{ background: "var(--bg-secondary)", borderLeft: "2px solid var(--orchid-pink)" }}
-                >
+                <div className="rounded-lg px-3.5 py-2.5 inline-flex items-center gap-1.5 bg-night-900 border-l-2 border-orchid">
                   <span className="typing-dot" />
                   <span className="typing-dot" />
                   <span className="typing-dot" />
@@ -192,13 +163,7 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* Input area */}
-      <div
-        className="shrink-0 border rounded-lg flex items-end gap-2 px-3 py-2"
-        style={{
-          background: "var(--bg-secondary)",
-          borderColor: "var(--border-subtle)",
-        }}
-      >
+      <div className="shrink-0 border rounded-lg flex items-end gap-2 px-3 py-2 bg-night-900 border-night-750">
         <textarea
           ref={inputRef}
           value={input}
@@ -206,8 +171,8 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
           onKeyDown={handleKeyDown}
           placeholder="Ask about this conversation..."
           rows={1}
-          className="flex-1 bg-transparent text-[13px] resize-none outline-none placeholder-opacity-50"
-          style={{ color: "var(--text-primary)", maxHeight: "120px" }}
+          className="flex-1 bg-transparent text-[13px] resize-none outline-none placeholder-opacity-50 text-night-100"
+          style={{ maxHeight: "120px" }}
           onInput={(e) => {
             const target = e.target as HTMLTextAreaElement;
             target.style.height = "auto";
@@ -216,12 +181,8 @@ export function SessionChat({ sessionId }: { sessionId: string }) {
         />
         <button
           onClick={() => sendMessage(input)}
-          disabled={!input.trim() || loading}
-          className="shrink-0 w-7 h-7 rounded flex items-center justify-center transition-colors cursor-pointer"
-          style={{
-            background: input.trim() && !loading ? "var(--orchid-pink)" : "var(--bg-tertiary)",
-            color: input.trim() && !loading ? "white" : "var(--text-tertiary)",
-          }}
+          disabled={!canSend}
+          className={`shrink-0 w-7 h-7 rounded flex items-center justify-center transition-colors cursor-pointer ${canSend ? 'bg-orchid text-white' : 'bg-night-850 text-night-400'}`}
         >
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M2 8h12M10 4l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />

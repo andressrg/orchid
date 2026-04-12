@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { getDecisions, Decision } from '@/app/lib/api';
+import { type Decision } from '@/app/lib/api';
+import { getDecisions } from '@/app/lib/api-server';
 
 export const dynamic = "force-dynamic";
 

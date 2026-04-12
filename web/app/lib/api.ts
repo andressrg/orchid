@@ -1,7 +1,3 @@
-import { headers as getHeaders } from 'next/headers';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-
 export interface Session {
   id: string;
   user_name: string;
@@ -25,43 +21,6 @@ export interface Stats {
   last_activity: string;
 }
 
-async function apiFetch<T>(
-  path: string,
-  opts: { query?: string; team?: string } = {},
-): Promise<T> {
-  const params = new URLSearchParams();
-  if (opts.query) params.set('q', opts.query);
-  if (opts.team) params.set('team', opts.team);
-  const qs = params.toString();
-  const url = `${API_URL}/api${path}${qs ? `?${qs}` : ''}`;
-
-  // Forward cookies from the incoming request for server-side fetches
-  const incomingHeaders = await getHeaders();
-  const cookie = incomingHeaders.get('cookie') || '';
-
-  const res = await fetch(url, {
-    headers: cookie ? { Cookie: cookie } : {},
-    cache: 'no-store',
-  });
-
-  if (!res.ok) {
-    throw new Error(`API error: ${res.status}`);
-  }
-
-  return res.json();
-}
-
-export async function getSessions(team?: string, query?: string): Promise<Session[]> {
-  return apiFetch<Session[]>('/sessions', { team, query });
-}
-
-export async function getSession(id: string, team?: string): Promise<Session> {
-  return apiFetch<Session>(`/sessions/${encodeURIComponent(id)}`, { team });
-}
-
-export async function getStats(team?: string): Promise<Stats> {
-  return apiFetch<Stats>('/stats', { team });
-}
 
 export interface Turn {
   role: 'user' | 'assistant' | 'unknown';
@@ -157,13 +116,6 @@ export interface DecisionsResult {
   sessions_analyzed: number;
 }
 
-export async function getDecisions(team?: string, repo?: string): Promise<DecisionsResult> {
-  const params = new URLSearchParams();
-  if (team) params.set('team', team);
-  if (repo) params.set('repo', repo);
-  const qs = params.toString();
-  return apiFetch<DecisionsResult>(`/decisions${qs ? `?${qs}` : ''}`);
-}
 
 export function countMessages(transcript?: string): number {
   if (!transcript) return 0;
