@@ -140,19 +140,19 @@ The upside of custom is control: exact schema, exact status policy, event idempo
 
 ## Better Auth Plugin vs Custom
 
-| Area | Better Auth Stripe plugin | Custom billing |
-| --- | --- | --- |
-| Initial delivery | Already mostly implemented | Significant new work |
-| Auth/organization fit | Strong; uses Better Auth session and org references | Must duplicate or wrap these checks |
-| Checkout | Covered for conventional subscription plans | Full control over every parameter |
-| Portal | Covered, but bounded by Stripe portal/plugin flows | Can mix portal with custom flows |
-| Webhook verification | Covered by plugin | Must implement and test raw-body verification |
-| Local schema | Plugin-shaped and simple | Can design richer billing/audit schema |
-| Subscription state | Plugin syncs core status/period/seats | Can include events, invoices, entitlements, reconciliation |
-| Seat billing | Auto member-count sync | Can implement custom seat definitions |
-| Idempotency | Possible through plugin customization, not currently configured | Full processed-event and request idempotency model |
-| Testing burden | Lower, but still needs integration tests | Higher; every Stripe edge case is ours |
-| Future pricing complexity | Limited | Better for usage, credits, enterprise contracts |
+| Area                      | Better Auth Stripe plugin                                       | Custom billing                                             |
+| ------------------------- | --------------------------------------------------------------- | ---------------------------------------------------------- |
+| Initial delivery          | Already mostly implemented                                      | Significant new work                                       |
+| Auth/organization fit     | Strong; uses Better Auth session and org references             | Must duplicate or wrap these checks                        |
+| Checkout                  | Covered for conventional subscription plans                     | Full control over every parameter                          |
+| Portal                    | Covered, but bounded by Stripe portal/plugin flows              | Can mix portal with custom flows                           |
+| Webhook verification      | Covered by plugin                                               | Must implement and test raw-body verification              |
+| Local schema              | Plugin-shaped and simple                                        | Can design richer billing/audit schema                     |
+| Subscription state        | Plugin syncs core status/period/seats                           | Can include events, invoices, entitlements, reconciliation |
+| Seat billing              | Auto member-count sync                                          | Can implement custom seat definitions                      |
+| Idempotency               | Possible through plugin customization, not currently configured | Full processed-event and request idempotency model         |
+| Testing burden            | Lower, but still needs integration tests                        | Higher; every Stripe edge case is ours                     |
+| Future pricing complexity | Limited                                                         | Better for usage, credits, enterprise contracts            |
 
 ## Recommended Guardrails
 

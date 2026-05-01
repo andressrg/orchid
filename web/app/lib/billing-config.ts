@@ -24,14 +24,17 @@ const teamSeatPriceId = configuredValue(process.env.STRIPE_TEAM_SEAT_PRICE_ID);
 export const TEAM_BILLING_PLAN_NAME = 'team';
 
 export const isStripeSecretConfigured = Boolean(configuredValue(process.env.STRIPE_SECRET_KEY));
-export const isStripeWebhookConfigured = Boolean(configuredValue(process.env.STRIPE_WEBHOOK_SECRET));
+export const isStripeWebhookConfigured = Boolean(
+  configuredValue(process.env.STRIPE_WEBHOOK_SECRET),
+);
 export const isBillingEnforcementEnabled = process.env.STRIPE_BILLING_ENFORCEMENT === 'true';
 
 export const billingPlanDisplays: readonly BillingPlanDisplay[] = [
   {
     name: TEAM_BILLING_PLAN_NAME,
     label: 'Team',
-    description: 'Capture, search, and reason over AI coding sessions across a shared team workspace.',
+    description:
+      'Capture, search, and reason over AI coding sessions across a shared team workspace.',
     monthlyPriceIdConfigured: Boolean(teamMonthlyPriceId || teamMonthlyLookupKey),
     annualPriceIdConfigured: Boolean(teamAnnualPriceId || teamAnnualLookupKey),
     seatPriceIdConfigured: Boolean(teamSeatPriceId),
@@ -46,14 +49,16 @@ export const billingPlanDisplays: readonly BillingPlanDisplay[] = [
 
 export const getConfiguredStripePlans = (): StripePlan[] => [
   ...(teamMonthlyPriceId || teamMonthlyLookupKey || teamSeatPriceId
-    ? [{
-        name: TEAM_BILLING_PLAN_NAME,
-        priceId: teamMonthlyPriceId,
-        lookupKey: teamMonthlyLookupKey,
-        annualDiscountPriceId: teamAnnualPriceId,
-        annualDiscountLookupKey: teamAnnualLookupKey,
-        seatPriceId: teamSeatPriceId,
-      }]
+    ? [
+        {
+          name: TEAM_BILLING_PLAN_NAME,
+          priceId: teamMonthlyPriceId,
+          lookupKey: teamMonthlyLookupKey,
+          annualDiscountPriceId: teamAnnualPriceId,
+          annualDiscountLookupKey: teamAnnualLookupKey,
+          seatPriceId: teamSeatPriceId,
+        },
+      ]
     : []),
 ];
 

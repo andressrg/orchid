@@ -54,7 +54,12 @@ const authPlugins = [
               const [membership] = await db
                 .select({ role: schema.member.role })
                 .from(schema.member)
-                .where(and(eq(schema.member.userId, user.id), eq(schema.member.organizationId, referenceId)))
+                .where(
+                  and(
+                    eq(schema.member.userId, user.id),
+                    eq(schema.member.organizationId, referenceId),
+                  ),
+                )
                 .limit(1);
 
               return membership?.role === 'owner' || membership?.role === 'admin';

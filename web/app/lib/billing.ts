@@ -5,7 +5,7 @@ import { isBillingEnforcementEnabled, isStripeBillingConfigured } from './billin
 
 const paidSubscriptionStatuses = ['active', 'trialing'] as const;
 
-export type PaidSubscriptionStatus = typeof paidSubscriptionStatuses[number];
+export type PaidSubscriptionStatus = (typeof paidSubscriptionStatuses)[number];
 
 export interface TeamBillingSubscription {
   readonly id: string;
@@ -30,9 +30,7 @@ export interface TeamMemberCount {
   readonly memberCount: number;
 }
 
-const serializeSubscription = (
-  row: typeof subscription.$inferSelect,
-): TeamBillingSubscription => ({
+const serializeSubscription = (row: typeof subscription.$inferSelect): TeamBillingSubscription => ({
   id: row.id,
   plan: row.plan,
   status: row.status,
@@ -53,11 +51,18 @@ export async function getTeamMemberCount(teamId: string): Promise<number> {
   return row?.memberCount || 0;
 }
 
-export async function getCurrentTeamSubscription(teamId: string): Promise<TeamBillingSubscription | null> {
+export async function getCurrentTeamSubscription(
+  teamId: string,
+): Promise<TeamBillingSubscription | null> {
   const [activeSubscription] = await db
     .select()
     .from(subscription)
-    .where(and(eq(subscription.referenceId, teamId), inArray(subscription.status, paidSubscriptionStatuses)))
+    .where(
+      and(
+        eq(subscription.referenceId, teamId),
+        inArray(subscription.status, paidSubscriptionStatuses),
+      ),
+    )
     .orderBy(desc(subscription.periodEnd))
     .limit(1);
 
@@ -86,7 +91,9 @@ export async function getTeamBillingState(teamId: string): Promise<TeamBillingSt
   ]);
 
   const configured = isStripeBillingConfigured();
-  const subscribed = currentSubscription ? subscriptionHasPaidAccess(currentSubscription.status) : false;
+  const subscribed = currentSubscription
+    ? subscriptionHasPaidAccess(currentSubscription.status)
+    : false;
   const allowed = !configured || !isBillingEnforcementEnabled || subscribed;
   const reason = !configured
     ? 'not_configured'
