@@ -11,6 +11,8 @@ import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
+import { getTeamBillingState } from './billing';
+import { isBillingEnforcementEnabled, isStripeBillingConfigured } from './billing-config';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -149,6 +151,39 @@ function escapeLike(s: string): string {
   return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+async function requireTeamBillingAccess(
+  c: { get(key: string): string | null; json: (data: object, status?: number) => Response },
+  feature: string,
+): Promise<Response | null> {
+  const teamId = c.get('teamId');
+  if (!teamId) {
+    if (!isStripeBillingConfigured() || !isBillingEnforcementEnabled) return null;
+
+    return c.json(
+      {
+        error: 'Subscription required',
+        code: 'team_scope_required',
+        feature,
+        billing_url: null,
+      },
+      402,
+    );
+  }
+
+  const billing = await getTeamBillingState(teamId);
+  if (billing.allowed) return null;
+
+  return c.json(
+    {
+      error: 'Subscription required',
+      code: 'subscription_required',
+      feature,
+      billing_url: billing.billingUrl,
+    },
+    402,
+  );
+}
+
 // Health
 app.get('/health', async (c) => {
   try {
@@ -198,7 +233,25 @@ app.get('/sessions', async (c) => {
 app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
+    const [session] = await db
+      .select({
+        id: orchidSession.id,
+        user_name: orchidSession.userName,
+        user_email: orchidSession.userEmail,
+        working_dir: orchidSession.workingDir,
+        git_remotes: orchidSession.gitRemotes,
+        branch: orchidSession.branch,
+        tool: orchidSession.tool,
+        transcript: orchidSession.transcript,
+        started_at: orchidSession.startedAt,
+        updated_at: orchidSession.updatedAt,
+        status: orchidSession.status,
+        message_count: orchidSession.messageCount,
+        user_id: orchidSession.userId,
+        team_id: orchidSession.teamId,
+      })
+      .from(orchidSession)
+      .where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     return c.json(session);
   } catch (err) {
@@ -210,6 +263,9 @@ app.get('/sessions/:id', async (c) => {
 // Create/update session (upsert via raw SQL — Drizzle's onConflict is limited)
 app.put('/sessions/:id', async (c) => {
   const id = c.req.param('id');
+  const billingError = await requireTeamBillingAccess(c, 'session_ingest');
+  if (billingError) return billingError;
+
   const { user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status } =
     await c.req.json();
 
@@ -323,6 +379,19 @@ app.get('/stats', async (c) => {
   }
 });
 
+// Billing status for the active team
+app.get('/billing/status', async (c) => {
+  const teamId = c.get('teamId');
+  if (!teamId) return c.json({ error: 'Team scope required' }, 400);
+
+  try {
+    return c.json(await getTeamBillingState(teamId));
+  } catch (err) {
+    console.error('GET /api/billing/status error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
 // PAT management
 app.post('/tokens', async (c) => {
   const userId = c.get('userId');
@@ -414,6 +483,8 @@ app.get('/sessions/:id/summary', async (c) => {
   if (!OPENAI_API_KEY) {
     return c.json({ error: 'AI summaries not available (OPENAI_API_KEY not configured)' }, 503);
   }
+  const billingError = await requireTeamBillingAccess(c, 'session_summary');
+  if (billingError) return billingError;
 
   const id = c.req.param('id');
   try {
@@ -478,6 +549,8 @@ app.post('/sessions/:id/chat', async (c) => {
   if (!OPENAI_API_KEY) {
     return c.json({ error: 'Chat not available (OPENAI_API_KEY not configured)' }, 503);
   }
+  const billingError = await requireTeamBillingAccess(c, 'session_chat');
+  if (billingError) return billingError;
 
   const id = c.req.param('id');
   const { question, history } = await c.req.json();
@@ -604,6 +677,9 @@ app.get('/sessions/:id/commits', async (c) => {
 app.get('/decisions', async (c) => {
   const repo = c.req.query('repo');
   const scope = scopeConditions(c);
+  const billingError = await requireTeamBillingAccess(c, 'decision_log');
+  if (billingError) return billingError;
+
   try {
     const conditions = [
       isNotNull(orchidSession.transcript),
