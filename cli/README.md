@@ -88,6 +88,23 @@ orchid explain abc123f
 
 No MCP server, no special integration. The CLI is the agent interface.
 
+### Codex skill
+
+This repo includes a Codex skill at `skills/orchid-context`. Install it from Codex by asking:
+
+```text
+Install the Orchid skill from https://github.com/andressrg/orchid/tree/main/skills/orchid-context
+```
+
+Manual install from a checked-out repo:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/orchid-context "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+Restart Codex after installing the skill.
+
 ## Configuration
 
 ```

@@ -88,6 +88,25 @@ orchid hooks install --mode auto
 orchid hooks status
 ```
 
+## Codex Skill
+
+Orchid ships a Codex skill at `skills/orchid-context` so agents can search Orchid history during reviews, code archaeology, and handoffs.
+
+Install it from Codex by asking:
+
+```text
+Install the Orchid skill from https://github.com/andressrg/orchid/tree/main/skills/orchid-context
+```
+
+Or install it manually from a checked-out repo:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/orchid-context "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+Restart Codex after installing the skill.
+
 ## Infrastructure
 
 | Service      | Provider | Details                                      |
