@@ -35,6 +35,12 @@ function MetadataItem({
   );
 }
 
+function displayToolName(tool: string): string {
+  if (tool === 'claude-code') return 'Claude Code';
+  if (tool === 'codex-cli') return 'Codex CLI';
+  return tool || 'unknown';
+}
+
 export const dynamic = 'force-dynamic';
 
 export default async function SessionPage({
@@ -171,7 +177,7 @@ export default async function SessionPage({
               : 'unknown'
           }
         />
-        <MetadataItem label="Tool" value={session.tool || 'unknown'} />
+        <MetadataItem label="Tool" value={displayToolName(session.tool)} />
         <MetadataItem label="Messages" value={`${turns.length} turns`} />
         <MetadataItem
           label="Started"

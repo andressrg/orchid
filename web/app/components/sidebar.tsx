@@ -177,7 +177,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
         </div>
         <div className="space-y-2">
           {[
-            { step: '1', text: 'Capture', desc: 'orchid claude' },
+            { step: '1', text: 'Capture', desc: 'orchid claude/codex' },
             { step: '2', text: 'Store', desc: 'Auto-synced' },
             { step: '3', text: 'Review', desc: 'See the why' },
           ].map(({ step, text, desc }) => (
@@ -197,7 +197,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       {/* CLI hint */}
       <div className="mx-3 mb-3 p-2.5 rounded-md border bg-night-950 border-night-750">
         <div className="text-[10px] font-medium mb-1 text-night-400">Quick start</div>
-        <code className="text-[11px] font-mono text-orchid">$ orchid claude</code>
+        <code className="text-[11px] font-mono text-orchid">$ orchid codex</code>
       </div>
 
       {/* Settings */}

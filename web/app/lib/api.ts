@@ -22,60 +22,12 @@ export interface Stats {
 }
 
 export interface Turn {
-  role: 'user' | 'assistant' | 'unknown';
+  role: 'user' | 'assistant' | 'tool' | 'system';
   text: string;
 }
 
-function extractTextContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block: { type?: string; text?: string }) => {
-        if (typeof block === 'string') return block;
-        if (block && block.type === 'text' && typeof block.text === 'string') return block.text;
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-  }
-  return '';
-}
-
 export function parseTranscript(transcript: string): Turn[] {
-  const turns: Turn[] = [];
-  const lines = transcript.split('\n').filter((l) => l.trim());
-
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      let role: 'user' | 'assistant' | 'unknown' | undefined;
-      let text = '';
-
-      if (obj.type === 'human' || obj.role === 'human' || obj.role === 'user') {
-        role = 'user';
-        text = extractTextContent(obj.content || (obj.message && obj.message.content));
-      } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-        role = 'assistant';
-        text = extractTextContent(obj.content || (obj.message && obj.message.content));
-      } else if (obj.message) {
-        role =
-          obj.message.role === 'user' || obj.message.role === 'human'
-            ? 'user'
-            : obj.message.role === 'assistant'
-              ? 'assistant'
-              : 'unknown';
-        text = extractTextContent(obj.message.content);
-      }
-
-      if (role && text) {
-        turns.push({ role, text });
-      }
-    } catch {
-      // skip non-JSON lines
-    }
-  }
-
-  return turns;
+  return parseTranscriptTurns({ transcript }).map((turn) => ({ role: turn.role, text: turn.text }));
 }
 
 export function timeAgo(dateStr: string): string {
@@ -117,5 +69,6 @@ export interface DecisionsResult {
 
 export function countMessages(transcript?: string): number {
   if (!transcript) return 0;
-  return transcript.split('\n').filter((l) => l.trim()).length;
+  return countMeaningfulTranscriptTurns(transcript);
 }
+import { countMeaningfulTranscriptTurns, parseTranscriptTurns } from './transcript';

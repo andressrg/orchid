@@ -1,9 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { gzipSync } from 'zlib';
 import { getConfig, getAuthHeaders, tryGetConfig } from '../config';
+import {
+  summarizeTranscriptMetadata,
+  parseTranscriptTurns,
+} from '../transcript';
 import {
   type LocalSession,
   type ProjectGroup,
@@ -69,7 +73,13 @@ const extractMetadataFromJsonl = (
   filePath: string,
 ): Omit<
   LocalSession,
-  'filePath' | 'fileSize' | 'projectKey' | 'projectName' | 'synced'
+  | 'filePath'
+  | 'fileSize'
+  | 'tool'
+  | 'transcriptFormat'
+  | 'projectKey'
+  | 'projectName'
+  | 'synced'
 > | null => {
   const fd = (() => {
     try {
@@ -188,6 +198,8 @@ const indexEntryToSession = (
 ): LocalSession => ({
   filePath: fs.existsSync(entry.fullPath) ? entry.fullPath : null,
   sessionId: entry.sessionId,
+  tool: 'claude-code',
+  transcriptFormat: 'claude-jsonl',
   projectKey,
   projectName,
   cwd: entry.projectPath || 'unknown',
@@ -215,6 +227,81 @@ const indexEntryToSession = (
     '',
   synced,
 });
+
+const readFilePrefix = (filePath: string): string => {
+  const fd = (() => {
+    try {
+      return fs.openSync(filePath, 'r');
+    } catch {
+      return null;
+    }
+  })();
+  if (fd === null) return '';
+  const buf = Buffer.alloc(64 * 1024);
+  const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
+  fs.closeSync(fd);
+  return buf.toString('utf-8', 0, bytesRead);
+};
+
+const codexSessionIdFromPath = (
+  filePath: string,
+  transcript: string,
+): string => {
+  const metadata = summarizeTranscriptMetadata({
+    transcript,
+    format: 'codex-rollout-jsonl',
+  });
+  const filenameMatch = path
+    .basename(filePath, '.jsonl')
+    .match(/([0-9a-f]{8}-[0-9a-f-]{27,})$/);
+  return metadata.id || filenameMatch?.[1] || path.basename(filePath, '.jsonl');
+};
+
+const cwdToProjectKey = (cwd: string): string =>
+  cwd.replace(os.homedir(), '~').replace(/[^a-zA-Z0-9_.~-]+/g, '-');
+
+const cwdToProjectName = (cwd: string): string =>
+  cwd === 'unknown' ? 'unknown' : path.basename(cwd);
+
+const extractCodexMetadataFromJsonl = (
+  filePath: string,
+): Omit<
+  LocalSession,
+  'filePath' | 'fileSize' | 'projectKey' | 'projectName' | 'synced'
+> | null => {
+  const transcript = readFilePrefix(filePath);
+  if (!transcript) return null;
+  const metadata = summarizeTranscriptMetadata({
+    transcript,
+    format: 'codex-rollout-jsonl',
+  });
+  const turns = parseTranscriptTurns({
+    transcript,
+    format: 'codex-rollout-jsonl',
+  });
+  const stat = fs.statSync(filePath);
+  const summary =
+    turns
+      .find((turn) => turn.role === 'user')
+      ?.text.replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() || '';
+  const firstTimestamp = metadata.timestamp || stat.birthtime.toISOString();
+  return {
+    sessionId: codexSessionIdFromPath(filePath, transcript),
+    tool: 'codex-cli',
+    transcriptFormat: 'codex-rollout-jsonl',
+    cwd: metadata.cwd || 'unknown',
+    gitBranch: metadata.branch || 'unknown',
+    firstTimestamp,
+    lastTimestamp: stat.mtime.toISOString(),
+    messageCount: turns.filter(
+      (turn) => turn.role === 'user' || turn.role === 'assistant',
+    ).length,
+    totalTokens: 0,
+    summary,
+  };
+};
 
 const tryReadDir = (dir: string): fs.Dirent[] => {
   try {
@@ -254,6 +341,8 @@ const discoverLocalSessions = (
           if (!meta) return null;
           return {
             ...meta,
+            tool: 'claude-code',
+            transcriptFormat: 'claude-jsonl',
             filePath,
             fileSize,
             projectKey: projEntry.name,
@@ -284,6 +373,168 @@ const discoverLocalSessions = (
         new Date(b.lastTimestamp).getTime() -
         new Date(a.lastTimestamp).getTime(),
     );
+};
+
+const findCodexRolloutFiles = (dir: string): readonly string[] =>
+  tryReadDir(dir).flatMap((entry) => {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) return findCodexRolloutFiles(fullPath);
+    return entry.isFile() &&
+      entry.name.startsWith('rollout-') &&
+      entry.name.endsWith('.jsonl')
+      ? [fullPath]
+      : [];
+  });
+
+interface CodexSqliteSession {
+  readonly sessionId: string;
+  readonly filePath: string;
+  readonly cwd: string;
+  readonly gitBranch: string;
+  readonly firstTimestamp: string;
+  readonly lastTimestamp: string;
+  readonly summary: string;
+}
+
+const sqlite3IsAvailable = (): boolean => {
+  try {
+    execFileSync('sqlite3', ['--version'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const parseUnixMs = (value: string): string =>
+  new Date(Number.parseInt(value, 10) || Date.now()).toISOString();
+
+const parseCodexSqliteLine = (line: string): CodexSqliteSession | null => {
+  const [
+    sessionId,
+    filePath,
+    cwd,
+    gitBranch,
+    createdAtMs,
+    updatedAtMs,
+    firstUserMessage,
+  ] = line.split('\t');
+  return sessionId && filePath && cwd
+    ? {
+        sessionId,
+        filePath,
+        cwd,
+        gitBranch: gitBranch || 'unknown',
+        firstTimestamp: parseUnixMs(createdAtMs || '0'),
+        lastTimestamp: parseUnixMs(updatedAtMs || '0'),
+        summary: firstUserMessage || '',
+      }
+    : null;
+};
+
+const discoverCodexSessionsFromSqlite = (
+  syncedIds: ReadonlySet<string>,
+): readonly LocalSession[] => {
+  const dbPath = path.join(os.homedir(), '.codex', 'state_5.sqlite');
+  if (!fs.existsSync(dbPath) || !sqlite3IsAvailable()) return [];
+  const query = `
+SELECT threads.id, threads.rollout_path, threads.cwd, COALESCE(threads.git_branch, ''),
+       COALESCE(threads.created_at_ms, threads.created_at * 1000),
+       COALESCE(threads.updated_at_ms, threads.updated_at * 1000),
+       COALESCE(threads.first_user_message, threads.title, '')
+FROM threads
+WHERE threads.archived = 0
+ORDER BY COALESCE(threads.updated_at_ms, threads.updated_at * 1000) DESC;`;
+
+  try {
+    return execFileSync(
+      'sqlite3',
+      ['-readonly', '-separator', '\t', dbPath, query],
+      {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      },
+    )
+      .split('\n')
+      .filter((line) => line.trim())
+      .map(parseCodexSqliteLine)
+      .filter((session): session is CodexSqliteSession => session !== null)
+      .filter((session) => fs.existsSync(session.filePath))
+      .map((session) => {
+        const fileSize = tryStatSize(session.filePath) || 0;
+        const prefixMeta = extractCodexMetadataFromJsonl(session.filePath);
+        const cwd =
+          prefixMeta?.cwd && prefixMeta.cwd !== 'unknown'
+            ? prefixMeta.cwd
+            : session.cwd;
+        return {
+          ...(prefixMeta || {
+            sessionId: session.sessionId,
+            tool: 'codex-cli' as const,
+            transcriptFormat: 'codex-rollout-jsonl' as const,
+            cwd,
+            gitBranch: session.gitBranch,
+            firstTimestamp: session.firstTimestamp,
+            lastTimestamp: session.lastTimestamp,
+            messageCount: 0,
+            totalTokens: 0,
+            summary: session.summary,
+          }),
+          sessionId: prefixMeta?.sessionId || session.sessionId,
+          cwd,
+          gitBranch:
+            prefixMeta?.gitBranch && prefixMeta.gitBranch !== 'unknown'
+              ? prefixMeta.gitBranch
+              : session.gitBranch,
+          firstTimestamp: prefixMeta?.firstTimestamp || session.firstTimestamp,
+          lastTimestamp: session.lastTimestamp,
+          summary: prefixMeta?.summary || session.summary,
+          filePath: session.filePath,
+          fileSize,
+          projectKey: cwdToProjectKey(cwd),
+          projectName: cwdToProjectName(cwd),
+          synced: syncedIds.has(prefixMeta?.sessionId || session.sessionId),
+        };
+      });
+  } catch {
+    return [];
+  }
+};
+
+const discoverCodexSessionsFromFiles = (
+  syncedIds: ReadonlySet<string>,
+): readonly LocalSession[] => {
+  const sessionsDir = path.join(os.homedir(), '.codex', 'sessions');
+  if (!fs.existsSync(sessionsDir)) return [];
+  return findCodexRolloutFiles(sessionsDir)
+    .map((filePath): LocalSession | null => {
+      const fileSize = tryStatSize(filePath);
+      if (fileSize === null || fileSize < 20) return null;
+      const meta = extractCodexMetadataFromJsonl(filePath);
+      if (!meta) return null;
+      return {
+        ...meta,
+        filePath,
+        fileSize,
+        projectKey: cwdToProjectKey(meta.cwd),
+        projectName: cwdToProjectName(meta.cwd),
+        synced: syncedIds.has(meta.sessionId),
+      };
+    })
+    .filter((session): session is LocalSession => session !== null);
+};
+
+const discoverCodexSessions = (
+  syncedIds: ReadonlySet<string>,
+): readonly LocalSession[] => {
+  const sqliteSessions = discoverCodexSessionsFromSqlite(syncedIds);
+  const sqliteIds = new Set(sqliteSessions.map((session) => session.sessionId));
+  const fileSessions = discoverCodexSessionsFromFiles(syncedIds).filter(
+    (session) => !sqliteIds.has(session.sessionId),
+  );
+  return [...sqliteSessions, ...fileSessions].sort(
+    (a, b) =>
+      new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime(),
+  );
 };
 
 // ── Server interaction ─────────────────────────────────────────────────────
@@ -349,7 +600,7 @@ const syncSessionToServer = async (
     working_dir: session.cwd,
     git_remotes: gitMeta.git_remotes,
     branch: session.gitBranch,
-    tool: 'claude-code',
+    tool: session.tool,
     transcript,
     status: 'done',
   });
@@ -639,12 +890,13 @@ const renderSessionRow = (
     : !s.summary
       ? dim(paddedLabel)
       : paddedLabel;
+  const tool = padRight(s.tool === 'codex-cli' ? 'Codex' : 'Claude', 8);
   const branch = padRight(s.gitBranch.slice(0, 14), 16);
   const date = padRight(displayShortDate(s.lastTimestamp), 8);
   const msgs = padLeft(String(s.messageCount), 5);
   const tokens = padLeft(displayTokenCount(s.totalTokens), 7);
   const archived = s.filePath === null && !s.synced ? dim(' ✱') : '';
-  const content = `  ${pointer} ${status} ${label}${branch}${date}${msgs}${tokens}${archived}`;
+  const content = `  ${pointer} ${status} ${label}${tool}${branch}${date}${msgs}${tokens}${archived}`;
   return s.synced
     ? active
       ? `\x1b[48;5;236m${dim(content)}\x1b[0m`
@@ -674,8 +926,8 @@ const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
       '',
       `  ${bold(group.projectName)} ${dim(`— ${subtitle}`)}`,
       '',
-      `  ${dim('    ')}${dim(padRight('SUMMARY', 40))}${dim(padRight('BRANCH', 16))}${dim(padRight('DATE', 8))}${dim(padLeft('MSGS', 5))}${dim(padLeft('TOKENS', 7))}`,
-      `  ${dim('─'.repeat(82))}`,
+      `  ${dim('    ')}${dim(padRight('SUMMARY', 40))}${dim(padRight('TOOL', 8))}${dim(padRight('BRANCH', 16))}${dim(padRight('DATE', 8))}${dim(padLeft('MSGS', 5))}${dim(padLeft('TOKENS', 7))}`,
+      `  ${dim('─'.repeat(90))}`,
     ],
     footerLine: (sel, _total) => {
       const selLabel = sel > 0 ? ` (${sel} selected)` : '';
@@ -717,7 +969,7 @@ const runDiscoverLoop = async (
     renderRow: renderProjectRow,
     headerLines: [
       '',
-      `  ${magenta('orchid sync')} ${dim('— discover local Claude Code sessions')}`,
+      `  ${magenta('orchid sync')} ${dim('— discover local AI coding sessions')}`,
       '',
       `  ${bold(String(allSessions.length))} sessions across ${bold(String(groups.length))} projects ${dim(`(${syncableCount} syncable)`)}`,
       '',
@@ -749,13 +1001,43 @@ const runDiscoverLoop = async (
   }
 };
 
-const runDiscover = async (): Promise<void> => {
+type DiscoverTool = 'claude' | 'codex' | 'all';
+
+const discoverSessionsForTool = (params: {
+  readonly tool: DiscoverTool;
+  readonly syncedIds: ReadonlySet<string>;
+}): readonly LocalSession[] => {
+  const claudeSessions =
+    params.tool === 'codex' ? [] : discoverLocalSessions(params.syncedIds);
+  const codexSessions =
+    params.tool === 'claude' ? [] : discoverCodexSessions(params.syncedIds);
+  return [...claudeSessions, ...codexSessions].sort(
+    (a, b) =>
+      new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime(),
+  );
+};
+
+const parseDiscoverTool = (args: readonly string[]): DiscoverTool => {
+  const toolFlagIndex = args.findIndex((arg) => arg === '--tool');
+  const explicitValue = toolFlagIndex >= 0 ? args[toolFlagIndex + 1] : null;
+  const equalsValue = args
+    .map((arg) => arg.match(/^--tool=(claude|codex|all)$/)?.[1] ?? null)
+    .find((value) => value !== null);
+  const value = equalsValue ?? explicitValue ?? 'all';
+  return value === 'claude' || value === 'codex' || value === 'all'
+    ? value
+    : 'all';
+};
+
+const runDiscover = async (tool: DiscoverTool): Promise<void> => {
   console.log();
   console.log(
-    `  ${magenta('orchid sync')} ${dim('— discover local Claude Code sessions')}`,
+    `  ${magenta('orchid sync')} ${dim('— discover local AI coding sessions')}`,
   );
   console.log();
-  process.stdout.write(`  ${dim('Scanning ~/.claude/projects…')}`);
+  process.stdout.write(
+    `  ${dim(`Scanning ${tool === 'claude' ? '~/.claude/projects' : tool === 'codex' ? '~/.codex/sessions' : '~/.claude/projects and ~/.codex/sessions'}…`)}`,
+  );
 
   process.stdout.write(
     `\r  ${dim('Checking server for already-synced sessions…')}              `,
@@ -765,14 +1047,18 @@ const runDiscover = async (): Promise<void> => {
     `\r  ${dim(`${syncedIds.size} sessions already synced on server.`)}              \n`,
   );
 
-  const allSessions = discoverLocalSessions(syncedIds);
+  const allSessions = discoverSessionsForTool({ tool, syncedIds });
   console.log(`  ${dim(`Found ${allSessions.length} local sessions.`)}`);
 
   if (allSessions.length === 0) {
-    console.log(
-      `\n  ${dim('No Claude Code sessions found in ~/.claude/projects/')}`,
-    );
+    console.log(`\n  ${dim('No local sessions found for the selected tool.')}`);
     return;
+  }
+
+  if (tool !== 'claude') {
+    console.log(
+      `  ${yellow('Note:')} ${dim('Codex sync uploads raw local rollout transcripts, including tool outputs.')}`,
+    );
   }
 
   const groups = groupSessionsByProject(allSessions);
@@ -793,21 +1079,35 @@ const syncFile = async (filePath: string): Promise<void> => {
   }
 
   const fileSize = fs.statSync(resolved).size;
-  const meta = extractMetadataFromJsonl(resolved);
-  if (!meta) {
+  const codexMeta = resolved.includes(`${path.sep}.codex${path.sep}`)
+    ? extractCodexMetadataFromJsonl(resolved)
+    : null;
+  const meta = codexMeta ? null : extractMetadataFromJsonl(resolved);
+  if (!codexMeta && !meta) {
     console.error(`${red('Error:')} Could not parse metadata from ${resolved}`);
     process.exit(1);
   }
 
   const projectKey = path.basename(path.dirname(resolved));
-  const session: LocalSession = {
-    ...meta,
-    filePath: resolved,
-    fileSize,
-    projectKey,
-    projectName: projectKeyToName(projectKey),
-    synced: false,
-  };
+  const session: LocalSession = codexMeta
+    ? {
+        ...codexMeta,
+        filePath: resolved,
+        fileSize,
+        projectKey: cwdToProjectKey(codexMeta.cwd),
+        projectName: cwdToProjectName(codexMeta.cwd),
+        synced: false,
+      }
+    : {
+        ...meta!,
+        tool: 'claude-code',
+        transcriptFormat: 'claude-jsonl',
+        filePath: resolved,
+        fileSize,
+        projectKey,
+        projectName: projectKeyToName(projectKey),
+        synced: false,
+      };
 
   console.log(
     `\n  ${magenta('orchid sync')} ${dim('— syncing single session')}\n`,
@@ -834,20 +1134,21 @@ export const runSync = (args: string[]): void => {
   const flag = args[0];
 
   if (flag === '--help' || flag === '-h') {
-    console.log(`orchid sync - sync past Claude Code conversations
+    console.log(`orchid sync - sync past AI coding conversations
 
 Usage:
-  orchid sync --discover          Discover and sync unsynced local sessions
+  orchid sync --discover [--tool all|claude|codex]
   orchid sync <file.jsonl>        Sync a single transcript file
 
 Options:
-  --discover    Scan ~/.claude/projects/ for unsynced sessions
+  --discover    Scan local tool transcript directories for unsynced sessions
+  --tool        Tool to discover: all, claude, or codex (default: all)
   --help        Show this help message`);
     return;
   }
 
   if (flag === '--discover' || !flag) {
-    runDiscover().catch((err) => {
+    runDiscover(parseDiscoverTool(args)).catch((err) => {
       process.stdout.write(SHOW_CURSOR);
       console.error(`\n${red('Error:')} ${err.message}`);
       process.exit(1);

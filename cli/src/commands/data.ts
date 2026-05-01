@@ -1,5 +1,6 @@
 import * as path from 'path';
 import { getConfig, getAuthHeaders } from '../config';
+import { parseTranscriptTurns } from '../transcript';
 
 function shortId(id: string): string {
   return id.length > 12 ? id.slice(0, 12) + '...' : id;
@@ -126,72 +127,6 @@ async function fetchSession(sessionId: string): Promise<Session> {
   return (await res.json()) as Session;
 }
 
-interface JsonlMessage {
-  type?: string;
-  role?: string;
-  message?: { role?: string; content?: unknown };
-  content?: unknown;
-}
-
-function extractTextContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block: { type?: string; text?: string }) => {
-        if (typeof block === 'string') return block;
-        if (block && block.type === 'text' && typeof block.text === 'string')
-          return block.text;
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-  }
-  return '';
-}
-
-interface Turn {
-  role: string;
-  text: string;
-}
-
-function parseTranscriptTurns(transcript: string): Turn[] {
-  const turns: Turn[] = [];
-  const lines = transcript.split('\n').filter((l) => l.trim());
-
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line) as JsonlMessage;
-
-      // Claude Code JSONL format: messages have a type and role, or a message object
-      let role: string | undefined;
-      let text = '';
-
-      if (obj.type === 'human' || obj.role === 'human' || obj.role === 'user') {
-        role = 'user';
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content),
-        );
-      } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-        role = 'assistant';
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content),
-        );
-      } else if (obj.message) {
-        role = obj.message.role || 'unknown';
-        text = extractTextContent(obj.message.content);
-      }
-
-      if (role && text) {
-        turns.push({ role, text });
-      }
-    } catch {
-      // skip non-JSON lines
-    }
-  }
-
-  return turns;
-}
-
 async function dataList(): Promise<void> {
   const sessions = await fetchSessions();
   printTable(sessions);
@@ -224,7 +159,7 @@ async function dataShow(args: string[]): Promise<void> {
     console.log('');
 
     if (session.transcript) {
-      const turns = parseTranscriptTurns(session.transcript);
+      const turns = parseTranscriptTurns({ transcript: session.transcript });
       const firstUser = turns.find((t) => t.role === 'user');
       const lastAssistant = [...turns]
         .reverse()
@@ -253,7 +188,7 @@ async function dataShow(args: string[]): Promise<void> {
       console.log('(no transcript available)');
       return;
     }
-    const turns = parseTranscriptTurns(session.transcript);
+    const turns = parseTranscriptTurns({ transcript: session.transcript });
     if (turns.length === 0) {
       console.log('(no parseable messages in transcript)');
       return;

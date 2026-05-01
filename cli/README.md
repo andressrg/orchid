@@ -2,7 +2,7 @@
 
 Code tells you _what_. Git tells you _when_. Orchid tells you **why**.
 
-Orchid captures the conversations between developers and AI tools (Claude Code, etc.) and makes them searchable, reviewable, and useful. The context behind every commit, PR, and architectural decision — preserved instead of lost.
+Orchid captures the conversations between developers and AI tools like Claude Code and Codex CLI, then makes them searchable, reviewable, and useful. The context behind every commit, PR, and architectural decision — preserved instead of lost.
 
 ## Install
 
@@ -27,8 +27,11 @@ orchid hooks install --mode auto
 # 4. Confirm hooks and auth are ready
 orchid hooks status
 
-# 5. Or bulk-sync past conversations you already had
-orchid sync --discover
+# 5. Capture Codex CLI conversations
+orchid codex
+
+# 6. Or bulk-sync past conversations you already had
+orchid sync --discover --tool all
 ```
 
 ## Commands
@@ -41,7 +44,9 @@ orchid hooks install --mode auto
 orchid hooks install --mode prompt
 orchid hooks status           # Show hook installation and auth status
 orchid hooks uninstall        # Remove Orchid hooks from Claude Code
-orchid sync --discover        # Interactive TUI to find and sync past sessions
+orchid codex [args]           # Launch Codex CLI, sync conversation in real-time
+orchid sync --discover        # Interactive TUI to find and sync past Claude/Codex sessions
+orchid sync --discover --tool codex
 orchid sync <file.jsonl>      # Sync a single transcript file
 orchid claude [args]          # Legacy wrapper for launching Claude Code
 ```
@@ -52,7 +57,9 @@ Use `--mode auto` to sync every conversation automatically. Use `--mode prompt` 
 
 `orchid claude` is still available as a legacy wrapper. It launches Claude Code with full interactivity and periodically uploads the transcript to your Orchid server. Hooks are preferred because they work with your normal Claude Code launch flow.
 
-`orchid sync --discover` scans `~/.claude/projects/` for all your local sessions (including archived ones), shows them in a vim-style browser, and lets you select which to upload. Supports `j/k` navigation, space to select, `s` to sync.
+`orchid codex` is a transparent wrapper for Codex CLI. It launches Codex with full interactivity and periodically uploads the rollout transcript to your Orchid server. When you're done, a final sync captures everything.
+
+`orchid sync --discover` scans local Claude and Codex transcript directories, shows sessions in a vim-style browser, and lets you select which to upload. Supports `j/k` navigation, space to select, `s` to sync.
 
 ### Query
 
@@ -120,12 +127,12 @@ ORCHID_TOKEN=orc_your_token_here
 ## How it works
 
 1. You run `orchid hooks install --mode auto` once
-2. Claude Code runs normally
-3. Claude Code calls Orchid on `SessionStart`, `Stop`, and `SessionEnd`
+2. Claude Code runs normally, or you run Codex through `orchid codex`
+3. Claude Code hooks or the Codex wrapper give Orchid the active transcript path
 4. Orchid reads the JSONL transcript file and syncs active and completed sessions
 5. The conversation appears on your Orchid server for search, review, and Q&A
 
-For past conversations, `orchid sync --discover` reads both `.jsonl` files and Claude Code's `sessions-index.json` to find everything, including sessions whose transcripts have been cleaned up.
+For past conversations, `orchid sync --discover` reads local Claude and Codex transcript metadata and JSONL files to find sessions you can upload.
 
 ## Links
 
