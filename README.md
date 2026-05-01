@@ -12,7 +12,7 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ## How It Works
 
-1. **Capture**: Run `orchid claude` instead of `claude`. The conversation syncs to the cloud in real-time.
+1. **Capture**: Install Claude Code hooks with `orchid hooks install --mode auto`. Conversations sync while you keep using Claude normally.
 2. **Store**: Conversations are stored with git metadata — branches, remotes, users.
 3. **Review**: See the full conversation behind any code change. Search, browse, or let AI summarize.
 
@@ -20,7 +20,13 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ### CLI
 ```bash
-orchid claude                          # Launch Claude + capture conversation
+orchid config                          # Point the CLI at your Orchid server
+orchid login                           # Authenticate with a Personal Access Token
+orchid hooks install --mode auto       # Sync every Claude Code conversation
+orchid hooks install --mode prompt     # Ask before syncing each conversation
+orchid hooks status                    # Show hook and auth status
+orchid hooks uninstall                 # Remove Orchid hooks from Claude Code
+orchid sync --discover                 # Backfill past Claude Code conversations
 orchid data list                       # List all sessions
 orchid data show <id> [--turns]        # View full transcript
 orchid data search "why websockets"    # Search across all conversations
@@ -56,7 +62,7 @@ orchid explain <commit-sha>            # Explain why a commit was made
 ## Tech Stack
 
 ```
-CLI:        TypeScript (wrapper + file watcher + HTTP sync), published as orchid-cli on npm
+CLI:        TypeScript (Claude Code hooks + transcript sync), published as orchid-cli on npm
 API:        Hono routes inside the Next.js app
 Frontend:   Next.js 16 + Tailwind CSS
 Database:   PostgreSQL on Neon (serverless)
@@ -75,8 +81,11 @@ npm install -g orchid-cli
 # Login to your Orchid account
 orchid login
 
-# Start coding with conversation capture
-orchid claude
+# Install Claude Code hooks
+orchid hooks install --mode auto
+
+# Confirm hooks and auth are ready
+orchid hooks status
 ```
 
 ## Infrastructure
