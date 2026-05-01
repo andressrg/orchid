@@ -1,83 +1,99 @@
 import { describe, it } from "node:test";
 import * as assert from "node:assert/strict";
 import {
-  mergeHooks, removeOrchidHooks, isOrchidHookEntry, buildHookEntries,
   ORCHID_HOOK_EVENTS,
+  buildHookEntries,
+  buildSettingsWithInstalledHooks,
+  buildSettingsWithoutOrchidHooks,
+  claudeHookInputFromJson,
+  isOrchidHookEntry,
+  mergeHooks,
+  removeOrchidHooks,
+  sessionStartOutputForMode,
+  type HookCollection,
+  type JsonObject,
+  type JsonValue,
 } from "../src/commands/hooks";
 
-// ── buildHookEntries ──────────────────────────────────────────────────────
+const entriesForEvent = (
+  hooks: HookCollection,
+  event: "SessionStart" | "Stop" | "SessionEnd"
+): readonly JsonValue[] =>
+  Array.isArray(hooks[event]) ? hooks[event] : [];
+
+const objectFromValue = (value: JsonValue | undefined): JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value
+    : {};
+
+const firstCommandForEvent = (
+  hooks: HookCollection,
+  event: "SessionStart" | "Stop" | "SessionEnd"
+): string | null => {
+  const entry = objectFromValue(entriesForEvent(hooks, event)[0]);
+  const commands = Array.isArray(entry.hooks) ? entry.hooks : [];
+  const command = objectFromValue(commands[0]).command;
+  return typeof command === "string" ? command : null;
+};
 
 describe("buildHookEntries", () => {
-  it("returns only valid hook event keys", () => {
-    const entries = buildHookEntries();
-    const keys = Object.keys(entries);
-    keys.forEach((key) => {
-      assert.ok(
-        ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number]),
-        `Unexpected key "${key}" — only valid hook events allowed`
-      );
-    });
+  it("returns only Claude hook event keys", () => {
+    const keys = Object.keys(buildHookEntries());
+    assert.deepEqual(keys.filter((key) => !ORCHID_HOOK_EVENTS.includes(key as typeof ORCHID_HOOK_EVENTS[number])), []);
   });
 
-  it("includes SessionStart, Stop, and SessionEnd", () => {
+  it("installs lifecycle hooks for current Claude sessions", () => {
     const entries = buildHookEntries();
-    assert.ok(Array.isArray(entries.SessionStart));
-    assert.ok(Array.isArray(entries.Stop));
-    assert.ok(Array.isArray(entries.SessionEnd));
+    const startEntry = objectFromValue(entriesForEvent(entries, "SessionStart")[0]);
+
+    assert.equal(startEntry.matcher, "startup|resume|clear|compact");
+    assert.equal(entriesForEvent(entries, "Stop").length, 1);
+    assert.equal(entriesForEvent(entries, "SessionEnd").length, 1);
   });
 
-  it("includes correct commands", () => {
+  it("uses the internal hook commands", () => {
     const entries = buildHookEntries();
-    const startCmd = (entries.SessionStart[0].hooks[0] as Record<string, unknown>).command;
-    const stopCmd = (entries.Stop[0].hooks[0] as Record<string, unknown>).command;
-    const endCmd = (entries.SessionEnd[0].hooks[0] as Record<string, unknown>).command;
 
-    assert.equal(startCmd, "orchid hooks _on-start");
-    assert.equal(stopCmd, "orchid hooks _on-stop");
-    assert.equal(endCmd, "orchid hooks _on-end");
+    assert.equal(firstCommandForEvent(entries, "SessionStart"), "orchid hooks _on-start");
+    assert.equal(firstCommandForEvent(entries, "Stop"), "orchid hooks _on-stop");
+    assert.equal(firstCommandForEvent(entries, "SessionEnd"), "orchid hooks _on-end");
   });
 });
-
-// ── isOrchidHookEntry ─────────────────────────────────────────────────────
 
 describe("isOrchidHookEntry", () => {
   it("detects orchid hook entries", () => {
-    assert.ok(isOrchidHookEntry({
+    assert.equal(isOrchidHookEntry({
       hooks: [{ type: "command", command: "orchid hooks _on-start" }],
-    }));
-    assert.ok(isOrchidHookEntry({
+    }), true);
+    assert.equal(isOrchidHookEntry({
       hooks: [{ type: "command", command: "orchid hooks _on-stop", timeout: 30 }],
-    }));
-    assert.ok(isOrchidHookEntry({
-      matcher: "startup",
+    }), true);
+    assert.equal(isOrchidHookEntry({
+      matcher: "startup|resume|clear|compact",
       hooks: [{ type: "command", command: "orchid hooks _on-end" }],
-    }));
+    }), true);
   });
 
   it("rejects non-orchid entries", () => {
-    assert.ok(!isOrchidHookEntry({
+    assert.equal(isOrchidHookEntry({
       hooks: [{ type: "command", command: "echo done" }],
-    }));
-    assert.ok(!isOrchidHookEntry({
+    }), false);
+    assert.equal(isOrchidHookEntry({
       hooks: [{ type: "command", command: "osascript -e 'display notification'" }],
-    }));
-    assert.ok(!isOrchidHookEntry(null));
-    assert.ok(!isOrchidHookEntry({}));
-    assert.ok(!isOrchidHookEntry({ hooks: "not an array" }));
+    }), false);
+    assert.equal(isOrchidHookEntry(null), false);
+    assert.equal(isOrchidHookEntry({}), false);
+    assert.equal(isOrchidHookEntry({ hooks: "not an array" }), false);
   });
 });
 
-// ── mergeHooks ────────────────────────────────────────────────────────────
-
 describe("mergeHooks", () => {
   it("merges into empty existing hooks", () => {
-    const orchid = buildHookEntries();
-    const result = mergeHooks({}, orchid);
+    const result = mergeHooks({}, buildHookEntries());
 
-    assert.equal((result.SessionStart as unknown[]).length, 1);
-    assert.equal((result.Stop as unknown[]).length, 1);
-    assert.equal((result.SessionEnd as unknown[]).length, 1);
-    // Should NOT contain non-event keys
+    assert.equal(entriesForEvent(result, "SessionStart").length, 1);
+    assert.equal(entriesForEvent(result, "Stop").length, 1);
+    assert.equal(entriesForEvent(result, "SessionEnd").length, 1);
     assert.equal(result.__orchid_managed, undefined);
     assert.equal(result.mode, undefined);
   });
@@ -87,56 +103,46 @@ describe("mergeHooks", () => {
       Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command: "echo notify" }] }],
       PostToolUse: [{ matcher: "Write|Edit", hooks: [{ type: "command", command: "echo format" }] }],
     };
-    const orchid = buildHookEntries();
-    const result = mergeHooks(existing, orchid);
+    const result = mergeHooks(existing, buildHookEntries());
 
-    assert.ok(Array.isArray(result.Notification));
-    assert.ok(Array.isArray(result.PostToolUse));
-    assert.equal((result.Notification as unknown[]).length, 1);
-    assert.equal((result.PostToolUse as unknown[]).length, 1);
+    assert.equal(Array.isArray(result.Notification), true);
+    assert.equal(Array.isArray(result.PostToolUse), true);
+    assert.equal((result.Notification as readonly JsonValue[]).length, 1);
+    assert.equal((result.PostToolUse as readonly JsonValue[]).length, 1);
   });
 
   it("merges overlapping Stop hooks", () => {
-    const existing = {
-      Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
-    };
-    const orchid = buildHookEntries();
-    const result = mergeHooks(existing, orchid);
+    const result = mergeHooks(
+      { Stop: [{ hooks: [{ type: "command", command: "echo done" }] }] },
+      buildHookEntries()
+    );
 
-    const stopEntries = result.Stop as unknown[];
+    const stopEntries = entriesForEvent(result, "Stop").map(objectFromValue);
+
     assert.equal(stopEntries.length, 2);
-
-    const first = stopEntries[0] as Record<string, unknown>;
-    assert.equal(((first.hooks as Record<string, unknown>[])[0]).command, "echo done");
-
-    const second = stopEntries[1] as Record<string, unknown>;
-    assert.ok(((second.hooks as Record<string, unknown>[])[0]).command?.toString().includes("orchid hooks _on-stop"));
+    assert.equal(firstCommandForEvent({ Stop: [stopEntries[0]] }, "Stop"), "echo done");
+    assert.equal(firstCommandForEvent({ Stop: [stopEntries[1]] }, "Stop"), "orchid hooks _on-stop");
   });
 
-  it("replaces existing orchid entries (no duplicates)", () => {
-    // Simulate orchid hooks already present in settings
-    const existingOrchid = buildHookEntries();
-    const existing = {
-      ...existingOrchid,
-      Notification: [{ matcher: "test", hooks: [{ type: "command", command: "echo test" }] }],
-    };
+  it("replaces existing orchid entries without duplicates", () => {
+    const result = mergeHooks(
+      {
+        ...buildHookEntries(),
+        Notification: [{ matcher: "test", hooks: [{ type: "command", command: "echo test" }] }],
+      },
+      buildHookEntries()
+    );
 
-    const newOrchid = buildHookEntries();
-    const result = mergeHooks(existing, newOrchid);
-
-    assert.equal((result.SessionStart as unknown[]).length, 1);
-    assert.equal((result.Stop as unknown[]).length, 1);
-    assert.equal((result.SessionEnd as unknown[]).length, 1);
-    assert.ok(Array.isArray(result.Notification));
+    assert.equal(entriesForEvent(result, "SessionStart").length, 1);
+    assert.equal(entriesForEvent(result, "Stop").length, 1);
+    assert.equal(entriesForEvent(result, "SessionEnd").length, 1);
+    assert.equal(Array.isArray(result.Notification), true);
   });
 });
 
-// ── removeOrchidHooks ─────────────────────────────────────────────────────
-
 describe("removeOrchidHooks", () => {
   it("removes orchid entries", () => {
-    const existing = buildHookEntries();
-    const result = removeOrchidHooks(existing);
+    const result = removeOrchidHooks(buildHookEntries());
 
     assert.equal(result.SessionStart, undefined);
     assert.equal(result.Stop, undefined);
@@ -145,29 +151,92 @@ describe("removeOrchidHooks", () => {
 
   it("preserves non-orchid hooks on same events", () => {
     const orchid = buildHookEntries();
-    const existing = {
+    const result = removeOrchidHooks({
       ...orchid,
       Notification: [{ matcher: "permission_prompt", hooks: [{ type: "command", command: "echo notify" }] }],
       Stop: [
         { hooks: [{ type: "command", command: "echo done" }] },
-        ...(orchid.Stop as unknown[]),
+        ...entriesForEvent(orchid, "Stop"),
       ],
-    };
+    });
 
-    const result = removeOrchidHooks(existing);
-
-    assert.ok(Array.isArray(result.Notification));
-
-    const stopEntries = result.Stop as unknown[];
-    assert.equal(stopEntries.length, 1);
-    assert.equal(((stopEntries[0] as Record<string, unknown>).hooks as Record<string, unknown>[])[0].command, "echo done");
-
+    assert.equal(Array.isArray(result.Notification), true);
+    assert.equal(entriesForEvent(result, "Stop").length, 1);
+    assert.equal(firstCommandForEvent(result, "Stop"), "echo done");
     assert.equal(result.SessionStart, undefined);
     assert.equal(result.SessionEnd, undefined);
   });
 
   it("returns empty object when only orchid hooks existed", () => {
-    const result = removeOrchidHooks(buildHookEntries());
-    assert.equal(Object.keys(result).length, 0);
+    assert.equal(Object.keys(removeOrchidHooks(buildHookEntries())).length, 0);
+  });
+});
+
+describe("settings helpers", () => {
+  it("installs hooks without mutating other settings", () => {
+    const result = buildSettingsWithInstalledHooks({
+      theme: "dark",
+      hooks: {
+        Notification: [{ matcher: "idle_prompt", hooks: [{ type: "command", command: "echo idle" }] }],
+      },
+    });
+
+    const hooks = objectFromValue(result.hooks);
+
+    assert.equal(result.theme, "dark");
+    assert.equal(Array.isArray(hooks.Notification), true);
+    assert.equal(entriesForEvent(hooks, "SessionStart").length, 1);
+  });
+
+  it("removes only Orchid hooks from settings", () => {
+    const installed = buildSettingsWithInstalledHooks({
+      hooks: {
+        Stop: [{ hooks: [{ type: "command", command: "echo done" }] }],
+      },
+    });
+    const result = buildSettingsWithoutOrchidHooks(installed);
+    const hooks = objectFromValue(result.hooks);
+
+    assert.equal(firstCommandForEvent(hooks, "Stop"), "echo done");
+    assert.equal(hooks.SessionStart, undefined);
+    assert.equal(hooks.SessionEnd, undefined);
+  });
+});
+
+describe("Claude hook input/output", () => {
+  it("reads the current Claude transcript_path field", () => {
+    const input = claudeHookInputFromJson({
+      session_id: "session-123",
+      transcript_path: "/tmp/session-123.jsonl",
+      cwd: "/tmp/project",
+      hook_event_name: "Stop",
+    }, "/fallback");
+
+    assert.deepEqual(input, {
+      sessionId: "session-123",
+      transcriptPath: "/tmp/session-123.jsonl",
+      cwd: "/tmp/project",
+    });
+  });
+
+  it("falls back to the process cwd when Claude omits cwd", () => {
+    const input = claudeHookInputFromJson({
+      session_id: "session-123",
+      transcript_path: "/tmp/session-123.jsonl",
+    }, "/fallback");
+
+    assert.equal(input.cwd, "/fallback");
+  });
+
+  it("returns SessionStart JSON context instead of plain text", () => {
+    const output = sessionStartOutputForMode({
+      mode: "auto",
+      sessionId: "session-123",
+      webUrl: "https://www.orchidkeep.com",
+    });
+    const hookSpecificOutput = objectFromValue(output.hookSpecificOutput);
+
+    assert.equal(hookSpecificOutput.hookEventName, "SessionStart");
+    assert.match(String(hookSpecificOutput.additionalContext), /Orchid is syncing/);
   });
 });
