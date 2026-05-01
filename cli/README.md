@@ -88,22 +88,21 @@ orchid explain abc123f
 
 No MCP server, no special integration. The CLI is the agent interface.
 
-### Codex skill
+### Agent skill
 
-This repo includes a Codex skill at `skills/orchid-context`. Install it from Codex by asking:
-
-```text
-Install the Orchid skill from https://github.com/andressrg/orchid/tree/main/skills/orchid-context
-```
-
-Manual install from a checked-out repo:
+This repo includes an agent skill at `skills/orchid-context`. Install it for Codex and Claude Code with:
 
 ```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/orchid-context "${CODEX_HOME:-$HOME/.codex}/skills/"
+npx skills add andressrg/orchid --skill orchid-context -a codex -a claude-code
 ```
 
-Restart Codex after installing the skill.
+Install it globally with `-g`, or omit the `-a` flags to let the CLI install to detected agents. From a checked-out repo, you can also install the local skill:
+
+```bash
+npx skills add ./skills/orchid-context -a codex -a claude-code
+```
+
+Restart your agent if it does not detect the new skill immediately.
 
 ## Configuration
 
