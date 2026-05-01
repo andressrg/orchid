@@ -1,304 +1,284 @@
-# Plan v2: Wrapper CLI + Periodic Sync
-
-> **Note**: This is a spec for a **proof of concept**. The goal is to validate the core idea with the simplest possible implementation, not to build a production system. Cut corners where it makes sense — we can harden later.
-
-## Problem
-
-When AI writes code, the conversations behind it are invisible. A reviewer sees a PR diff but has no idea _why_ the AI made certain decisions — what the developer asked for, what alternatives were discussed, what tradeoffs were made. The context is lost.
+# Plan v3: Codex CLI Support
 
 ## Goal
 
-Code tells you what exists. Git tells you when it changed and who changed it. But neither tells you _why_. The conversations between developers and AI tools are the missing piece — they capture the reasoning, the tradeoffs, the decisions. We want to capture those conversations and make them available to anyone — or any agent — that needs them: a teammate reviewing a PR, a new developer trying to understand a module, or an agent picking up where someone left off.
+Add first-class OpenAI Codex CLI capture to Orchid without weakening the current Claude Code flow.
 
-## Key Principles
+The target user experience:
 
-- **Dumb write, smart read**: The capture path just stores raw conversation data — no processing, no parsing. It's an immutable, append-only log. All intelligence (linking to commits, surfacing in PRs, answering questions) happens at read time.
-- **Multi-repo by default**: A single conversation can span multiple repos and PRs. A developer working on a feature might touch backend and frontend in one session. The data model supports this from day one.
-- **Periodic sync, not post-hoc**: Conversations stream to the server as they happen, not after the session ends. This makes the data crash-safe and enables live viewing.
-- **Zero friction capture**: Just prefix your command with `orchid`. No config, no hooks, no setup.
-- **Simplest thing that works**: No clever sync algorithms, no incremental diffs — if re-uploading the whole transcript every 5 seconds works, do that. Optimize later.
-
-## Core Idea
-
-Replace the hooks-based capture approach with a **command wrapper** inspired by [jai](https://jai.scs.stanford.edu/):
-
-```
-orchid claude
+```bash
+orchid codex
+orchid codex "fix the failing tests"
+orchid codex --search "review this module"
+orchid sync --discover --tool codex
+orchid data show <codex-session-id> --turns
 ```
 
-This launches Claude Code (or any AI tool) and periodically syncs the conversation transcript to the cloud in near-realtime.
+Codex support should preserve Orchid's core idea: capture raw AI coding conversations in near realtime, store them with git metadata, and make the context useful later through CLI, web UI, review, explain, summaries, search, and commit correlation.
 
-## How It Works
+## Current Repo Findings
 
-1. User runs `orchid claude` in a **feature folder** (which may contain multiple repos as subfolders)
-2. Orchid launches Claude Code as a child process
-3. Orchid identifies the JSONL transcript file for **this specific session** (in `~/.claude/projects/`)
-4. A background watcher periodically reads the transcript and pushes it to the Orchid server — the simplest approach that works (even if that means re-uploading the whole sessopm each time)
-5. On exit, a final sync ensures everything is captured
+The existing architecture already has most of the right shape.
 
-### Multi-Repo Sessions
+- `cli/src/main.ts` dispatches `orchid claude`, `orchid sync`, `orchid data`, `orchid review`, and `orchid explain`.
+- `cli/src/commands/claude.ts` launches `claude`, finds a new transcript in `~/.claude/projects`, and starts the watcher.
+- `cli/src/sync.ts` periodically uploads the whole transcript with metadata to `PUT /sessions/:id`.
+- `cli/src/commands/sync.ts` bulk-discovers past Claude sessions from `~/.claude/projects` and Claude's `sessions-index.json`.
+- `web/app/lib/api-app.ts` accepts gzipped transcript upserts, stores raw JSONL in `orchid_session.transcript`, and extracts commits with `after()`.
+- The production API has a single implementation: the Hono app in `web/app/lib/api-app.ts`, mounted by `web/app/api/[[...route]]/route.ts`.
+- `web/app/lib/api.ts`, `cli/src/commands/data.ts`, summary, chat, decision extraction, review, and explain all parse transcript turns directly.
+- The database already has a generic `tool` column, so a schema migration is probably not required for basic Codex support.
 
-A common workflow: a developer creates a feature folder, clones the server and frontend repos into it, and runs `orchid claude` from the feature folder. That single conversation may produce commits in both repos, across multiple PRs.
+The main blocker is that Claude assumptions are spread through the CLI and read path:
 
-```
-feature-new-auth/
-├── backend/      ← git repo, PR #42
-├── frontend/     ← git repo, PR #18
-└── notes.md
-```
+- Launch command is hardcoded to `claude`.
+- Live discovery only scans `~/.claude/projects`.
+- Bulk discovery only scans Claude projects and indexes.
+- Uploaded `tool` is hardcoded to `claude-code`.
+- Turn parsers mostly understand Claude-style `type: "human"` / `type: "assistant"` or `message.role`.
+- Commit extraction is Claude-specific and only recognizes `tool_use` blocks named `Bash`.
+- UI/README copy says `orchid claude` as the only capture command.
 
-```
-orchid claude      ← one session, two repos, two PRs
-```
+## Codex Research
 
-This means:
+Official OpenAI docs describe Codex CLI as a local terminal coding agent that can read, edit, and run code in the selected directory, installed with `npm i -g @openai/codex` and run with `codex`. The same docs say new versions ship regularly and point users to the Codex changelog for releases.
 
-- **A session can touch multiple repos** — the conversation is the unit, not the repo
-- **Links are semantic, not stored** — we don't maintain a mapping between sessions and PRs in the database. The session has timestamps, commits have timestamps, and git knows which commits belong to which PR. The read layer connects the dots at query time.
-- **PR views aggregate** — when viewing PR #42 on the backend, the read layer finds conversations that overlap in time with the PR's commits and shows them, including parts that touched other repos
+Official CLI feature docs show interactive TUI usage, local code review, subagents, web search, Codex Cloud tasks, MCP, approval modes, and `codex exec` for non-interactive scripting.
 
-## Use Cases
+The current official changelog lists Codex CLI `0.128.0` on `2026-04-30`, with active work around persisted goals, permission profiles, TUI controls, plugins, hooks, external-agent imports, and resume reliability. This matters because Orchid should not depend on private, brittle UI behavior when file and metadata artifacts are enough.
 
-- **Code review** — Reviewer opens a PR and sees the conversations that produced each commit. Instead of guessing why something was done a certain way, they read the actual discussion.
-- **Agent-assisted review** — An agent reviews a PR for you, but instead of only reading the diff, it also reads the conversations behind it. It gives deeper feedback because it understands the intent, not just the code.
-- **Picking up someone else's work** — A teammate started a feature, had a long conversation with Claude, then went on vacation. You read the conversation and understand exactly where they were and what decisions they made.
-- **Agents continuing work** — An agent needs to finish a feature that another session started. It reads the previous conversations to understand what was tried, what failed, what the user actually wanted.
-- **Onboarding** — New developer wants to understand why the auth system works the way it does. They find the conversations from when it was built — the requirements, the alternatives, the tradeoffs.
-- **Debugging** — Something is broken and you're staring at weird code. You pull up the conversation that produced it and see the full context.
-- **Team visibility** — Engineering lead wants to understand how AI is being used across the team. Which repos, how often, what kinds of tasks.
+Local validation on this machine:
 
-## Surfaces
+- `codex --help` is available at `/opt/homebrew/bin/codex`.
+- Installed Codex is `0.128.0`.
+- Codex stores rollout JSONL files under `~/.codex/sessions/YYYY/MM/DD/rollout-...jsonl`.
+- Codex stores session metadata in `~/.codex/state_5.sqlite`, table `threads`.
+- `threads` includes `id`, `rollout_path`, `created_at`, `updated_at`, `source`, `cwd`, `title`, `git_branch`, `git_origin_url`, `cli_version`, `first_user_message`, `model`, and `reasoning_effort`.
+- `~/.codex/history.jsonl` maps recent prompt text to `session_id`, but it is not enough by itself because it lacks the rollout path.
+- Codex rollout JSONL includes entries like `session_meta`, `response_item`, `event_msg`, `turn_context`, and `token_count`, so existing Claude parsers will undercount or miss useful turns.
 
-### 1. CLI — `orchid data` (agent-friendly interface)
+Sources:
 
-The CLI is not just for capture — it's also the way agents query conversation data. Any agent (Claude Code, Codex, custom scripts) can shell out to `orchid data` commands.
+- OpenAI Codex CLI docs: https://developers.openai.com/codex/cli
+- OpenAI Codex CLI features: https://developers.openai.com/codex/cli/features
+- OpenAI Codex changelog: https://developers.openai.com/codex/changelog
+- OpenAI Codex GitHub repo: https://github.com/openai/codex
 
-```
-orchid data list                          — list stored sessions
-orchid data search "why websockets"       — search across all conversations
-orchid data show <session_id>             — dump a specific session
-```
+## Product Decision
 
-This means an AI-assisted code review is just:
+Implement Codex as a peer tool, not a special case bolted onto `claude.ts`.
 
-```
-> Review PR #42. Use `orchid data` to check the conversations behind it.
-```
+The right abstraction is a small tool adapter:
 
-Claude Code runs the commands, reads the results, and gives a review that understands _why_ things were done. No MCP server, no special integration — the CLI is the agent interface.
-
-### 2. Web UI — the home base
-
-- See all your conversations and your teammates' conversations
-- Browse by repo, by person, by time
-- Click into any session and read the full conversation
-- Live view when someone is actively working
-
-### 3. GitHub PR comment — passive context
-
-When a PR is opened, Orchid automatically posts a comment listing the related conversations, each linking back to the web UI:
-
-```
-🌸 Orchid: 3 AI conversations related to this PR
-
-- Session by @andres (2h 14m, 47 messages) — View conversation
-- Session by @julian (35m, 12 messages) — View conversation
-- Session by @andres (10m, 6 messages) — View conversation
+```ts
+interface AiToolAdapter {
+  readonly commandName: string;
+  readonly binaryName: string;
+  readonly displayName: string;
+  readonly storageToolName: string;
+  readonly findLiveTranscriptPath: (params: FindTranscriptParams) => string | null;
+  readonly discoverLocalSessions: (params: DiscoverSessionsParams) => readonly LocalSession[];
+  readonly parseTranscriptTurns: (transcript: string) => readonly TranscriptTurn[];
+  readonly extractCommits: (transcript: string) => readonly ExtractedCommit[];
+}
 ```
 
-### 4. GitHub PR Q&A — the killer feature
+Claude and Codex can then share:
+
+- process spawning
+- signal handling
+- periodic sync
+- final sync
+- git metadata collection
+- single-file sync
+- data command formatting
+- read-path AI features
+
+This keeps future support for Cursor, Aider, Gemini CLI, or other tools straightforward.
+
+## Phase 1: CLI Live Capture
+
+Deliverable: `orchid codex` launches Codex and syncs the active Codex rollout to Orchid.
+
+Tasks:
+
+- Add `cli/src/commands/codex.ts` or a shared `cli/src/commands/wrap-tool.ts`.
+- Refactor `collectGitMetadata` out of `claude.ts` into a shared module.
+- Refactor `startSyncWatcher` to accept `tool` as metadata instead of hardcoding `claude-code`.
+- Register `codex` in `cli/src/main.ts` help and dispatch.
+- Spawn `codex` with all args, inherited stdio, inherited env, and current working directory.
+- Detect the live transcript using `~/.codex/sessions` file scanning first, filtered by:
+  - file birth/mtime after wrapper start
+  - filename `rollout-*.jsonl`
+  - first `session_meta.payload.cwd` matching the wrapper cwd when available
+- Use `~/.codex/state_5.sqlite` only as an optional refinement when the `sqlite3` binary is present, not as an npm dependency.
+- Upload sessions with `tool: "codex-cli"`.
+- Derive Codex session IDs from the `session_meta.payload.id` when present, with filename parsing as fallback.
+- Keep the final sync behavior identical to Claude.
+
+Acceptance checks:
+
+- `orchid codex --help` forwards to Codex without Orchid swallowing flags.
+- `orchid codex "say hi"` creates or finds a Codex rollout file and uploads it.
+- Server session row has `tool = "codex-cli"`, correct cwd, branch, remotes, and raw transcript.
+- Existing `orchid claude` behavior still works.
+
+## Phase 2: Transcript Parsing
+
+Deliverable: Codex sessions are readable in `orchid data show --turns`, web session viewer, summaries, chat, decisions, review, and explain.
+
+Tasks:
+
+- Create a shared transcript parser module for both CLI and web, or duplicate a tiny pure parser in each package if workspace sharing is too much for this pass.
+- Keep raw JSONL unchanged in the database.
+- Normalize parsed turns into:
+  - `role: "user" | "assistant" | "tool" | "system" | "unknown"`
+  - `text`
+  - `timestamp`
+  - `sourceTool`
+  - `rawType`
+- Support Claude formats already handled today.
+- Add Codex support for:
+  - `event_msg.payload.type === "user_message"` as user text
+  - `response_item.payload.type === "message"` and `payload.role === "assistant"` as assistant text
+  - `response_item.payload.type === "function_call"` as tool invocation
+  - `response_item.payload.type === "function_call_output"` as tool output
+  - `session_meta.payload` for metadata
+  - `turn_context.payload` for cwd, model, approval, sandbox, and runtime metadata when useful
+- Exclude giant instruction/config payloads from normal turn rendering.
+- Count meaningful user and assistant turns separately from raw JSONL line count in read views.
+
+Acceptance checks:
+
+- A real Codex rollout displays the user's prompt and assistant replies in the web session page.
+- `orchid data show <id> --turns` is useful for Codex, not just raw JSON blobs.
+- Summary and chat prompts receive readable Codex turns rather than base instructions.
+
+## Phase 3: Bulk Sync Discovery
 
-Someone asks a question in a PR comment: "why did we go with WebSockets instead of SSE?"
+Deliverable: users can sync past Codex sessions with the same TUI flow as Claude.
 
-Orchid detects the question (via `@orchid why WebSockets?`), reads the related conversations, finds the relevant parts, and replies with an answer citing specific messages. The reviewer gets an answer without leaving GitHub, without asking the author.
+Tasks:
 
-## Live Session Viewing
+- Generalize `LocalSession` with `tool` and `transcriptFormat`.
+- Rename Claude-specific discovery text in `sync.ts`.
+- Add `orchid sync --discover --tool claude`, `--tool codex`, and default `--tool all`.
+- Discover Codex sessions from `~/.codex/state_5.sqlite` when `sqlite3` exists:
+  - query `threads` ordered by `updated_at_ms` or `updated_at`
+  - use `rollout_path`, `id`, `cwd`, `title`, `git_branch`, `git_origin_url`, `cli_version`, `model`, and `reasoning_effort`
+- Fall back to scanning `~/.codex/sessions/**/*.jsonl`.
+- Group Codex sessions by cwd/repo instead of Claude project key.
+- Preserve current Claude `sessions-index.json` behavior.
+- Sync Codex past sessions with `tool: "codex-cli"` and metadata from SQLite or parsed `session_meta`.
 
-Because transcripts sync periodically, we get **live viewing for free**:
+Acceptance checks:
 
-- A teammate opens the Orchid web UI and sees your session updating in realtime
-- Useful for pair programming, mentoring, or just staying aware of what AI is doing
-- No screen sharing needed — the conversation is the artifact
+- `orchid sync --discover --tool codex` lists local Codex sessions.
+- `orchid sync --discover` lists Claude and Codex sessions without confusing the user.
+- Already-synced Codex sessions are marked synced.
 
-## API Architecture
+## Phase 4: Commit Extraction
 
-The production API is a **Hono app mounted inside the Next.js web package**, backed by **Postgres**. There should be one API implementation: `web/app/lib/api-app.ts`, exposed by `web/app/api/[[...route]]/route.ts`.
+Deliverable: Codex sessions populate the commits tab and power `orchid explain` with commit links.
 
-### Dumb Write, Smart Read
+Tasks:
 
-The write path does **nothing clever** — it just appends timestamped transcript chunks to the database. No processing, no linking, no parsing. The raw conversation is immutable data.
+- Rename `web/app/lib/extract-commits.ts` from Claude-specific language to tool-neutral language.
+- Keep the current Claude extractor.
+- Add Codex extraction for function/tool calls that run shell commands.
+- Identify Codex command calls that contain `git commit`, `git merge`, `git cherry-pick`, or `git revert`.
+- Pair command call IDs with their output events.
+- Reuse the existing git output parser for `[branch sha] message`.
+- Add unit fixtures with real Codex-style `response_item` lines.
 
-All intelligence happens at **read time**: linking conversations to commits (via timestamps + git history), correlating with PRs, highlighting relevant sections, answering reviewer questions. This means we can keep building new read-time features without ever changing how data is captured.
+Acceptance checks:
 
-## **CRITICAL: Test Everything, Use Everything**
+- Existing Claude commit extraction tests still pass.
+- New Codex commit extraction tests pass.
+- A Codex session that commits code shows commits in the web UI.
 
-After building any piece of functionality, stop and validate it. Don't move on to the next phase until the current one actually works — not just in theory, but by using it for real.
+## Phase 5: UI and Docs
 
-- **Use it manually**: Run `orchid claude`, have a real conversation, check that the data shows up on the server. Use `orchid data` to query it. Does it feel right? Is anything missing?
-- **Automated tests**: Write tests as you go. E2E tests that simulate the full flow — CLI starts a session, syncs data, CLI queries it back. If the tests don't pass, the feature isn't done.
-- **Think hard about validation**: For each feature, ask: how do I know this actually works? What could go wrong? What does "broken" look like? Build the test before moving on.
-- **E2E testing sessions**: Regularly sit down and use the whole system end-to-end as a real user would. These sessions surface problems that unit tests and manual spot-checks miss.
+Deliverable: Codex support is visible and understandable without reading code.
 
-Building without testing leads to a demo that falls apart on stage. Testing as you go means every phase is solid before the next one starts.
+Tasks:
 
-## Phases
+- Update README quick start and CLI README:
+  - `orchid claude`
+  - `orchid codex`
+  - `orchid sync --discover --tool all`
+- Update marketing/dashboard/sidebar copy where it implies Claude-only capture.
+- Display nicer tool labels:
+  - `claude-code` -> `Claude Code`
+  - `codex-cli` -> `Codex CLI`
+- Add a subtle tool filter to dashboard/search later if sessions become noisy.
+- Add release notes for npm package.
 
-### Phase 1: Capture + Store (the core loop)
+Acceptance checks:
 
-The minimum to prove the idea works. After this phase, conversations are being captured and stored.
+- New users can discover `orchid codex` from `orchid --help` and README.
+- Web UI does not present Codex sessions as Claude sessions.
 
-**API**
+## Phase 6: Testing and Release
 
-- Hono routes inside the Next.js app + Postgres
-- REST endpoints: create session, push chunks
-- Personal access token auth for CLI writes and cookie auth for web reads
-- Deploy web UI and API together on Vercel
+Tests to add:
 
-**CLI: `orchid claude`** (and `orchid codex`, etc.)
+- CLI unit tests for Codex session ID extraction.
+- CLI unit tests for Codex transcript path detection using temp directories.
+- CLI unit tests for Codex local discovery from parsed `session_meta`.
+- Parser tests for Claude and Codex formats.
+- Commit extraction tests for Claude and Codex formats.
+- E2E smoke test using a fake Codex JSONL transcript uploaded through the API.
 
-- Detect working directory
-- Collect metadata: git remotes from the working directory and any subfolders, git user name/email, current branch(es)
-- Launch the wrapped tool
-- Watch for JSONL transcript file
-- Periodic sync to server — each sync is an idempotent put (create or update the session, including metadata + transcript)
-- Final sync on exit
+Manual validation:
 
-### Phase 2: Query + Read (prove the data is useful)
+- Run `pnpm --filter orchid-cli test`.
+- Run `pnpm --filter orchid-cli check`.
+- Run web unit tests touching transcript parsing and commit extraction.
+- Run `bash check.sh`.
+- Start local web app and use the headed browser to inspect a Codex session page.
+- Run a real `orchid codex` session against staging or production.
+- Verify the production UI shows the active session, then shows it as done after exit.
 
-After this phase, any agent can use the stored conversations. This is where value gets validated — a developer can already use Claude Code + `orchid data` to do conversation-aware code reviews.
+Release:
 
-**CLI: `orchid data`**
+- Commit and push the implementation branch.
+- Open a PR.
+- Merge after checks pass.
+- Deploy the web/API path.
+- Publish a CLI patch release because this adds a user-facing command.
 
-- `orchid data list` — list stored sessions, shows who started each one (from git user config), when, how many messages, and status
+## Risks and Mitigations
 
-```
-orchid data list
-#12  andres   2h ago   "Add auth middleware"   (47 messages, active)
-#11  julian   5h ago   "Fix payment flow"      (23 messages, done)
-#10  andres   1d ago   "Refactor DB layer"     (89 messages, done)
-```
+Codex internals may change.
 
-- `orchid data show <session_id>` — dump a full conversation (raw JSONL by default)
-- `orchid data search "why websockets"` — search across all conversations
+- Mitigation: treat raw JSONL as canonical, keep parser tolerant, use filename scanning as baseline, and use SQLite only as an enhancement.
 
-**Output formatting (nice to have):**
+Codex writes large metadata/instruction payloads.
 
-- `orchid data show 12` — full raw output (default, best for agents to process)
-- `orchid data show 12 --summary` — just user prompts + one-line summary of each AI response
-- `orchid data show 12 --turns` — human-readable, turn by turn, trimmed
+- Mitigation: store raw data, but exclude noisy metadata from human turn views and AI summary/chat prompt construction.
 
-Raw output is the priority. Agents like Claude and Codex can handle raw data fine — they can dump it to files and search through it. Formatting helpers are polish for human use.
+`sqlite3` is not guaranteed on every user's machine.
 
-**Example workflow — agent-assisted review with just Phase 1 + 2:**
+- Mitigation: do not add native npm dependencies in the first pass. Use filesystem scanning as the portable path.
 
-```
-# Teammate works on a feature, conversation is captured
-orchid claude
+False transcript detection when multiple Codex sessions start at once.
 
-# Later, you're reviewing their PR
-claude
+- Mitigation: filter by start time, cwd from `session_meta`, and state DB `threads.cwd` when available. If ambiguous, choose the newest matching cwd and log the selected path.
 
-> Review PR #42. Run `orchid data search` to find conversations
-> related to the changes. Use that context to explain why decisions
-> were made and flag anything that looks off.
-```
+Existing parsing logic is duplicated.
 
-No web UI, no GitHub integration — just two CLIs and a server. Already more useful than any code review tool today.
+- Mitigation: first make small pure parser modules with tests; after behavior is correct, consider moving shared parser logic into a workspace package.
 
-### Phase 3: Smart CLI (make the data useful without a UI)
+## Recommended Implementation Order
 
-Use the OpenAI API (via Codex SDK or CLI) to add intelligence on top of the raw conversation data. The CLI becomes a smart assistant, not just a data dump.
+1. Add shared tool metadata and make sync uploads tool-aware.
+2. Add `orchid codex` live wrapper with filesystem detection.
+3. Add Codex parser fixtures and make `data show --turns` work.
+4. Update web parser and session viewer.
+5. Add Codex bulk discovery.
+6. Add Codex commit extraction.
+7. Update docs and UI copy.
+8. Run full validation and release.
 
-Some examples of what this could look like — but the goal is to think about what would be genuinely useful and delightful for a developer using this day to day:
-
-- `orchid data search "authentication decisions"` — semantic search, not just text matching. Finds conversations about JWT, OAuth, session tokens even if those exact words aren't in your query
-- `orchid data summary <session_id>` — summarize a long conversation: what was the goal, what decisions were made, what was built
-- `orchid data summary --last-week` — summarize all AI activity across the team for the past week
-- `orchid data related <pr-url>` — find conversations related to a PR and explain the connection
-- `orchid data explain <commit-sha>` — look at the diff, find relevant conversations, explain why the changes were made
-- `orchid review <pr-url>` — pull the PR diff, find related conversations, generate a review that understands the intent behind the code
-
-These are starting points. With an LLM and the full conversation history, there's a lot of room to explore what else would be valuable. What questions do developers actually ask during review? What context do they wish they had? What would make them trust AI-generated code more?
-
-Powered by OpenAI API / Codex SDK — configured via `OPENAI_API_KEY` or similar. The raw `orchid data` commands from Phase 2 still work without an API key.
-
-### Phase 4: Web UI (make it visual)
-
-**Core Views:**
-
-1. **Session list** — all conversations, browsable by time / person ✅
-2. **Session viewer** — full conversation replay ✅
-
-- Live-updating if session is still active (polling to start, WebSocket later) ✅
-- Tabbed interface: Conversation / Commits / Ask ✅
-
-3. **Commits tab** — shows git commits from GitHub that happened during the session, with diff stats, file changes, and links to GitHub ✅
-4. **Chat tab (Ask)** — ask questions about a session's conversation, AI reasons through the transcript with multi-turn history ✅
-5. **Decision Log** — AI-extracted architectural decisions linked to exact conversation turns ✅
-6. **PR view** — all conversations related to a PR (linked via timestamps + git history)
-7. **Commit view** — full diff + conversation side-by-side
-
-### Phase 5: GitHub Integration (connect to the workflow)
-
-- Auto-post a PR comment listing related conversations with links to web UI
-- `@orchid` bot: ask a question on a PR, get an answer sourced from the conversations
-- Team features (shared repos, access controls)
-
-### Phase 5.5: Decision Log (ADR Surface)
-
-Every repo has a set of architectural decisions buried in AI conversations — "why Postgres over MongoDB", "why WebSockets instead of SSE", "why we rewrote the auth layer". These are invisible today.
-
-**The feature:** Orchid scans all sessions for a repo and generates an **AI-powered Decision Log** — a structured list of key architectural decisions, each linked back to the exact moment in the conversation where it was decided.
-
-**How it works:**
-
-1. `GET /repos/:repo/decisions` — server sends all transcripts for the repo to the LLM with a prompt: *"Extract every architectural decision made in these conversations. For each decision: title, the chosen option, alternatives that were rejected, and the reason. Return the turn index where the decision was made."*
-
-2. Each decision stores a `session_id` + `turn_index` so we can link directly to it.
-
-3. **Web UI — Decision Log page** (`/repos/:repo/decisions`):
-   - List of ADR-style cards: `✅ Chose Postgres over MongoDB — "Supabase gives us auth + DB in one service"`
-   - Each card has a **"See the moment →"** link that opens the session viewer scrolled to that exact turn
-   - Session viewer supports deep-linking via `?turn=42` — scrolls to and highlights that message
-
-4. **CLI:** `orchid decisions [repo]` — prints the decision log to stdout, with links to the web UI for each item.
-
-**Deep-link format:** `/sessions/:id?turn=42` — the session viewer highlights turn 42 and scrolls it into view on load.
-
-**Why this is valuable:** A new developer (or agent) joining a repo can read the Decision Log and understand *why* the codebase is the way it is — in 2 minutes instead of 2 hours of archaeology.
-
-### Phase 6: Polish
-
-- Browser extension to embed conversation context in GitHub PR pages
-- Analytics (AI usage, session duration, cost estimates)
-- `orchid sync <session>` — manually push a past session (fallback for "I forgot to use orchid")
-
-## Tech Stack
-
-```
-CLI:        TypeScript (wrapper + file watcher + HTTP sync client)
-API:        Hono routes inside the Next.js app
-Database:   Postgres via Drizzle
-Realtime:   Polling for POC (WebSockets later)
-Frontend:   Next.js App Router + Tailwind
-Hosting:    Vercel for web/API, managed Postgres for data
-```
-
-**POC deployment**: The web UI and API deploy as one Next.js app. Keep all API route work in the web package unless there is a deliberate migration plan.
-
----
-
-## **Reminder: Test and use everything as you build it.**
-
-This cannot be overstated. Every feature you build, you use immediately. Every command you add to the CLI, you run it yourself. Every endpoint on the server, you hit it. If something feels off, fix it before moving on. The goal is a product that works, not a codebase that compiles. The only way to know it works is to use it — constantly, critically, as a real user would.
-
-## Notes
-
-- Use the agent-browser skill to test your app. Always use the headed browser mode.
-- Push every change. Create prs and merge them as you go
-- Remember to always deploy to digital ocean as well
-- Use the production ui frequently to check its quality
-- If you finished everything -> reason again on the main goal and the phases and either add more functionality, add more testing, improve UX ui, make it cleaner, make it smarter
-- For design of interfaces I like linear
-- For design of the cli -> I like the tui of claude code
-- Remember to commit everything, except the secrets file (it’s already in GitHub ignore)
+The smallest valuable PR is phases 1 and 2 together. Live capture without readable turns technically stores data, but the first user impression will be poor if the web UI mostly shows Codex metadata instead of the conversation.
