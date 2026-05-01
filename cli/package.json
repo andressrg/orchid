@@ -30,6 +30,7 @@
     "test": "tsx --test test/*.test.ts",
     "test:e2e": "tsx test/e2e.ts",
     "check": "tsc --noEmit",
+    "prepare": "tsc",
     "prepublishOnly": "tsc"
   },
   "dependencies": {},

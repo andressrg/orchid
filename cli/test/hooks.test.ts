@@ -36,6 +36,12 @@ const firstCommandForEvent = (
   return typeof command === "string" ? command : null;
 };
 
+const assertHookCommand = (command: string | null, subcommand: "_on-start" | "_on-stop" | "_on-end"): void => {
+  assert.notEqual(command, null);
+  assert.match(command || "", /orchid-hook/);
+  assert.equal((command || "").endsWith(` ${subcommand}`), true);
+};
+
 describe("buildHookEntries", () => {
   it("returns only Claude hook event keys", () => {
     const keys = Object.keys(buildHookEntries());
@@ -54,14 +60,14 @@ describe("buildHookEntries", () => {
   it("uses the internal hook commands", () => {
     const entries = buildHookEntries();
 
-    assert.equal(firstCommandForEvent(entries, "SessionStart"), "orchid hooks _on-start");
-    assert.equal(firstCommandForEvent(entries, "Stop"), "orchid hooks _on-stop");
-    assert.equal(firstCommandForEvent(entries, "SessionEnd"), "orchid hooks _on-end");
+    assertHookCommand(firstCommandForEvent(entries, "SessionStart"), "_on-start");
+    assertHookCommand(firstCommandForEvent(entries, "Stop"), "_on-stop");
+    assertHookCommand(firstCommandForEvent(entries, "SessionEnd"), "_on-end");
   });
 });
 
 describe("isOrchidHookEntry", () => {
-  it("detects orchid hook entries", () => {
+  it("detects legacy orchid hook entries", () => {
     assert.equal(isOrchidHookEntry({
       hooks: [{ type: "command", command: "orchid hooks _on-start" }],
     }), true);
@@ -71,6 +77,19 @@ describe("isOrchidHookEntry", () => {
     assert.equal(isOrchidHookEntry({
       matcher: "startup|resume|clear|compact",
       hooks: [{ type: "command", command: "orchid hooks _on-end" }],
+    }), true);
+  });
+
+  it("detects launcher-based orchid hook entries", () => {
+    assert.equal(isOrchidHookEntry({
+      hooks: [{ type: "command", command: "'/Users/example/.orchid/hooks/orchid-hook' _on-start" }],
+    }), true);
+    assert.equal(isOrchidHookEntry({
+      hooks: [{ type: "command", command: "'/Users/example/.orchid/hooks/orchid-hook' _on-stop" }],
+    }), true);
+    assert.equal(isOrchidHookEntry({
+      matcher: "startup|resume|clear|compact",
+      hooks: [{ type: "command", command: "'/Users/example/.orchid/hooks/orchid-hook' _on-end" }],
     }), true);
   });
 
@@ -121,7 +140,7 @@ describe("mergeHooks", () => {
 
     assert.equal(stopEntries.length, 2);
     assert.equal(firstCommandForEvent({ Stop: [stopEntries[0]] }, "Stop"), "echo done");
-    assert.equal(firstCommandForEvent({ Stop: [stopEntries[1]] }, "Stop"), "orchid hooks _on-stop");
+    assertHookCommand(firstCommandForEvent({ Stop: [stopEntries[1]] }, "Stop"), "_on-stop");
   });
 
   it("replaces existing orchid entries without duplicates", () => {
@@ -137,6 +156,30 @@ describe("mergeHooks", () => {
     assert.equal(entriesForEvent(result, "Stop").length, 1);
     assert.equal(entriesForEvent(result, "SessionEnd").length, 1);
     assert.equal(Array.isArray(result.Notification), true);
+  });
+
+  it("replaces legacy PATH-based orchid entries", () => {
+    const result = mergeHooks(
+      {
+        SessionStart: [
+          { matcher: "startup", hooks: [{ type: "command", command: "orchid hooks _on-start" }] },
+        ],
+        Stop: [
+          { hooks: [{ type: "command", command: "orchid hooks _on-stop" }] },
+        ],
+        SessionEnd: [
+          { hooks: [{ type: "command", command: "orchid hooks _on-end" }] },
+        ],
+      },
+      buildHookEntries()
+    );
+    const startEntry = objectFromValue(entriesForEvent(result, "SessionStart")[0]);
+
+    assert.equal(entriesForEvent(result, "SessionStart").length, 1);
+    assert.equal(entriesForEvent(result, "Stop").length, 1);
+    assert.equal(entriesForEvent(result, "SessionEnd").length, 1);
+    assert.equal(startEntry.matcher, "startup|resume|clear|compact");
+    assertHookCommand(firstCommandForEvent(result, "SessionStart"), "_on-start");
   });
 });
 

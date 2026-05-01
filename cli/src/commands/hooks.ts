@@ -35,6 +35,9 @@ const orchidDir = (): string =>
 const orchidHooksDir = (): string =>
   path.join(orchidDir(), "hooks");
 
+const orchidHooksLauncherPath = (): string =>
+  path.join(orchidHooksDir(), "orchid-hook");
+
 const orchidHooksConfigPath = (): string =>
   path.join(orchidDir(), "hooks-config.json");
 
@@ -109,6 +112,9 @@ const objectWithoutKey = (object: JsonObject, removedKey: string): JsonObject =>
     Object.entries(object).filter(([key]) => key !== removedKey)
   );
 
+const shellQuote = (value: string): string =>
+  `'${value.replace(/'/g, "'\\''")}'`;
+
 // -- Orchid hooks config ----------------------------------------------------
 
 export type HookMode = "auto" | "prompt";
@@ -144,12 +150,37 @@ const removeHooksConfig = (): void => {
   tryRemoveFile(orchidHooksConfigPath());
 };
 
+const currentCliEntrypointPath = (): string =>
+  fs.realpathSync(process.argv[1] || path.join(__dirname, "..", "main.js"));
+
+const hookLauncherContents = (): string =>
+  [
+    "#!/bin/sh",
+    `exec ${shellQuote(process.execPath)} ${shellQuote(currentCliEntrypointPath())} hooks "$@"`,
+    "",
+  ].join("\n");
+
+const writeHookLauncher = (): void => {
+  ensureDir(orchidHooksDir());
+  fs.writeFileSync(orchidHooksLauncherPath(), hookLauncherContents(), { mode: 0o700 });
+  fs.chmodSync(orchidHooksLauncherPath(), 0o700);
+};
+
+const removeHookLauncher = (): void => {
+  tryRemoveFile(orchidHooksLauncherPath());
+};
+
 // -- Hook definitions -------------------------------------------------------
 
 export const ORCHID_HOOK_EVENTS = ["SessionStart", "Stop", "SessionEnd"] as const;
 type OrchidHookEvent = typeof ORCHID_HOOK_EVENTS[number];
 
 const ORCHID_COMMAND_PREFIX = "orchid hooks _on-";
+const ORCHID_HOOK_LAUNCHER_NAME = "orchid-hook";
+const ORCHID_HOOK_SUBCOMMANDS = ["_on-start", "_on-stop", "_on-end"] as const;
+
+const hookCommand = (subcommand: typeof ORCHID_HOOK_SUBCOMMANDS[number]): string =>
+  `${shellQuote(orchidHooksLauncherPath())} ${subcommand}`;
 
 export const buildHookEntries = (): HookCollection => ({
   SessionStart: [
@@ -158,7 +189,7 @@ export const buildHookEntries = (): HookCollection => ({
       hooks: [
         {
           type: "command",
-          command: "orchid hooks _on-start",
+          command: hookCommand("_on-start"),
           timeout: 10,
         },
       ],
@@ -169,7 +200,7 @@ export const buildHookEntries = (): HookCollection => ({
       hooks: [
         {
           type: "command",
-          command: "orchid hooks _on-stop",
+          command: hookCommand("_on-stop"),
           timeout: 30,
         },
       ],
@@ -180,7 +211,7 @@ export const buildHookEntries = (): HookCollection => ({
       hooks: [
         {
           type: "command",
-          command: "orchid hooks _on-end",
+          command: hookCommand("_on-end"),
           timeout: 30,
         },
       ],
@@ -191,11 +222,18 @@ export const buildHookEntries = (): HookCollection => ({
 const isOrchidHookEvent = (event: string): event is OrchidHookEvent =>
   ORCHID_HOOK_EVENTS.includes(event as OrchidHookEvent);
 
+const commandUsesOrchidHookLauncher = (command: string): boolean =>
+  command.includes(ORCHID_HOOK_LAUNCHER_NAME) &&
+  ORCHID_HOOK_SUBCOMMANDS.some((subcommand) => command.endsWith(` ${subcommand}`));
+
 export const isOrchidHookEntry = (entry: JsonValue): boolean =>
   isJsonObject(entry) &&
   jsonArrayFromValue(entry.hooks).filter(isJsonObject).some((hook) => {
     const command = stringFromJsonObject(hook, "command");
-    return command !== null && command.startsWith(ORCHID_COMMAND_PREFIX);
+    return command !== null && (
+      command.startsWith(ORCHID_COMMAND_PREFIX) ||
+      commandUsesOrchidHookLauncher(command)
+    );
   });
 
 export const mergeHooks = (
@@ -253,21 +291,22 @@ const installHooks = (mode: HookMode): void => {
 
   const hooksConfig = readHooksConfig();
 
-  if (hooksConfig?.installed && hooksConfig.mode === mode) {
-    console.log(`${green("OK")} Orchid hooks already installed ${dim(`(mode: ${mode})`)}`);
-    return;
-  }
+  const modeAlreadyInstalled = hooksConfig?.installed && hooksConfig.mode === mode;
 
-  if (hooksConfig?.installed) {
+  if (hooksConfig?.installed && !modeAlreadyInstalled) {
     console.log(`${yellow("->")} Updating hook mode from ${bold(hooksConfig.mode)} to ${bold(mode)}`);
   }
 
+  writeHookLauncher();
   writeSettings(buildSettingsWithInstalledHooks(readSettings()));
   writeHooksConfig({ installed: true, mode });
-  ensureDir(orchidHooksDir());
 
   console.log("");
-  console.log(`  ${green("OK")} Orchid hooks installed into Claude Code`);
+  console.log(
+    modeAlreadyInstalled
+      ? `  ${green("OK")} Orchid hooks refreshed in Claude Code`
+      : `  ${green("OK")} Orchid hooks installed into Claude Code`
+  );
   console.log("");
   console.log(`  ${dim("Mode:")}    ${bold(mode)}`);
   console.log(`  ${dim("Config:")}  ${dim(claudeSettingsPath())}`);
@@ -291,6 +330,7 @@ const uninstallHooks = (): void => {
 
   writeSettings(buildSettingsWithoutOrchidHooks(readSettings()));
   removeHooksConfig();
+  removeHookLauncher();
   cleanupStateFiles();
 
   console.log("");
