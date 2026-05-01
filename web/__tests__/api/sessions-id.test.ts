@@ -19,17 +19,51 @@ describe('sessions/:id', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns session by id', async () => {
-      await insertTestSession({ id: 'my-session' });
+    it('returns the session by id using the public snake_case API shape', async () => {
+      const { userId } = await getTestAuth();
+      await insertTestSession({
+        id: 'my-session',
+        user_name: 'detail-user',
+        user_email: 'detail@example.com',
+        working_dir: '/home/detail/project',
+        git_remotes: ['https://github.com/detail/repo.git'],
+        branch: 'feature/detail',
+        tool: 'claude-code',
+        transcript: '{"role":"user","content":"detail"}',
+        status: 'done',
+        message_count: 1,
+        user_id: userId,
+      });
 
       const res = await app.request('/api/sessions/my-session', { headers });
       const data = await res.json();
 
       expect(res.status).toBe(200);
-      expect(data.id).toBe('my-session');
-      expect(data.user_name).toBe('testuser');
-      expect(data.userName).toBeUndefined();
-      expect(data.transcript).toBeDefined();
+      expect(data).toMatchObject({
+        id: 'my-session',
+        user_name: 'detail-user',
+        user_email: 'detail@example.com',
+        working_dir: '/home/detail/project',
+        git_remotes: ['https://github.com/detail/repo.git'],
+        branch: 'feature/detail',
+        tool: 'claude-code',
+        transcript: '{"role":"user","content":"detail"}',
+        status: 'done',
+        message_count: 1,
+        user_id: userId,
+        team_id: null,
+      });
+      expect(data.started_at).toBeTruthy();
+      expect(data.updated_at).toBeTruthy();
+      expect(data).not.toHaveProperty('userName');
+      expect(data).not.toHaveProperty('userEmail');
+      expect(data).not.toHaveProperty('workingDir');
+      expect(data).not.toHaveProperty('gitRemotes');
+      expect(data).not.toHaveProperty('startedAt');
+      expect(data).not.toHaveProperty('updatedAt');
+      expect(data).not.toHaveProperty('messageCount');
+      expect(data).not.toHaveProperty('userId');
+      expect(data).not.toHaveProperty('teamId');
     });
   });
 
