@@ -17,9 +17,10 @@ Set these environment variables before using the CLI:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ORCHID_API_URL` | Yes | Server endpoint (e.g. `http://24.144.97.81:3000`) |
-| `ORCHID_API_KEY` | Yes | API key for authentication |
-| `OPENAI_API_KEY` | No | Enables AI-powered summaries, reviews, and explanations |
+| `ORCHID_API_URL` | Yes | API endpoint (e.g. `https://www.orchidkeep.com/api`) |
+| `ORCHID_TOKEN` | Yes | Personal access token from the web app |
+| `ORCHID_WEB_URL` | No | Web UI URL used when printing session links |
+| `OPENAI_API_KEY` | No | Enables local AI-powered review and explain commands |
 
 ## Commands
 
@@ -84,7 +85,7 @@ orchid data show a1b2c3d4e5f6 --turns
 
 ```
 [user]
-Add authentication middleware to the Express server
+Add authentication middleware to the API
 
 [assistant]
 I'll add JWT-based auth middleware. Let me start by...
@@ -106,7 +107,7 @@ Started: 2026-03-28T10:00:00Z
 Updated: 2026-03-28T12:14:00Z
 
 --- First user message ---
-Add authentication middleware to the Express server
+Add authentication middleware to the API
 
 --- Last assistant message ---
 All done. The JWT middleware is in place and all routes are protected.
@@ -143,8 +144,8 @@ orchid data summary a1b2c3d4e5f6
 ```
 🌸 Generating AI summary...
 
-This session focused on adding JWT authentication middleware to the Express
-server. Key decisions: chose RS256 over HS256 for token signing, added
+This session focused on adding JWT authentication middleware to the API.
+Key decisions: chose RS256 over HS256 for token signing, added
 refresh token rotation, and implemented role-based access control on three
 protected routes.
 ```
@@ -177,14 +178,14 @@ orchid data sessions-for $(git log main..HEAD --format="%H" | paste -sd,)
   Status: done | Started: 3d ago
   Commit: f289a29 Add orchid sync --discover
   Commit: 955dce7 Refactor sync.ts to functional style
-  http://24.144.97.81/sessions/9764166e-11ea-4fa9-8f9e-4a4b0d55c25a
+  https://www.orchidkeep.com/sessions/9764166e-11ea-4fa9-8f9e-4a4b0d55c25a
 
 3df7f610-78c1-4c05-8307-80459c40b992
   User: andres
   Branch: feat/cli-hooks
   Status: done | Started: 1d ago
   Commit: cf14a7a Add hooks command
-  http://24.144.97.81/sessions/3df7f610-78c1-4c05-8307-80459c40b992
+  https://www.orchidkeep.com/sessions/3df7f610-78c1-4c05-8307-80459c40b992
 ```
 
 Sessions are deduplicated — if multiple commits came from the same session, the session appears once with all matched commits listed.
@@ -217,7 +218,7 @@ Found 2 related conversation(s)
 ━━━ Session: a1b2c3d4e5f6 ━━━
   By: andres | Branch: feature/auth | 24 user + 23 AI messages
   Status: done | Started: 2026-03-28
-  Web: http://24.144.97.81/sessions/a1b2c3d4e5f6
+  Web: https://www.orchidkeep.com/sessions/a1b2c3d4e5f6
 
   Key points from the conversation:
   Developer: Add JWT auth middleware...

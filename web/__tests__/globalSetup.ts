@@ -8,14 +8,11 @@ export async function setup() {
     connectionString: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
   });
 
-  // Drop all tables for a clean slate
+  // Reset app tables and Drizzle's migration journal for a clean slate.
   await pool.query(`
-    DO $$ DECLARE r RECORD;
-    BEGIN
-      FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
-        EXECUTE 'DROP TABLE IF EXISTS "' || r.tablename || '" CASCADE';
-      END LOOP;
-    END $$;
+    DROP SCHEMA IF EXISTS public CASCADE;
+    DROP SCHEMA IF EXISTS drizzle CASCADE;
+    CREATE SCHEMA public;
   `);
 
   // Run Drizzle migrations

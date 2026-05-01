@@ -25,6 +25,7 @@ The existing architecture already has most of the right shape.
 - `cli/src/sync.ts` periodically uploads the whole transcript with metadata to `PUT /sessions/:id`.
 - `cli/src/commands/sync.ts` bulk-discovers past Claude sessions from `~/.claude/projects` and Claude's `sessions-index.json`.
 - `web/app/lib/api-app.ts` accepts gzipped transcript upserts, stores raw JSONL in `orchid_session.transcript`, and extracts commits with `after()`.
+- The production API has a single implementation: the Hono app in `web/app/lib/api-app.ts`, mounted by `web/app/api/[[...route]]/route.ts`.
 - `web/app/lib/api.ts`, `cli/src/commands/data.ts`, summary, chat, decision extraction, review, and explain all parse transcript turns directly.
 - The database already has a generic `tool` column, so a schema migration is probably not required for basic Codex support.
 

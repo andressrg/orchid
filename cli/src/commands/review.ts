@@ -92,7 +92,7 @@ Environment:
     return;
   }
 
-  const { apiUrl } = getConfig();
+  const { apiUrl, webUrl } = getConfig();
 
   console.log(`\x1b[35m🌸 Orchid Review\x1b[0m`);
   console.log(`\x1b[90mSearching for conversations related to: ${query}\x1b[0m\n`);
@@ -118,7 +118,6 @@ Environment:
     return;
   }
 
-  const webUrl = process.env.ORCHID_WEB_URL || "http://24.144.97.81";
   console.log(`\x1b[32mFound ${sessions.length} related conversation${sessions.length > 1 ? "s" : ""}\x1b[0m\n`);
 
   // Fetch full transcripts for the top sessions (max 3)
