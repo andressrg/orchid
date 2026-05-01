@@ -20,7 +20,9 @@ test.describe('Settings page', () => {
 
     // Verify team data loaded (not stuck on "Loading...")
     const main = page.getByRole('main');
-    await expect(main.getByText('Settings Tester', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(main.getByText('Settings Tester', { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(main.getByText(email)).toBeVisible();
     await expect(main.getByText('owner')).toBeVisible();
 
@@ -57,7 +59,9 @@ test.describe('Settings page', () => {
 
     // Verify it loads and doesn't stay stuck on "Loading..."
     const main = page.getByRole('main');
-    await expect(main.getByText('Settings Tester 2', { exact: true })).toBeVisible({ timeout: 10000 });
+    await expect(main.getByText('Settings Tester 2', { exact: true })).toBeVisible({
+      timeout: 10000,
+    });
     await expect(main.getByText('owner')).toBeVisible();
   });
 });

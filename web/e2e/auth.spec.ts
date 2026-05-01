@@ -28,7 +28,9 @@ test.describe('Authentication', () => {
     await page.getByLabel('Email').fill('nonexistent@example.com');
     await page.getByLabel('Password').fill('wrongpassword');
     await page.getByRole('button', { name: /sign in/i }).click();
-    await expect(page.locator('p.text-red-400, p.text-sm.text-red-400')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('p.text-red-400, p.text-sm.text-red-400')).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test('full signup and login flow', async ({ page }) => {

@@ -1,9 +1,11 @@
 # MVP Plan
 
 ## Goal
+
 A working product where a developer using Claude Code can see, in a web UI, the conversation that led to each commit in a PR.
 
 ## Non-Goals (for MVP)
+
 - Codex CLI support (Phase 2)
 - Cursor/Windsurf support (Phase 3)
 - Browser extension (Phase 2)
@@ -17,12 +19,14 @@ A working product where a developer using Claude Code can see, in a web UI, the 
 ### Week 1: Core CLI
 
 **`orchid init`**
+
 - Detect Claude Code installation
 - Install hooks into `~/.claude/settings.json`
 - Create local SQLite database
 - Detect current git repo, record remote URL
 
 **`orchid capture-commit`** (PostToolUse hook handler)
+
 - Read stdin JSON from Claude Code
 - Check if `tool_input.command` matches `git commit`
 - Extract commit SHA via `git rev-parse HEAD`
@@ -32,12 +36,14 @@ A working product where a developer using Claude Code can see, in a web UI, the 
 - Record `(session_id, commit_sha)` in local SQLite
 
 **`orchid show <commit>`**
+
 - Read git note for the commit
 - Find linked session in local SQLite
 - Parse JSONL transcript
 - Render conversation in terminal (simple formatted output)
 
 **`orchid log`**
+
 - Enhanced `git log` that shows conversation indicators
 - `*` next to commits that have linked sessions
 - Session summary inline
@@ -45,6 +51,7 @@ A working product where a developer using Claude Code can see, in a web UI, the 
 ### Week 2: GitHub Action + Basic Sharing
 
 **GitHub Action: `orchid/pr-conversations`**
+
 - Triggered on `pull_request` events
 - Reads git notes from commits in the PR
 - Formats as collapsible markdown sections
@@ -54,12 +61,14 @@ A working product where a developer using Claude Code can see, in a web UI, the 
 ## AI Conversations
 
 ### Commit abc1234 - "Add JWT middleware"
+
 <details>
 <summary>Claude Code session (23 messages, 12 min)</summary>
 
 **User**: Add JWT authentication middleware with refresh token rotation...
 **Claude**: I'll implement this in three steps...
 [truncated - click to expand full conversation]
+
 </details>
 ```
 
@@ -89,6 +98,7 @@ A working product where a developer using Claude Code can see, in a web UI, the 
 5. **Session View** (`/:repo/sessions/:id`) - Full conversation replay
 
 **Simplicity Principles:**
+
 - Default view shows diff + conversation summary
 - Click to expand full conversation
 - No clutter - just code and conversation

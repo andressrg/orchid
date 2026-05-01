@@ -21,7 +21,6 @@ export interface Stats {
   last_activity: string;
 }
 
-
 export interface Turn {
   role: 'user' | 'assistant' | 'unknown';
   text: string;
@@ -115,7 +114,6 @@ export interface DecisionsResult {
   decisions: Decision[];
   sessions_analyzed: number;
 }
-
 
 export function countMessages(transcript?: string): number {
   if (!transcript) return 0;

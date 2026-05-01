@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useState } from "react";
+import { useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -13,11 +13,10 @@ export function AISummary({ sessionId }: { sessionId: string }) {
     setLoading(true);
     setError(false);
     try {
-      const res = await fetch(
-        `${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/summary`,
-        { credentials: 'include' }
-      );
-      if (!res.ok) throw new Error("Failed");
+      const res = await fetch(`${API_URL}/api/sessions/${encodeURIComponent(sessionId)}/summary`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed');
       const data = await res.json();
       setSummary(data.summary);
     } catch {
@@ -36,14 +35,19 @@ export function AISummary({ sessionId }: { sessionId: string }) {
         onClick={loadSummary}
       >
         <div className="flex items-center gap-2 text-[12px] text-orchid">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M8 2v4l3 2" strokeLinecap="round" strokeLinejoin="round" />
             <circle cx="8" cy="8" r="6" />
           </svg>
           <span className="font-medium">Generate AI Summary</span>
-          <span className="text-[11px] text-night-400">
-            Click to analyze this conversation
-          </span>
+          <span className="text-[11px] text-night-400">Click to analyze this conversation</span>
         </div>
       </div>
     );
@@ -63,7 +67,15 @@ export function AISummary({ sessionId }: { sessionId: string }) {
   return (
     <div className="mx-6 mt-4 mb-0 p-4 rounded-lg border animate-fade-in bg-orchid-muted border-orchid">
       <div className="flex items-center gap-2 mb-2">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-orchid">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="text-orchid"
+        >
           <path d="M8 2v4l3 2" strokeLinecap="round" strokeLinejoin="round" />
           <circle cx="8" cy="8" r="6" />
         </svg>
@@ -71,9 +83,7 @@ export function AISummary({ sessionId }: { sessionId: string }) {
           AI Summary
         </span>
       </div>
-      <p className="text-[13px] leading-relaxed text-night-100">
-        {summary}
-      </p>
+      <p className="text-[13px] leading-relaxed text-night-100">{summary}</p>
     </div>
   );
 }

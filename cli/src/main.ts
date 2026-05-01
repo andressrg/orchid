@@ -1,14 +1,14 @@
-import { runClaude } from "./commands/claude";
-import { runData } from "./commands/data";
-import { runSync } from "./commands/sync";
-import { runReview } from "./commands/review";
-import { runExplain } from "./commands/explain";
-import { runConfig } from "./commands/config";
-import { runLogin } from "./commands/login";
-import { runLogout } from "./commands/logout";
-import { runHooks } from "./commands/hooks";
+import { runClaude } from './commands/claude';
+import { runData } from './commands/data';
+import { runSync } from './commands/sync';
+import { runReview } from './commands/review';
+import { runExplain } from './commands/explain';
+import { runConfig } from './commands/config';
+import { runLogin } from './commands/login';
+import { runLogout } from './commands/logout';
+import { runHooks } from './commands/hooks';
 
-const VERSION = "0.1.2";
+const VERSION = '0.1.2';
 
 const HELP = `orchid - capture and query AI coding sessions
 
@@ -35,12 +35,12 @@ function main() {
   const args = process.argv.slice(2);
   const command = args[0];
 
-  if (!command || command === "--help" || command === "-h") {
+  if (!command || command === '--help' || command === '-h') {
     console.log(HELP);
     process.exit(0);
   }
 
-  if (command === "--version" || command === "-v") {
+  if (command === '--version' || command === '-v') {
     console.log(VERSION);
     process.exit(0);
   }
@@ -48,43 +48,43 @@ function main() {
   const subArgs = args.slice(1);
 
   switch (command) {
-    case "login":
+    case 'login':
       runLogin().catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
       break;
-    case "logout":
+    case 'logout':
       runLogout();
       break;
-    case "claude":
+    case 'claude':
       runClaude(subArgs);
       break;
-    case "sync":
+    case 'sync':
       runSync(subArgs);
       break;
-    case "hooks":
+    case 'hooks':
       runHooks(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
       break;
-    case "config":
+    case 'config':
       runConfig(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
       break;
-    case "data":
+    case 'data':
       runData(subArgs);
       break;
-    case "review":
+    case 'review':
       runReview(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
       break;
-    case "explain":
+    case 'explain':
       runExplain(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);

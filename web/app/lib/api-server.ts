@@ -3,10 +3,7 @@ import type { DecisionsResult } from './api';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-async function apiFetch<T>(
-  path: string,
-  opts: { query?: string; team?: string } = {},
-): Promise<T> {
+async function apiFetch<T>(path: string, opts: { query?: string; team?: string } = {}): Promise<T> {
   const params = new URLSearchParams();
   if (opts.query) params.set('q', opts.query);
   if (opts.team) params.set('team', opts.team);

@@ -1,8 +1,8 @@
-import { execSync, spawn, ChildProcess } from "child_process";
-import * as path from "path";
-import * as fs from "fs";
-import * as os from "os";
-import { startSyncWatcher } from "../sync";
+import { execSync, spawn, ChildProcess } from 'child_process';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import { startSyncWatcher } from '../sync';
 
 export interface GitMetadata {
   user_name: string;
@@ -16,16 +16,16 @@ function execGit(args: string, cwd?: string): string {
   try {
     return execSync(`git ${args}`, {
       cwd,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
   } catch {
-    return "";
+    return '';
   }
 }
 
 function isGitRepo(dir: string): boolean {
-  return execGit("rev-parse --git-dir", dir) !== "";
+  return execGit('rev-parse --git-dir', dir) !== '';
 }
 
 function collectRemotes(workingDir: string): string[] {
@@ -33,7 +33,7 @@ function collectRemotes(workingDir: string): string[] {
 
   // Collect origin URL from the working directory itself
   if (isGitRepo(workingDir)) {
-    const origin = execGit("remote get-url origin", workingDir);
+    const origin = execGit('remote get-url origin', workingDir);
     if (origin) {
       remotes.push(origin);
     }
@@ -43,12 +43,16 @@ function collectRemotes(workingDir: string): string[] {
   try {
     const entries = fs.readdirSync(workingDir, { withFileTypes: true });
     for (const entry of entries) {
-      if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules") {
+      if (
+        !entry.isDirectory() ||
+        entry.name.startsWith('.') ||
+        entry.name === 'node_modules'
+      ) {
         continue;
       }
       const subDir = path.join(workingDir, entry.name);
       if (isGitRepo(subDir)) {
-        const origin = execGit("remote get-url origin", subDir);
+        const origin = execGit('remote get-url origin', subDir);
         if (origin && !remotes.includes(origin)) {
           remotes.push(origin);
         }
@@ -64,12 +68,12 @@ function collectRemotes(workingDir: string): string[] {
 export function collectGitMetadata(): GitMetadata {
   const workingDir = process.cwd();
 
-  const user_name = execGit("config user.name") || "unknown";
-  const user_email = execGit("config user.email") || "unknown";
+  const user_name = execGit('config user.name') || 'unknown';
+  const user_email = execGit('config user.email') || 'unknown';
 
-  let branch = execGit("rev-parse --abbrev-ref HEAD", workingDir);
-  if (!branch || branch === "HEAD") {
-    branch = "detached";
+  let branch = execGit('rev-parse --abbrev-ref HEAD', workingDir);
+  if (!branch || branch === 'HEAD') {
+    branch = 'detached';
   }
 
   const git_remotes = collectRemotes(workingDir);
@@ -95,7 +99,7 @@ function findJsonlFiles(dir: string): { path: string; birthtimeMs: number }[] {
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
         results.push(...findJsonlFiles(fullPath));
-      } else if (entry.name.endsWith(".jsonl")) {
+      } else if (entry.name.endsWith('.jsonl')) {
         try {
           const stat = fs.statSync(fullPath);
           results.push({ path: fullPath, birthtimeMs: stat.birthtimeMs });
@@ -116,7 +120,7 @@ function findJsonlFiles(dir: string): { path: string; birthtimeMs: number }[] {
  * in ~/.claude/projects/.
  */
 export function findTranscriptFile(startTimeMs: number): string | null {
-  const claudeProjectsDir = path.join(os.homedir(), ".claude", "projects");
+  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
 
   if (!fs.existsSync(claudeProjectsDir)) {
     return null;
@@ -147,16 +151,20 @@ export function getDetectedTranscriptPath(): string | null {
 export function runClaude(args: string[]): void {
   const metadata = collectGitMetadata();
 
-  process.stderr.write(`[orchid] user: ${metadata.user_name} <${metadata.user_email}>\n`);
+  process.stderr.write(
+    `[orchid] user: ${metadata.user_name} <${metadata.user_email}>\n`,
+  );
   process.stderr.write(`[orchid] branch: ${metadata.branch}\n`);
   process.stderr.write(`[orchid] working_dir: ${metadata.working_dir}\n`);
-  process.stderr.write(`[orchid] git_remotes: ${metadata.git_remotes.length > 0 ? metadata.git_remotes.join(", ") : "(none)"}\n`);
+  process.stderr.write(
+    `[orchid] git_remotes: ${metadata.git_remotes.length > 0 ? metadata.git_remotes.join(', ') : '(none)'}\n`,
+  );
 
   const startTimeMs = Date.now();
 
   // Spawn claude with all args, inheriting stdio for full interactivity
-  const child: ChildProcess = spawn("claude", args, {
-    stdio: "inherit",
+  const child: ChildProcess = spawn('claude', args, {
+    stdio: 'inherit',
     env: process.env,
   });
 
@@ -167,27 +175,31 @@ export function runClaude(args: string[]): void {
     if (!detectedTranscriptPath) {
       detectedTranscriptPath = findTranscriptFile(startTimeMs);
       if (detectedTranscriptPath) {
-        process.stderr.write(`[orchid] transcript detected: ${detectedTranscriptPath}\n`);
+        process.stderr.write(
+          `[orchid] transcript detected: ${detectedTranscriptPath}\n`,
+        );
         syncWatcher = startSyncWatcher(detectedTranscriptPath, metadata);
       }
     }
   }, 2000);
 
-  child.on("error", (err) => {
+  child.on('error', (err) => {
     clearInterval(pollInterval);
     if (syncWatcher) syncWatcher.stop();
     process.stderr.write(`[orchid] error spawning claude: ${err.message}\n`);
     process.exit(1);
   });
 
-  child.on("exit", (code, signal) => {
+  child.on('exit', (code, signal) => {
     clearInterval(pollInterval);
 
     // One final attempt to detect transcript if not found yet
     if (!detectedTranscriptPath) {
       detectedTranscriptPath = findTranscriptFile(startTimeMs);
       if (detectedTranscriptPath) {
-        process.stderr.write(`[orchid] transcript detected on exit: ${detectedTranscriptPath}\n`);
+        process.stderr.write(
+          `[orchid] transcript detected on exit: ${detectedTranscriptPath}\n`,
+        );
         syncWatcher = startSyncWatcher(detectedTranscriptPath, metadata);
       }
     }
@@ -212,6 +224,6 @@ export function runClaude(args: string[]): void {
   const handleSignal = (sig: NodeJS.Signals) => {
     child.kill(sig);
   };
-  process.on("SIGINT", () => handleSignal("SIGINT"));
-  process.on("SIGTERM", () => handleSignal("SIGTERM"));
+  process.on('SIGINT', () => handleSignal('SIGINT'));
+  process.on('SIGTERM', () => handleSignal('SIGTERM'));
 }

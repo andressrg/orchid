@@ -73,6 +73,7 @@ Three hooks installed in `~/.claude/settings.json`:
 ```
 
 **`orchid capture-commit`** (PostToolUse handler):
+
 1. Reads stdin JSON from Claude Code hook
 2. Checks if `tool_input.command` contains `git commit`
 3. If yes: runs `git rev-parse HEAD` to get new SHA
@@ -80,6 +81,7 @@ Three hooks installed in `~/.claude/settings.json`:
 5. Attaches summary as git note: `git notes --ref=refs/notes/ai-sessions add`
 
 **`orchid sync-session`** (Stop handler):
+
 1. Reads stdin JSON to get `session_id` and `transcript_path`
 2. Copies/indexes the full JSONL transcript
 3. Pushes to Supabase in background
@@ -91,6 +93,7 @@ Filesystem watcher on `~/.codex/sessions/` detects new rollout JSONL files. Peri
 ## Storage: Three Layers
 
 ### Layer 1: Git Notes (Portable, In-Repo)
+
 ```bash
 git notes --ref=refs/notes/ai-sessions add -m '{
   "session_id": "89fb3dac-...",
@@ -105,6 +108,7 @@ git notes --ref=refs/notes/ai-sessions add -m '{
 Pushed with: `git push origin 'refs/notes/ai-sessions'`
 
 ### Layer 2: Local SQLite (Fast Index)
+
 ```sql
 CREATE TABLE sessions (
   id TEXT PRIMARY KEY,
@@ -127,6 +131,7 @@ CREATE TABLE session_commits (
 ```
 
 ### Layer 3: Supabase Cloud (Rich Queries, Web UI)
+
 ```sql
 CREATE TABLE repos (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -188,14 +193,14 @@ orchid login             # GitHub OAuth via Supabase
 
 ## Tech Stack
 
-| Component | Choice | Why |
-|-----------|--------|-----|
-| CLI | TypeScript (Node.js) | Same ecosystem as Claude Code; shares JSONL parsers |
-| Local DB | SQLite (better-sqlite3) | Fast, portable, no server |
-| Cloud DB | Supabase (Postgres) | Auth + DB + Storage in one; free tier |
-| Blob Storage | Supabase Storage (S3) | Keeps Postgres lean |
-| Web Framework | Next.js App Router | Server components, Supabase SSR integration |
-| Diff Rendering | TBD (see UI research) | |
-| Auth | GitHub OAuth via Supabase | Natural for developers |
-| Deployment | Vercel | Trivial with Next.js + Supabase |
-| Git Integration | Git notes + trailers | Non-invasive, portable |
+| Component       | Choice                    | Why                                                 |
+| --------------- | ------------------------- | --------------------------------------------------- |
+| CLI             | TypeScript (Node.js)      | Same ecosystem as Claude Code; shares JSONL parsers |
+| Local DB        | SQLite (better-sqlite3)   | Fast, portable, no server                           |
+| Cloud DB        | Supabase (Postgres)       | Auth + DB + Storage in one; free tier               |
+| Blob Storage    | Supabase Storage (S3)     | Keeps Postgres lean                                 |
+| Web Framework   | Next.js App Router        | Server components, Supabase SSR integration         |
+| Diff Rendering  | TBD (see UI research)     |                                                     |
+| Auth            | GitHub OAuth via Supabase | Natural for developers                              |
+| Deployment      | Vercel                    | Trivial with Next.js + Supabase                     |
+| Git Integration | Git notes + trailers      | Non-invasive, portable                              |

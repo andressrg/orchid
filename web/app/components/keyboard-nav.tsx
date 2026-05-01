@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export function KeyboardNav() {
   const router = useRouter();
@@ -9,21 +9,18 @@ export function KeyboardNav() {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       // Skip if user is typing in an input
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
 
-      if (e.key === "/") {
+      if (e.key === '/') {
         e.preventDefault();
-        router.push("/search");
+        router.push('/search');
       }
     }
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [router]);
 
   return null;

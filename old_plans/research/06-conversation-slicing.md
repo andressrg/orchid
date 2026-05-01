@@ -22,6 +22,7 @@ No timestamp filtering, no message ranges, no windowing. Every commit in a sessi
 ### Why This Works
 
 Claude Code's JSONL has on every line:
+
 - **`timestamp`**: ISO 8601 (e.g., `"2026-03-28T17:17:39.147Z"`)
 - **`uuid`**: Unique message ID
 - **`parentUuid`**: Links to previous message (linked list)
@@ -71,7 +72,7 @@ Marker 3: { commit: "ccc", lastMessageUuid: "msg-45", index: 45 }
 ```typescript
 function sliceConversation(
   entries: JournalEntry[],
-  markers: CommitMarker[]
+  markers: CommitMarker[],
 ): Map<string, JournalEntry[]> {
   const slices = new Map();
 
@@ -89,9 +90,10 @@ function sliceConversation(
 
   // Messages after the last commit → "post-commit conversation"
   const lastMarker = markers[markers.length - 1];
-  const remaining = entries.filter(e =>
-    e.timestamp > lastMarker.timestamp &&
-    ['user', 'assistant'].includes(e.type)
+  const remaining = entries.filter(
+    (e) =>
+      e.timestamp > lastMarker.timestamp &&
+      ['user', 'assistant'].includes(e.type),
   );
   if (remaining.length > 0) {
     slices.set('post-commit', remaining);
@@ -102,10 +104,10 @@ function sliceConversation(
 
 function extractSegment(
   entries: JournalEntry[],
-  startUuid: string | null,  // exclusive
-  endUuid: string            // inclusive
+  startUuid: string | null, // exclusive
+  endUuid: string, // inclusive
 ): JournalEntry[] {
-  const byUuid = new Map(entries.map(e => [e.uuid, e]));
+  const byUuid = new Map(entries.map((e) => [e.uuid, e]));
 
   const segment: JournalEntry[] = [];
   let current: string | undefined = endUuid;
@@ -145,15 +147,15 @@ git notes --ref=refs/notes/ai-sessions add -m '{
 
 ### Edge Cases
 
-| Case | Handling |
-|------|----------|
-| No commits in a session | Attach full conversation to the PR itself |
-| Messages after the last commit | Attach as "post-commit discussion" |
-| Session resumed (`claude --continue`) | `sessionId` stays consistent; slicing works normally |
-| Subagent conversations | Stored in separate JSONL files; link to parent via tool_use block's UUID |
-| Sidechain messages (abandoned branches) | Filter out entries with `isSidechain: true` |
+| Case                                       | Handling                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------- |
+| No commits in a session                    | Attach full conversation to the PR itself                                 |
+| Messages after the last commit             | Attach as "post-commit discussion"                                        |
+| Session resumed (`claude --continue`)      | `sessionId` stays consistent; slicing works normally                      |
+| Subagent conversations                     | Stored in separate JSONL files; link to parent via tool_use block's UUID  |
+| Sidechain messages (abandoned branches)    | Filter out entries with `isSidechain: true`                               |
 | Multiple sessions contribute to one commit | Multiple slices from different sessions, each attached to the same commit |
-| Rapid commits (seconds apart) | UUID chain is precise; timestamps are backup. Cut point is exact. |
+| Rapid commits (seconds apart)              | UUID chain is precise; timestamps are backup. Cut point is exact.         |
 
 ### What the UI Shows
 
@@ -186,10 +188,10 @@ PR #42: Restructure database layer
 
 ### Why This Is a Key Differentiator
 
-| | git-memento | Orchid |
-|---|---|---|
-| Per-commit? | Full session on every commit | Only relevant slice per commit |
-| Cut precision | None | UUID-exact via parentUuid chain |
-| Storage efficiency | N * full_transcript | Sum of slices ≈ 1 * full_transcript |
-| Review experience | "Find the relevant part yourself" | "Here's exactly what led to this commit" |
-| Post-commit messages | Lost | Captured and attached to PR |
+|                      | git-memento                       | Orchid                                   |
+| -------------------- | --------------------------------- | ---------------------------------------- |
+| Per-commit?          | Full session on every commit      | Only relevant slice per commit           |
+| Cut precision        | None                              | UUID-exact via parentUuid chain          |
+| Storage efficiency   | N \* full_transcript              | Sum of slices ≈ 1 \* full_transcript     |
+| Review experience    | "Find the relevant part yourself" | "Here's exactly what led to this commit" |
+| Post-commit messages | Lost                              | Captured and attached to PR              |

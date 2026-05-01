@@ -15,12 +15,12 @@ npm link        # makes `orchid` available globally
 
 Set these environment variables before using the CLI:
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `ORCHID_API_URL` | Yes | API endpoint (e.g. `https://www.orchidkeep.com/api`) |
-| `ORCHID_TOKEN` | Yes | Personal access token from the web app |
-| `ORCHID_WEB_URL` | No | Web UI URL used when printing session links |
-| `OPENAI_API_KEY` | No | Enables local AI-powered review and explain commands |
+| Variable         | Required | Description                                          |
+| ---------------- | -------- | ---------------------------------------------------- |
+| `ORCHID_API_URL` | Yes      | API endpoint (e.g. `https://www.orchidkeep.com/api`) |
+| `ORCHID_TOKEN`   | Yes      | Personal access token from the web app               |
+| `ORCHID_WEB_URL` | No       | Web UI URL used when printing session links          |
+| `OPENAI_API_KEY` | No       | Enables local AI-powered review and explain commands |
 
 ## Commands
 
@@ -325,10 +325,10 @@ Visit the web UI at the server URL to browse, search, and read sessions visually
 
 ## Flags Reference
 
-| Command | Flag | Description |
-|---------|------|-------------|
-| `orchid` | `--help`, `-h` | Show help |
-| `orchid` | `--version`, `-v` | Show version |
-| `orchid data show` | `--turns` | Format as conversation turns |
-| `orchid data show` | `--summary` | Show metadata + first/last messages |
-| `orchid review` | `--no-ai` | Skip AI summary, show excerpts only |
+| Command            | Flag              | Description                         |
+| ------------------ | ----------------- | ----------------------------------- |
+| `orchid`           | `--help`, `-h`    | Show help                           |
+| `orchid`           | `--version`, `-v` | Show version                        |
+| `orchid data show` | `--turns`         | Format as conversation turns        |
+| `orchid data show` | `--summary`       | Show metadata + first/last messages |
+| `orchid review`    | `--no-ai`         | Skip AI summary, show excerpts only |

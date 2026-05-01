@@ -16,7 +16,8 @@ function SignupForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const rawRedirect = searchParams.get('redirect');
-  const redirectTo = rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
+  const redirectTo =
+    rawRedirect?.startsWith('/') && !rawRedirect.startsWith('//') ? rawRedirect : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

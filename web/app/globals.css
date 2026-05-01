@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 :root {
   --bg-primary: #0a0a0f;
@@ -63,7 +63,11 @@
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    var(--font-geist-sans),
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
 }
 
 ::selection {
@@ -72,13 +76,24 @@ body {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .animate-fade-in {
@@ -99,8 +114,14 @@ body {
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .animate-slide-in {
@@ -148,8 +169,14 @@ body {
 
 /* Typing indicator */
 @keyframes typingBounce {
-  0%, 80%, 100% { transform: translateY(0); }
-  40% { transform: translateY(-4px); }
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-4px);
+  }
 }
 
 .typing-dot {
@@ -161,19 +188,26 @@ body {
   animation: typingBounce 1.4s ease-in-out infinite;
 }
 
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 /* Subtle gradient for active stat card */
 .stat-active {
-  background: linear-gradient(135deg, rgba(62, 207, 113, 0.08), rgba(62, 207, 113, 0.02)) !important;
+  background: linear-gradient(
+    135deg,
+    rgba(62, 207, 113, 0.08),
+    rgba(62, 207, 113, 0.02)
+  ) !important;
 }
 
 /* Nav item hover */
 nav a:hover {
   background: var(--bg-hover) !important;
 }
-
 
 /* ============================================
    Landing Page Styles
@@ -192,7 +226,12 @@ nav a:hover {
   transform: translateX(-50%);
   width: 800px;
   height: 600px;
-  background: radial-gradient(ellipse, rgba(218, 112, 214, 0.06) 0%, rgba(124, 91, 245, 0.03) 40%, transparent 70%);
+  background: radial-gradient(
+    ellipse,
+    rgba(218, 112, 214, 0.06) 0%,
+    rgba(124, 91, 245, 0.03) 40%,
+    transparent 70%
+  );
   pointer-events: none;
   z-index: 0;
 }
@@ -263,7 +302,9 @@ nav a:hover {
 .landing-visible {
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+  transition:
+    opacity 0.6s ease-out,
+    transform 0.6s ease-out;
 }
 
 .landing-badge {
@@ -334,7 +375,9 @@ nav a:hover {
   background: var(--accent);
   color: white;
   text-decoration: none;
-  transition: background 0.15s, transform 0.1s;
+  transition:
+    background 0.15s,
+    transform 0.1s;
 }
 
 .landing-cta-primary:hover {
@@ -368,9 +411,9 @@ nav a:hover {
   overflow: hidden;
   background: #0c0c14;
   box-shadow:
-    0 0 0 1px rgba(255,255,255,0.03),
-    0 8px 40px rgba(0,0,0,0.4),
-    0 2px 8px rgba(0,0,0,0.2);
+    0 0 0 1px rgba(255, 255, 255, 0.03),
+    0 8px 40px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .terminal-header {
@@ -393,9 +436,15 @@ nav a:hover {
   border-radius: 50%;
 }
 
-.terminal-dot-red { background: #ff5f57; }
-.terminal-dot-yellow { background: #febc2e; }
-.terminal-dot-green { background: #28c840; }
+.terminal-dot-red {
+  background: #ff5f57;
+}
+.terminal-dot-yellow {
+  background: #febc2e;
+}
+.terminal-dot-green {
+  background: #28c840;
+}
 
 .terminal-title {
   font-size: 11px;
@@ -416,12 +465,25 @@ nav a:hover {
   min-height: 1.7em;
 }
 
-.terminal-command { color: var(--text-primary); font-weight: 500; }
-.terminal-orchid { color: var(--orchid-pink); }
-.terminal-dim { color: var(--text-tertiary); }
-.terminal-green { color: var(--green); }
-.terminal-user { color: var(--accent); }
-.terminal-blank { height: 0.5em; }
+.terminal-command {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.terminal-orchid {
+  color: var(--orchid-pink);
+}
+.terminal-dim {
+  color: var(--text-tertiary);
+}
+.terminal-green {
+  color: var(--green);
+}
+.terminal-user {
+  color: var(--accent);
+}
+.terminal-blank {
+  height: 0.5em;
+}
 
 .terminal-cursor {
   display: inline-block;
@@ -434,7 +496,9 @@ nav a:hover {
 }
 
 @keyframes blink {
-  50% { opacity: 0; }
+  50% {
+    opacity: 0;
+  }
 }
 
 /* Sections */
@@ -485,7 +549,9 @@ nav a:hover {
 }
 
 @media (max-width: 768px) {
-  .landing-problem-grid { grid-template-columns: 1fr; }
+  .landing-problem-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .landing-problem-card {
@@ -520,7 +586,9 @@ nav a:hover {
 }
 
 @media (max-width: 768px) {
-  .landing-steps { grid-template-columns: 1fr; }
+  .landing-steps {
+    grid-template-columns: 1fr;
+  }
 }
 
 .landing-step {
@@ -572,7 +640,9 @@ nav a:hover {
 }
 
 @media (max-width: 768px) {
-  .landing-usecases-grid { grid-template-columns: 1fr; }
+  .landing-usecases-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .landing-usecase-card {
@@ -580,7 +650,9 @@ nav a:hover {
   border-radius: 12px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  transition: border-color 0.2s, transform 0.2s;
+  transition:
+    border-color 0.2s,
+    transform 0.2s;
 }
 
 .landing-usecase-card:hover {

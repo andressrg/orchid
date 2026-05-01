@@ -1,16 +1,29 @@
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { execSync } from "child_process";
-import { gzipSync } from "zlib";
-import { getConfig, getAuthHeaders, tryGetConfig } from "../config";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import { execSync } from 'child_process';
+import { gzipSync } from 'zlib';
+import { getConfig, getAuthHeaders, tryGetConfig } from '../config';
 import {
-  type LocalSession, type ProjectGroup,
-  displayFileSize, displayTokenCount, displayShortDate, padRight, padLeft, truncate,
-  projectKeyToName, tryParseJson, extractMessageText, sumTokensFromUsage,
-  groupSessionsByProject, markSessionsSynced, markGroupSessionsSynced,
-  clamp, computeScrollOffset, parseKeypress,
-} from "../sync-utils";
+  type LocalSession,
+  type ProjectGroup,
+  displayFileSize,
+  displayTokenCount,
+  displayShortDate,
+  padRight,
+  padLeft,
+  truncate,
+  projectKeyToName,
+  tryParseJson,
+  extractMessageText,
+  sumTokensFromUsage,
+  groupSessionsByProject,
+  markSessionsSynced,
+  markGroupSessionsSynced,
+  clamp,
+  computeScrollOffset,
+  parseKeypress,
+} from '../sync-utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +54,8 @@ interface SessionIndex {
 
 // ── ANSI helpers ───────────────────────────────────────────────────────────
 
-const HIDE_CURSOR = "\x1b[?25l";
-const SHOW_CURSOR = "\x1b[?25h";
+const HIDE_CURSOR = '\x1b[?25l';
+const SHOW_CURSOR = '\x1b[?25h';
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -53,103 +66,186 @@ const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 
 const extractMetadataFromJsonl = (
-  filePath: string
-): Omit<LocalSession, "filePath" | "fileSize" | "projectKey" | "projectName" | "synced"> | null => {
-  const fd = (() => { try { return fs.openSync(filePath, "r"); } catch { return null; } })();
+  filePath: string,
+): Omit<
+  LocalSession,
+  'filePath' | 'fileSize' | 'projectKey' | 'projectName' | 'synced'
+> | null => {
+  const fd = (() => {
+    try {
+      return fs.openSync(filePath, 'r');
+    } catch {
+      return null;
+    }
+  })();
   if (fd === null) return null;
 
   const buf = Buffer.alloc(32 * 1024);
   const bytesRead = fs.readSync(fd, buf, 0, buf.length, 0);
   fs.closeSync(fd);
 
-  const parsed = buf.toString("utf-8", 0, bytesRead).split("\n").filter((l) => l.trim())
-    .map(tryParseJson).filter((obj): obj is Record<string, unknown> => obj !== null);
+  const parsed = buf
+    .toString('utf-8', 0, bytesRead)
+    .split('\n')
+    .filter((l) => l.trim())
+    .map(tryParseJson)
+    .filter((obj): obj is Record<string, unknown> => obj !== null);
 
   const meta = parsed.reduce<{
-    sessionId: string; cwd: string; gitBranch: string;
-    firstTimestamp: string; messageCount: number; totalTokens: number; firstUserMessage: string;
+    sessionId: string;
+    cwd: string;
+    gitBranch: string;
+    firstTimestamp: string;
+    messageCount: number;
+    totalTokens: number;
+    firstUserMessage: string;
   }>(
     (acc, obj) => {
-      const isUserMsg = obj.type === "user" || obj.type === "human";
-      const userText = isUserMsg && !acc.firstUserMessage
-        ? extractMessageText((obj as Record<string, unknown>).message
-            ? ((obj as Record<string, unknown>).message as Record<string, unknown>).content
-            : obj.content)
-        : "";
+      const isUserMsg = obj.type === 'user' || obj.type === 'human';
+      const userText =
+        isUserMsg && !acc.firstUserMessage
+          ? extractMessageText(
+              (obj as Record<string, unknown>).message
+                ? (
+                    (obj as Record<string, unknown>).message as Record<
+                      string,
+                      unknown
+                    >
+                  ).content
+                : obj.content,
+            )
+          : '';
       return {
-        sessionId: acc.sessionId || (obj.sessionId as string) || "",
-        cwd: acc.cwd || (obj.cwd as string) || "",
-        gitBranch: acc.gitBranch || (obj.gitBranch as string) || "",
-        firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || "",
-        messageCount: acc.messageCount + (isUserMsg || obj.type === "assistant" ? 1 : 0),
+        sessionId: acc.sessionId || (obj.sessionId as string) || '',
+        cwd: acc.cwd || (obj.cwd as string) || '',
+        gitBranch: acc.gitBranch || (obj.gitBranch as string) || '',
+        firstTimestamp: acc.firstTimestamp || (obj.timestamp as string) || '',
+        messageCount:
+          acc.messageCount + (isUserMsg || obj.type === 'assistant' ? 1 : 0),
         totalTokens: acc.totalTokens + sumTokensFromUsage(obj),
         firstUserMessage: acc.firstUserMessage || userText,
       };
     },
-    { sessionId: "", cwd: "", gitBranch: "", firstTimestamp: "", messageCount: 0, totalTokens: 0, firstUserMessage: "" }
+    {
+      sessionId: '',
+      cwd: '',
+      gitBranch: '',
+      firstTimestamp: '',
+      messageCount: 0,
+      totalTokens: 0,
+      firstUserMessage: '',
+    },
   );
 
-  const sessionId = meta.sessionId || path.basename(filePath, ".jsonl");
+  const sessionId = meta.sessionId || path.basename(filePath, '.jsonl');
   const fileSize = fs.statSync(filePath).size;
-  const estimatedMessages = meta.messageCount > 0 && bytesRead > 0
-    ? Math.round((meta.messageCount / bytesRead) * fileSize) : meta.messageCount;
-  const estimatedTokens = meta.totalTokens > 0 && bytesRead > 0
-    ? Math.round((meta.totalTokens / bytesRead) * fileSize) : meta.totalTokens;
+  const estimatedMessages =
+    meta.messageCount > 0 && bytesRead > 0
+      ? Math.round((meta.messageCount / bytesRead) * fileSize)
+      : meta.messageCount;
+  const estimatedTokens =
+    meta.totalTokens > 0 && bytesRead > 0
+      ? Math.round((meta.totalTokens / bytesRead) * fileSize)
+      : meta.totalTokens;
   const lastTimestamp = (() => {
-    try { return fs.statSync(filePath).mtime.toISOString(); }
-    catch { return meta.firstTimestamp; }
+    try {
+      return fs.statSync(filePath).mtime.toISOString();
+    } catch {
+      return meta.firstTimestamp;
+    }
   })();
-  const summary = meta.firstUserMessage.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+  const summary = meta.firstUserMessage
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   return {
-    sessionId, cwd: meta.cwd || "unknown", gitBranch: meta.gitBranch || "unknown",
+    sessionId,
+    cwd: meta.cwd || 'unknown',
+    gitBranch: meta.gitBranch || 'unknown',
     firstTimestamp: meta.firstTimestamp || new Date().toISOString(),
-    lastTimestamp: lastTimestamp || meta.firstTimestamp || new Date().toISOString(),
-    messageCount: estimatedMessages, totalTokens: estimatedTokens, summary,
+    lastTimestamp:
+      lastTimestamp || meta.firstTimestamp || new Date().toISOString(),
+    messageCount: estimatedMessages,
+    totalTokens: estimatedTokens,
+    summary,
   };
 };
 
 const readSessionIndex = (indexPath: string): SessionIndex | null => {
-  try { return JSON.parse(fs.readFileSync(indexPath, "utf-8")) as SessionIndex; }
-  catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(indexPath, 'utf-8')) as SessionIndex;
+  } catch {
+    return null;
+  }
 };
 
-const indexEntryToSession = (entry: SessionIndexEntry, projectKey: string, projectName: string, synced: boolean): LocalSession => ({
+const indexEntryToSession = (
+  entry: SessionIndexEntry,
+  projectKey: string,
+  projectName: string,
+  synced: boolean,
+): LocalSession => ({
   filePath: fs.existsSync(entry.fullPath) ? entry.fullPath : null,
-  sessionId: entry.sessionId, projectKey, projectName,
-  cwd: entry.projectPath || "unknown",
-  gitBranch: entry.gitBranch || "unknown",
+  sessionId: entry.sessionId,
+  projectKey,
+  projectName,
+  cwd: entry.projectPath || 'unknown',
+  gitBranch: entry.gitBranch || 'unknown',
   firstTimestamp: entry.created || new Date().toISOString(),
   lastTimestamp: entry.modified || entry.created || new Date().toISOString(),
-  fileSize: entry.fullPath && fs.existsSync(entry.fullPath)
-    ? ((() => { try { return fs.statSync(entry.fullPath).size; } catch { return 0; } })()) : 0,
+  fileSize:
+    entry.fullPath && fs.existsSync(entry.fullPath)
+      ? (() => {
+          try {
+            return fs.statSync(entry.fullPath).size;
+          } catch {
+            return 0;
+          }
+        })()
+      : 0,
   messageCount: entry.messageCount || 0,
   totalTokens: 0,
-  summary: entry.summary || entry.firstPrompt?.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim() || "",
+  summary:
+    entry.summary ||
+    entry.firstPrompt
+      ?.replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim() ||
+    '',
   synced,
 });
 
 const tryReadDir = (dir: string): fs.Dirent[] => {
-  try { return fs.readdirSync(dir, { withFileTypes: true }); }
-  catch { return []; }
+  try {
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
 };
 
 const tryStatSize = (filePath: string): number | null => {
-  try { return fs.statSync(filePath).size; }
-  catch { return null; }
+  try {
+    return fs.statSync(filePath).size;
+  } catch {
+    return null;
+  }
 };
 
-const discoverLocalSessions = (syncedIds: ReadonlySet<string>): readonly LocalSession[] => {
-  const claudeProjectsDir = path.join(os.homedir(), ".claude", "projects");
+const discoverLocalSessions = (
+  syncedIds: ReadonlySet<string>,
+): readonly LocalSession[] => {
+  const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
   if (!fs.existsSync(claudeProjectsDir)) return [];
 
-  return tryReadDir(claudeProjectsDir).filter((e) => e.isDirectory())
+  return tryReadDir(claudeProjectsDir)
+    .filter((e) => e.isDirectory())
     .flatMap((projEntry) => {
       const projPath = path.join(claudeProjectsDir, projEntry.name);
       const projectName = projectKeyToName(projEntry.name);
 
       const jsonlSessions = tryReadDir(projPath)
-        .filter((e) => e.isFile() && e.name.endsWith(".jsonl"))
+        .filter((e) => e.isFile() && e.name.endsWith('.jsonl'))
         .map((entry) => {
           const filePath = path.join(projPath, entry.name);
           const fileSize = tryStatSize(filePath);
@@ -157,25 +253,38 @@ const discoverLocalSessions = (syncedIds: ReadonlySet<string>): readonly LocalSe
           const meta = extractMetadataFromJsonl(filePath);
           if (!meta) return null;
           return {
-            ...meta, filePath, fileSize,
-            projectKey: projEntry.name, projectName,
+            ...meta,
+            filePath,
+            fileSize,
+            projectKey: projEntry.name,
+            projectName,
             synced: syncedIds.has(meta.sessionId),
           } as LocalSession;
         })
         .filter((s): s is LocalSession => s !== null);
 
       const jsonlSessionIds = new Set(jsonlSessions.map((s) => s.sessionId));
-      const indexPath = path.join(projPath, "sessions-index.json");
+      const indexPath = path.join(projPath, 'sessions-index.json');
       const index = readSessionIndex(indexPath);
       const indexSessions = (index?.entries || [])
         .filter((e) => !jsonlSessionIds.has(e.sessionId))
-        .map((e) => indexEntryToSession(e, projEntry.name, projectName, syncedIds.has(e.sessionId)));
+        .map((e) =>
+          indexEntryToSession(
+            e,
+            projEntry.name,
+            projectName,
+            syncedIds.has(e.sessionId),
+          ),
+        );
 
       return [...jsonlSessions, ...indexSessions];
     })
-    .sort((a, b) => new Date(b.lastTimestamp).getTime() - new Date(a.lastTimestamp).getTime());
+    .sort(
+      (a, b) =>
+        new Date(b.lastTimestamp).getTime() -
+        new Date(a.lastTimestamp).getTime(),
+    );
 };
-
 
 // ── Server interaction ─────────────────────────────────────────────────────
 
@@ -183,57 +292,87 @@ const fetchSyncedSessionIds = async (): Promise<Set<string>> => {
   const config = tryGetConfig();
   if (!config) return new Set();
   try {
-    const url = `${config.apiUrl.replace(/\/$/, "")}/sessions`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${config.token}` } });
+    const url = `${config.apiUrl.replace(/\/$/, '')}/sessions`;
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
     if (!res.ok) return new Set();
     const sessions = (await res.json()) as Array<{ id: string }>;
     return new Set(sessions.map((s) => s.id));
-  } catch { return new Set(); }
+  } catch {
+    return new Set();
+  }
 };
 
 const execGit = (args: string, dir?: string): string => {
   try {
-    return execSync(`git ${args}`, { cwd: dir, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-  } catch { return ""; }
+    return execSync(`git ${args}`, {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return '';
+  }
 };
 
 const collectGitMetadataForDir = (cwd: string) => {
-  const origin = fs.existsSync(cwd) ? execGit("remote get-url origin", cwd) : "";
+  const origin = fs.existsSync(cwd)
+    ? execGit('remote get-url origin', cwd)
+    : '';
   return {
-    user_name: execGit("config user.name") || "unknown",
-    user_email: execGit("config user.email") || "unknown",
+    user_name: execGit('config user.name') || 'unknown',
+    user_email: execGit('config user.email') || 'unknown',
     git_remotes: origin ? [origin] : [],
   };
 };
 
-const syncSessionToServer = async (session: LocalSession): Promise<"synced" | "skipped"> => {
-  if (!session.filePath) return "skipped";
+const syncSessionToServer = async (
+  session: LocalSession,
+): Promise<'synced' | 'skipped'> => {
+  if (!session.filePath) return 'skipped';
   const { apiUrl } = getConfig();
   const transcript = (() => {
-    try { return fs.readFileSync(session.filePath, "utf-8"); }
-    catch (err) { throw new Error(`Cannot read ${session.filePath}: ${(err as Error).message}`); }
+    try {
+      return fs.readFileSync(session.filePath, 'utf-8');
+    } catch (err) {
+      throw new Error(
+        `Cannot read ${session.filePath}: ${(err as Error).message}`,
+      );
+    }
   })();
   const gitMeta = collectGitMetadataForDir(session.cwd);
-  const url = `${apiUrl.replace(/\/$/, "")}/sessions/${session.sessionId}`;
+  const url = `${apiUrl.replace(/\/$/, '')}/sessions/${session.sessionId}`;
   const json = JSON.stringify({
-    user_name: gitMeta.user_name, user_email: gitMeta.user_email,
-    working_dir: session.cwd, git_remotes: gitMeta.git_remotes,
-    branch: session.gitBranch, tool: "claude-code", transcript, status: "done",
+    user_name: gitMeta.user_name,
+    user_email: gitMeta.user_email,
+    working_dir: session.cwd,
+    git_remotes: gitMeta.git_remotes,
+    branch: session.gitBranch,
+    tool: 'claude-code',
+    transcript,
+    status: 'done',
   });
-  const compressed = gzipSync(Buffer.from(json, "utf-8"));
+  const compressed = gzipSync(Buffer.from(json, 'utf-8'));
   const res = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", "Content-Encoding": "gzip", ...getAuthHeaders() },
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Encoding': 'gzip',
+      ...getAuthHeaders(),
+    },
     body: compressed,
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`PUT ${url} returned ${res.status}: ${text}`);
   }
-  return "synced";
+  return 'synced';
 };
 
-const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResult> => {
+const syncSessions = async (
+  sessions: readonly LocalSession[],
+): Promise<SyncResult> => {
   const syncable = sessions.filter((s) => s.filePath !== null && !s.synced);
   const skippedCount = sessions.length - syncable.length;
 
@@ -243,39 +382,54 @@ const syncSessions = async (sessions: readonly LocalSession[]): Promise<SyncResu
     const reasons = [
       ...(archivedCount > 0 ? [`${archivedCount} archived`] : []),
       ...(alreadySynced > 0 ? [`${alreadySynced} already synced`] : []),
-    ].join(", ");
+    ].join(', ');
     console.log(`  ${dim(`Nothing to sync (${reasons}).`)}\n`);
-    return { synced: 0, failed: 0, skipped: skippedCount, syncedIds: new Set() };
+    return {
+      synced: 0,
+      failed: 0,
+      skipped: skippedCount,
+      syncedIds: new Set(),
+    };
   }
 
   if (skippedCount > 0) {
-    console.log(`  ${dim(`Skipping ${skippedCount} sessions (archived or already synced)`)}`);
+    console.log(
+      `  ${dim(`Skipping ${skippedCount} sessions (archived or already synced)`)}`,
+    );
   }
 
   const total = syncable.length;
   const successIds: string[] = [];
-  const result = await syncable.reduce<Promise<{ synced: number; failed: number }>>(
+  const result = await syncable.reduce<
+    Promise<{ synced: number; failed: number }>
+  >(
     async (accPromise, session, i) => {
       const acc = await accPromise;
-      const label = session.summary ? truncate(session.summary, 30) : session.sessionId.slice(0, 12);
-      process.stdout.write(`  ${dim(`[${i + 1}/${total}]`)} Syncing ${label}… `);
+      const label = session.summary
+        ? truncate(session.summary, 30)
+        : session.sessionId.slice(0, 12);
+      process.stdout.write(
+        `  ${dim(`[${i + 1}/${total}]`)} Syncing ${label}… `,
+      );
       try {
         await syncSessionToServer(session);
         successIds.push(session.sessionId);
-        process.stdout.write(`${green("✓")} ${dim(displayFileSize(session.fileSize))}\n`);
+        process.stdout.write(
+          `${green('✓')} ${dim(displayFileSize(session.fileSize))}\n`,
+        );
         return { synced: acc.synced + 1, failed: acc.failed };
       } catch (err) {
-        process.stdout.write(`${red("✗")} ${dim((err as Error).message)}\n`);
+        process.stdout.write(`${red('✗')} ${dim((err as Error).message)}\n`);
         return { synced: acc.synced, failed: acc.failed + 1 };
       }
     },
-    Promise.resolve({ synced: 0, failed: 0 })
+    Promise.resolve({ synced: 0, failed: 0 }),
   );
 
   console.log(
     result.failed === 0
-      ? `\n  ${green("Done!")} ${bold(String(result.synced))} sessions synced.\n`
-      : `\n  ${yellow("Done.")} ${bold(String(result.synced))} synced, ${red(String(result.failed))} failed.\n`
+      ? `\n  ${green('Done!')} ${bold(String(result.synced))} sessions synced.\n`
+      : `\n  ${yellow('Done.')} ${bold(String(result.synced))} synced, ${red(String(result.failed))} failed.\n`,
   );
   return { ...result, skipped: skippedCount, syncedIds: new Set(successIds) };
 };
@@ -289,14 +443,19 @@ interface ListState {
 }
 
 type ListAction =
-  | { type: "enter"; index: number }
-  | { type: "sync"; indices: readonly number[] }
-  | { type: "back" }
-  | { type: "quit" };
+  | { type: 'enter'; index: number }
+  | { type: 'sync'; indices: readonly number[] }
+  | { type: 'back' }
+  | { type: 'quit' };
 
 const interactiveList = <T>(config: {
   readonly items: readonly T[];
-  readonly renderRow: (item: T, index: number, active: boolean, selected: boolean) => string;
+  readonly renderRow: (
+    item: T,
+    index: number,
+    active: boolean,
+    selected: boolean,
+  ) => string;
   readonly headerLines: readonly string[];
   readonly footerLine: (selectedCount: number, total: number) => string;
   readonly selectable: boolean;
@@ -305,15 +464,26 @@ const interactiveList = <T>(config: {
   new Promise((resolve) => {
     // Reserve space for: header lines + scroll indicator (1) + blank (1) + footer (1)
     const overhead = config.headerLines.length + 3;
-    const maxVisible = clamp((process.stdout.rows || 24) - overhead, 5, config.items.length);
+    const maxVisible = clamp(
+      (process.stdout.rows || 24) - overhead,
+      5,
+      config.items.length,
+    );
     const total = config.items.length;
 
-    const stateRef: [ListState] = [{ cursor: 0, selected: new Set(), scroll: 0 }];
+    const stateRef: [ListState] = [
+      { cursor: 0, selected: new Set(), scroll: 0 },
+    ];
     const renderedRef: [number] = [0];
 
     const render = () => {
       const state = stateRef[0];
-      const scroll = computeScrollOffset({ cursor: state.cursor, scroll: state.scroll, maxVisible, total });
+      const scroll = computeScrollOffset({
+        cursor: state.cursor,
+        scroll: state.scroll,
+        maxVisible,
+        total,
+      });
       stateRef[0] = { ...state, scroll };
 
       const visibleItems = config.items.slice(scroll, scroll + maxVisible);
@@ -325,16 +495,25 @@ const interactiveList = <T>(config: {
           const isSelected = state.selected.has(globalIdx);
           return config.renderRow(item, globalIdx, active, isSelected);
         }),
-        ...(total > maxVisible ? [`    ${dim(`↕ ${scroll + 1}–${Math.min(scroll + maxVisible, total)} of ${total}`)}`] : []),
-        "",
+        ...(total > maxVisible
+          ? [
+              `    ${dim(`↕ ${scroll + 1}–${Math.min(scroll + maxVisible, total)} of ${total}`)}`,
+            ]
+          : []),
+        '',
         config.footerLine(state.selected.size, total),
       ];
 
-      const moveUp = renderedRef[0] > 0 ? `\x1b[${renderedRef[0]}A` : "";
-      const output = moveUp + lines.map((line) => `\x1b[2K${line}`).join("\n") + "\n";
-      const extraClears = renderedRef[0] > lines.length
-        ? Array.from({ length: renderedRef[0] - lines.length }, () => "\x1b[2K\n").join("")
-        : "";
+      const moveUp = renderedRef[0] > 0 ? `\x1b[${renderedRef[0]}A` : '';
+      const output =
+        moveUp + lines.map((line) => `\x1b[2K${line}`).join('\n') + '\n';
+      const extraClears =
+        renderedRef[0] > lines.length
+          ? Array.from(
+              { length: renderedRef[0] - lines.length },
+              () => '\x1b[2K\n',
+            ).join('')
+          : '';
       process.stdout.write(output + extraClears);
       renderedRef[0] = lines.length;
     };
@@ -342,7 +521,7 @@ const interactiveList = <T>(config: {
     const cleanup = () => {
       process.stdin.setRawMode?.(false);
       process.stdin.pause();
-      process.stdin.removeAllListeners("data");
+      process.stdin.removeAllListeners('data');
       process.stdout.write(SHOW_CURSOR);
     };
 
@@ -350,61 +529,92 @@ const interactiveList = <T>(config: {
       const key = parseKeypress(buf);
       const state = stateRef[0];
 
-      if (key === "ctrl-c") { cleanup(); process.exit(0); }
+      if (key === 'ctrl-c') {
+        cleanup();
+        process.exit(0);
+      }
 
-      if (key === "up") {
-        stateRef[0] = { ...state, cursor: clamp(state.cursor - 1, 0, total - 1) };
+      if (key === 'up') {
+        stateRef[0] = {
+          ...state,
+          cursor: clamp(state.cursor - 1, 0, total - 1),
+        };
         render();
-      } else if (key === "down") {
-        stateRef[0] = { ...state, cursor: clamp(state.cursor + 1, 0, total - 1) };
+      } else if (key === 'down') {
+        stateRef[0] = {
+          ...state,
+          cursor: clamp(state.cursor + 1, 0, total - 1),
+        };
         render();
-      } else if (key === "top") {
+      } else if (key === 'top') {
         stateRef[0] = { ...state, cursor: 0, scroll: 0 };
         render();
-      } else if (key === "bottom") {
+      } else if (key === 'bottom') {
         stateRef[0] = { ...state, cursor: total - 1 };
         render();
-      } else if (key === "space" && config.selectable) {
-        const canSelect = !config.isItemSelectable || config.isItemSelectable(config.items[state.cursor], state.cursor);
+      } else if (key === 'space' && config.selectable) {
+        const canSelect =
+          !config.isItemSelectable ||
+          config.isItemSelectable(config.items[state.cursor], state.cursor);
         if (canSelect) {
           const next = new Set(state.selected);
-          if (next.has(state.cursor)) { next.delete(state.cursor); } else { next.add(state.cursor); }
+          if (next.has(state.cursor)) {
+            next.delete(state.cursor);
+          } else {
+            next.add(state.cursor);
+          }
           stateRef[0] = { ...state, selected: next };
         }
         render();
-      } else if (key === "select-all" && config.selectable) {
-        const selectableIndices = Array.from({ length: total }, (_, i) => i)
-          .filter((i) => !config.isItemSelectable || config.isItemSelectable(config.items[i], i));
-        const allSelected = selectableIndices.every((i) => state.selected.has(i));
-        const next = allSelected ? new Set<number>() : new Set(selectableIndices);
+      } else if (key === 'select-all' && config.selectable) {
+        const selectableIndices = Array.from(
+          { length: total },
+          (_, i) => i,
+        ).filter(
+          (i) =>
+            !config.isItemSelectable ||
+            config.isItemSelectable(config.items[i], i),
+        );
+        const allSelected = selectableIndices.every((i) =>
+          state.selected.has(i),
+        );
+        const next = allSelected
+          ? new Set<number>()
+          : new Set(selectableIndices);
         stateRef[0] = { ...state, selected: next };
         render();
-      } else if (key === "enter") {
+      } else if (key === 'enter') {
         cleanup();
-        resolve({ type: "enter", index: state.cursor });
-      } else if (key === "sync") {
+        resolve({ type: 'enter', index: state.cursor });
+      } else if (key === 'sync') {
         cleanup();
-        const indices = state.selected.size > 0
-          ? Array.from(state.selected).sort((a, b) => a - b)
-          : Array.from({ length: total }, (_, i) => i);
-        resolve({ type: "sync", indices });
-      } else if (key === "back") {
+        const indices =
+          state.selected.size > 0
+            ? Array.from(state.selected).sort((a, b) => a - b)
+            : Array.from({ length: total }, (_, i) => i);
+        resolve({ type: 'sync', indices });
+      } else if (key === 'back') {
         cleanup();
-        resolve({ type: "back" });
+        resolve({ type: 'back' });
       }
     };
 
     process.stdout.write(HIDE_CURSOR);
     process.stdin.setRawMode?.(true);
     process.stdin.resume();
-    process.stdin.on("data", onKey);
+    process.stdin.on('data', onKey);
     render();
   });
 
 // ── View renderers ─────────────────────────────────────────────────────────
 
-const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selected: boolean): string => {
-  const pointer = active ? cyan("▸") : " ";
+const renderProjectRow = (
+  g: ProjectGroup,
+  _idx: number,
+  active: boolean,
+  _selected: boolean,
+): string => {
+  const pointer = active ? cyan('▸') : ' ';
   const dateRange = `${displayShortDate(g.earliest)} – ${displayShortDate(g.latest)}`;
   const paddedName = padRight(g.projectName, 34);
   const name = active ? bold(paddedName) : paddedName;
@@ -412,119 +622,156 @@ const renderProjectRow = (g: ProjectGroup, _idx: number, active: boolean, _selec
   return active ? `\x1b[48;5;236m${content}\x1b[0m` : content;
 };
 
-const renderSessionRow = (s: LocalSession, _idx: number, active: boolean, selected: boolean): string => {
-  const pointer = active ? cyan("▸") : " ";
-  const status = s.synced ? green(" ✓ ") : selected ? green("[✓]") : dim("[ ]");
-  const rawLabel = s.summary ? truncate(s.summary, 34) : s.sessionId.slice(0, 12) + "…";
+const renderSessionRow = (
+  s: LocalSession,
+  _idx: number,
+  active: boolean,
+  selected: boolean,
+): string => {
+  const pointer = active ? cyan('▸') : ' ';
+  const status = s.synced ? green(' ✓ ') : selected ? green('[✓]') : dim('[ ]');
+  const rawLabel = s.summary
+    ? truncate(s.summary, 34)
+    : s.sessionId.slice(0, 12) + '…';
   const paddedLabel = padRight(rawLabel, 36);
-  const label = s.synced ? dim(paddedLabel) : !s.summary ? dim(paddedLabel) : paddedLabel;
+  const label = s.synced
+    ? dim(paddedLabel)
+    : !s.summary
+      ? dim(paddedLabel)
+      : paddedLabel;
   const branch = padRight(s.gitBranch.slice(0, 14), 16);
   const date = padRight(displayShortDate(s.lastTimestamp), 8);
   const msgs = padLeft(String(s.messageCount), 5);
   const tokens = padLeft(displayTokenCount(s.totalTokens), 7);
-  const archived = s.filePath === null && !s.synced ? dim(" ✱") : "";
+  const archived = s.filePath === null && !s.synced ? dim(' ✱') : '';
   const content = `  ${pointer} ${status} ${label}${branch}${date}${msgs}${tokens}${archived}`;
   return s.synced
-    ? (active ? `\x1b[48;5;236m${dim(content)}\x1b[0m` : dim(content))
-    : (active ? `\x1b[48;5;236m${content}\x1b[0m` : content);
+    ? active
+      ? `\x1b[48;5;236m${dim(content)}\x1b[0m`
+      : dim(content)
+    : active
+      ? `\x1b[48;5;236m${content}\x1b[0m`
+      : content;
 };
 
 // ── Main flows ─────────────────────────────────────────────────────────────
 
 const browseProject = async (group: ProjectGroup): Promise<ProjectGroup> => {
-  const syncableCount = group.sessions.filter((s) => s.filePath !== null && !s.synced).length;
+  const syncableCount = group.sessions.filter(
+    (s) => s.filePath !== null && !s.synced,
+  ).length;
   const syncedCount = group.sessions.filter((s) => s.synced).length;
   const subtitle = [
     `${group.sessions.length} sessions`,
     ...(syncableCount > 0 ? [`${syncableCount} syncable`] : []),
     ...(syncedCount > 0 ? [`${syncedCount} synced`] : []),
-  ].join(", ");
+  ].join(', ');
 
   const action = await interactiveList({
     items: group.sessions,
     renderRow: renderSessionRow,
     headerLines: [
-      "",
+      '',
       `  ${bold(group.projectName)} ${dim(`— ${subtitle}`)}`,
-      "",
-      `  ${dim("    ")}${dim(padRight("SUMMARY", 40))}${dim(padRight("BRANCH", 16))}${dim(padRight("DATE", 8))}${dim(padLeft("MSGS", 5))}${dim(padLeft("TOKENS", 7))}`,
-      `  ${dim("─".repeat(82))}`,
+      '',
+      `  ${dim('    ')}${dim(padRight('SUMMARY', 40))}${dim(padRight('BRANCH', 16))}${dim(padRight('DATE', 8))}${dim(padLeft('MSGS', 5))}${dim(padLeft('TOKENS', 7))}`,
+      `  ${dim('─'.repeat(82))}`,
     ],
     footerLine: (sel, _total) => {
-      const selLabel = sel > 0 ? ` (${sel} selected)` : "";
-      return `  ${dim("j/k")} navigate  ${dim("space")} select  ${dim("a")} toggle all  ${dim("s")} sync${selLabel}  ${dim("esc")} back`;
+      const selLabel = sel > 0 ? ` (${sel} selected)` : '';
+      return `  ${dim('j/k')} navigate  ${dim('space')} select  ${dim('a')} toggle all  ${dim('s')} sync${selLabel}  ${dim('esc')} back`;
     },
     selectable: true,
     isItemSelectable: (s) => !s.synced && s.filePath !== null,
   });
 
-  if (action.type === "back") return group;
+  if (action.type === 'back') return group;
 
-  if (action.type === "enter" || action.type === "sync") {
-    const toSync = action.type === "sync"
-      ? action.indices.map((i) => group.sessions[i])
-      : [group.sessions[action.index]];
+  if (action.type === 'enter' || action.type === 'sync') {
+    const toSync =
+      action.type === 'sync'
+        ? action.indices.map((i) => group.sessions[i])
+        : [group.sessions[action.index]];
     console.log();
     const result = await syncSessions(toSync);
-    const updated = markGroupSessionsSynced({ group, syncedIds: result.syncedIds });
+    const updated = markGroupSessionsSynced({
+      group,
+      syncedIds: result.syncedIds,
+    });
     return browseProject(updated);
   }
 
   return group;
 };
 
-const runDiscoverLoop = async (groups: readonly ProjectGroup[]): Promise<void> => {
+const runDiscoverLoop = async (
+  groups: readonly ProjectGroup[],
+): Promise<void> => {
   const allSessions = groups.flatMap((g) => g.sessions);
-  const syncableCount = allSessions.filter((s) => s.filePath !== null && !s.synced).length;
+  const syncableCount = allSessions.filter(
+    (s) => s.filePath !== null && !s.synced,
+  ).length;
 
   const action = await interactiveList({
     items: groups,
     renderRow: renderProjectRow,
     headerLines: [
-      "",
-      `  ${magenta("orchid sync")} ${dim("— discover local Claude Code sessions")}`,
-      "",
+      '',
+      `  ${magenta('orchid sync')} ${dim('— discover local Claude Code sessions')}`,
+      '',
       `  ${bold(String(allSessions.length))} sessions across ${bold(String(groups.length))} projects ${dim(`(${syncableCount} syncable)`)}`,
-      "",
-      `  ${dim(" ")}${dim(padRight("PROJECT", 36))}${dim(padLeft("SESSIONS", 8))}${dim(padLeft("SIZE", 12))}  ${dim("DATE RANGE")}`,
-      `  ${dim("─".repeat(82))}`,
+      '',
+      `  ${dim(' ')}${dim(padRight('PROJECT', 36))}${dim(padLeft('SESSIONS', 8))}${dim(padLeft('SIZE', 12))}  ${dim('DATE RANGE')}`,
+      `  ${dim('─'.repeat(82))}`,
     ],
     footerLine: (_sel, _total) =>
-      `  ${dim("j/k")} navigate  ${dim("↵")} browse  ${dim("s")} sync all  ${dim("q")} quit`,
+      `  ${dim('j/k')} navigate  ${dim('↵')} browse  ${dim('s')} sync all  ${dim('q')} quit`,
     selectable: false,
   });
 
-  if (action.type === "back" || action.type === "quit") return;
+  if (action.type === 'back' || action.type === 'quit') return;
 
-  if (action.type === "enter") {
+  if (action.type === 'enter') {
     const updated = await browseProject(groups[action.index]);
-    const updatedGroups = groups.map((g, i) => (i === action.index ? updated : g));
+    const updatedGroups = groups.map((g, i) =>
+      i === action.index ? updated : g,
+    );
     return runDiscoverLoop(updatedGroups);
   }
 
-  if (action.type === "sync") {
+  if (action.type === 'sync') {
     console.log();
     const result = await syncSessions(allSessions);
-    const updatedGroups = groups.map((g) => markGroupSessionsSynced({ group: g, syncedIds: result.syncedIds }));
+    const updatedGroups = groups.map((g) =>
+      markGroupSessionsSynced({ group: g, syncedIds: result.syncedIds }),
+    );
     return runDiscoverLoop(updatedGroups);
   }
 };
 
 const runDiscover = async (): Promise<void> => {
   console.log();
-  console.log(`  ${magenta("orchid sync")} ${dim("— discover local Claude Code sessions")}`);
+  console.log(
+    `  ${magenta('orchid sync')} ${dim('— discover local Claude Code sessions')}`,
+  );
   console.log();
-  process.stdout.write(`  ${dim("Scanning ~/.claude/projects…")}`);
+  process.stdout.write(`  ${dim('Scanning ~/.claude/projects…')}`);
 
-  process.stdout.write(`\r  ${dim("Checking server for already-synced sessions…")}              `);
+  process.stdout.write(
+    `\r  ${dim('Checking server for already-synced sessions…')}              `,
+  );
   const syncedIds = await fetchSyncedSessionIds();
-  process.stdout.write(`\r  ${dim(`${syncedIds.size} sessions already synced on server.`)}              \n`);
+  process.stdout.write(
+    `\r  ${dim(`${syncedIds.size} sessions already synced on server.`)}              \n`,
+  );
 
   const allSessions = discoverLocalSessions(syncedIds);
   console.log(`  ${dim(`Found ${allSessions.length} local sessions.`)}`);
 
   if (allSessions.length === 0) {
-    console.log(`\n  ${dim("No Claude Code sessions found in ~/.claude/projects/")}`);
+    console.log(
+      `\n  ${dim('No Claude Code sessions found in ~/.claude/projects/')}`,
+    );
     return;
   }
 
@@ -536,19 +783,37 @@ const runDiscover = async (): Promise<void> => {
 
 const syncFile = async (filePath: string): Promise<void> => {
   const resolved = path.resolve(filePath);
-  if (!fs.existsSync(resolved)) { console.error(`${red("Error:")} File not found: ${resolved}`); process.exit(1); }
-  if (!resolved.endsWith(".jsonl")) { console.error(`${red("Error:")} Expected a .jsonl file`); process.exit(1); }
+  if (!fs.existsSync(resolved)) {
+    console.error(`${red('Error:')} File not found: ${resolved}`);
+    process.exit(1);
+  }
+  if (!resolved.endsWith('.jsonl')) {
+    console.error(`${red('Error:')} Expected a .jsonl file`);
+    process.exit(1);
+  }
 
   const fileSize = fs.statSync(resolved).size;
   const meta = extractMetadataFromJsonl(resolved);
-  if (!meta) { console.error(`${red("Error:")} Could not parse metadata from ${resolved}`); process.exit(1); }
+  if (!meta) {
+    console.error(`${red('Error:')} Could not parse metadata from ${resolved}`);
+    process.exit(1);
+  }
 
   const projectKey = path.basename(path.dirname(resolved));
-  const session: LocalSession = { ...meta, filePath: resolved, fileSize, projectKey, projectName: projectKeyToName(projectKey), synced: false };
+  const session: LocalSession = {
+    ...meta,
+    filePath: resolved,
+    fileSize,
+    projectKey,
+    projectName: projectKeyToName(projectKey),
+    synced: false,
+  };
 
-  console.log(`\n  ${magenta("orchid sync")} ${dim("— syncing single session")}\n`);
+  console.log(
+    `\n  ${magenta('orchid sync')} ${dim('— syncing single session')}\n`,
+  );
   console.log(`  Session:  ${session.sessionId}`);
-  console.log(`  Summary:  ${session.summary || dim("(no summary)")}`);
+  console.log(`  Summary:  ${session.summary || dim('(no summary)')}`);
   console.log(`  Branch:   ${session.gitBranch}`);
   console.log(`  Size:     ${displayFileSize(session.fileSize)}`);
   console.log(`  Tokens:   ${displayTokenCount(session.totalTokens)}\n`);
@@ -556,9 +821,9 @@ const syncFile = async (filePath: string): Promise<void> => {
   process.stdout.write(`  Syncing… `);
   try {
     await syncSessionToServer(session);
-    console.log(`${green("✓")} Done!\n`);
+    console.log(`${green('✓')} Done!\n`);
   } catch (err) {
-    console.log(`${red("✗")} ${(err as Error).message}`);
+    console.log(`${red('✗')} ${(err as Error).message}`);
     process.exit(1);
   }
 };
@@ -568,7 +833,7 @@ const syncFile = async (filePath: string): Promise<void> => {
 export const runSync = (args: string[]): void => {
   const flag = args[0];
 
-  if (flag === "--help" || flag === "-h") {
+  if (flag === '--help' || flag === '-h') {
     console.log(`orchid sync - sync past Claude Code conversations
 
 Usage:
@@ -581,17 +846,17 @@ Options:
     return;
   }
 
-  if (flag === "--discover" || !flag) {
+  if (flag === '--discover' || !flag) {
     runDiscover().catch((err) => {
       process.stdout.write(SHOW_CURSOR);
-      console.error(`\n${red("Error:")} ${err.message}`);
+      console.error(`\n${red('Error:')} ${err.message}`);
       process.exit(1);
     });
     return;
   }
 
   syncFile(flag).catch((err) => {
-    console.error(`\n${red("Error:")} ${err.message}`);
+    console.error(`\n${red('Error:')} ${err.message}`);
     process.exit(1);
   });
 };

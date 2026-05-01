@@ -55,6 +55,7 @@ Write `scripts/ralph/critique.txt` with this structure:
 ```
 
 If there are no gaps, bloat, or ordering issues, write:
+
 ```
 ## Verdict: PASS
 All features in PLAN.md are covered. prd.json is ready to execute.

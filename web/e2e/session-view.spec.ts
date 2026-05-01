@@ -22,8 +22,16 @@ test.describe('Session viewing', () => {
 
     // Create a session via the API (browser has auth cookies)
     const transcript = [
-      JSON.stringify({ type: 'user', message: { content: 'Add a health check endpoint' }, timestamp: '2026-01-01T00:00:00Z' }),
-      JSON.stringify({ type: 'assistant', message: { content: 'I\'ll add a GET /health endpoint that returns { status: "ok" }.' }, timestamp: '2026-01-01T00:01:00Z' }),
+      JSON.stringify({
+        type: 'user',
+        message: { content: 'Add a health check endpoint' },
+        timestamp: '2026-01-01T00:00:00Z',
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: 'I\'ll add a GET /health endpoint that returns { status: "ok" }.' },
+        timestamp: '2026-01-01T00:01:00Z',
+      }),
     ].join('\n');
 
     const createRes = await page.evaluate(

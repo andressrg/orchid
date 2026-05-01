@@ -7,13 +7,16 @@ Previous assumption: slice conversations at write time, attach segments to commi
 New model: **dumb write, smart read.**
 
 ### Write Path (Simple)
+
 Record everything. Full conversations dumped to DB. No slicing, no mapping, no cut points. Just:
+
 - Session ID
 - Full transcript (JSONL)
 - Which repo, which branch, which PR
 - Timestamps
 
 ### Read Path (Intelligent)
+
 The UI lets you **ask questions** about the conversations behind a PR. Not "here's the conversation for commit 3" — instead:
 
 > "Did the author discuss using PostgreSQL instead of Supabase?"
@@ -28,13 +31,13 @@ The system retrieves the relevant conversation fragments and synthesizes an answ
 
 ## Why This Is Better
 
-| | Pre-sliced (old model) | AI-powered read (new model) |
-|---|---|---|
-| Write complexity | High (cut points, UUID chains, edge cases) | **Trivial** (dump everything) |
-| Read experience | Static — "here's the convo for this commit" | **Interactive** — ask anything about the PR |
-| Cross-commit questions | Impossible — each commit has its own slice | **Natural** — "was X discussed anywhere in this PR?" |
-| Discovery | User must read through conversations | **AI finds the relevant parts** for you |
-| Reviewer effort | Must scan entire conversation segments | **Ask a question, get an answer with citations** |
+|                        | Pre-sliced (old model)                      | AI-powered read (new model)                          |
+| ---------------------- | ------------------------------------------- | ---------------------------------------------------- |
+| Write complexity       | High (cut points, UUID chains, edge cases)  | **Trivial** (dump everything)                        |
+| Read experience        | Static — "here's the convo for this commit" | **Interactive** — ask anything about the PR          |
+| Cross-commit questions | Impossible — each commit has its own slice  | **Natural** — "was X discussed anywhere in this PR?" |
+| Discovery              | User must read through conversations        | **AI finds the relevant parts** for you              |
+| Reviewer effort        | Must scan entire conversation segments      | **Ask a question, get an answer with citations**     |
 
 The pre-sliced model forces the reviewer to read conversations linearly. The AI-powered model lets them ask the questions that actually matter for code review.
 
@@ -64,40 +67,49 @@ Read Path (smart):
 ```typescript
 async function answerQuestion(prId: string, question: string) {
   // 1. Get all sessions linked to this PR
-  const sessions = await db.query(`
+  const sessions = await db.query(
+    `
     SELECT s.id, s.transcript_storage_key, s.first_prompt, s.summary
     FROM sessions s
     JOIN session_commits sc ON s.id = sc.session_id
     JOIN pr_commits pc ON sc.commit_sha = pc.commit_sha
     WHERE pc.pr_id = $1
-  `, [prId]);
+  `,
+    [prId],
+  );
 
   // 2. Load transcripts
   const transcripts = await Promise.all(
-    sessions.map(s => storage.download(s.transcript_storage_key))
+    sessions.map((s) => storage.download(s.transcript_storage_key)),
   );
 
   // 3. Ask Claude with the full context
   const response = await claude.messages.create({
     model: 'claude-sonnet-4-5-20250514',
-    messages: [{
-      role: 'user',
-      content: `You are reviewing the AI conversations that led to a pull request.
+    messages: [
+      {
+        role: 'user',
+        content: `You are reviewing the AI conversations that led to a pull request.
 
 Here are all the conversations from the development sessions:
 
-${transcripts.map((t, i) => `
+${transcripts
+  .map(
+    (t, i) => `
 --- Session ${sessions[i].id} ---
 ${formatTranscript(t)}
 --- End Session ---
-`).join('\n')}
+`,
+  )
+  .join('\n')}
 
 The reviewer asks: "${question}"
 
 Answer the question based on the conversations above.
 Cite specific messages by quoting them.
-If the topic wasn't discussed, say so clearly.`
-    }]
+If the topic wasn't discussed, say so clearly.`,
+      },
+    ],
   });
 
   return {
@@ -198,11 +210,13 @@ If the combined transcripts exceed context limits:
 ### Write path gets simpler
 
 Remove from architecture:
+
 - ~~Conversation slicing~~
 - ~~UUID cut points~~
 - ~~Per-commit git notes with sliced content~~
 
 Replace with:
+
 - Dump full transcript to Supabase Storage on session end
 - Record (session_id, repo, PR, commits) in Postgres
 - Done
@@ -210,6 +224,7 @@ Replace with:
 ### Read path gets a new component
 
 Add:
+
 - **Query endpoint**: `POST /api/pr/:id/ask` — takes a question, returns answer + citations
 - **Claude API integration**: Sonnet for fast answers, Opus for deep analysis
 - **Transcript retrieval**: Pull from Supabase Storage, format for Claude context
@@ -225,17 +240,18 @@ Git notes were important when we were trying to attach pre-sliced conversations.
 
 Each "Ask" query sends conversation transcripts to Claude API:
 
-| PR Size | Typical Transcript Size | Claude API Cost (Sonnet) |
-|---------|------------------------|--------------------------|
-| Small (1 session, 20 msgs) | ~15K tokens input | ~$0.005 |
-| Medium (3 sessions, 60 msgs) | ~50K tokens input | ~$0.015 |
-| Large (10 sessions, 200 msgs) | ~150K tokens input | ~$0.045 |
+| PR Size                       | Typical Transcript Size | Claude API Cost (Sonnet) |
+| ----------------------------- | ----------------------- | ------------------------ |
+| Small (1 session, 20 msgs)    | ~15K tokens input       | ~$0.005                  |
+| Medium (3 sessions, 60 msgs)  | ~50K tokens input       | ~$0.015                  |
+| Large (10 sessions, 200 msgs) | ~150K tokens input      | ~$0.045                  |
 
 At $0.01-0.05 per question, this is very affordable. Caching repeated questions per PR further reduces cost.
 
 ### Optimization: Pre-compute common questions
 
 On PR creation, automatically generate and cache answers to common questions:
+
 - "What is this PR about?" (summary)
 - "What decisions were made and why?"
 - "What alternatives were considered?"

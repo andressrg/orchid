@@ -1,16 +1,16 @@
-import * as pulumi from "@pulumi/pulumi";
-import * as digitalocean from "@pulumi/digitalocean";
-import * as fs from "fs";
-import * as path from "path";
+import * as pulumi from '@pulumi/pulumi';
+import * as digitalocean from '@pulumi/digitalocean';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Read all .pub files from keys/ directory
 // To add a teammate: drop their id_ed25519.pub into keys/<name>.pub and run pulumi up
-const keysDir = path.join(__dirname, "keys");
-const keyFiles = fs.readdirSync(keysDir).filter((f) => f.endsWith(".pub"));
+const keysDir = path.join(__dirname, 'keys');
+const keyFiles = fs.readdirSync(keysDir).filter((f) => f.endsWith('.pub'));
 
 const sshKeys = keyFiles.map((file) => {
-  const name = path.basename(file, ".pub");
-  const publicKey = fs.readFileSync(path.join(keysDir, file), "utf8").trim();
+  const name = path.basename(file, '.pub');
+  const publicKey = fs.readFileSync(path.join(keysDir, file), 'utf8').trim();
   return new digitalocean.SshKey(`orchid-${name}`, {
     name: `orchid-${name}`,
     publicKey,
@@ -77,33 +77,45 @@ echo "READY" > /root/READY
 `;
 
 const inboundRules: digitalocean.types.input.FirewallInboundRule[] = [
-  { protocol: "tcp", portRange: "22", sourceAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "tcp", portRange: "80", sourceAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "tcp", portRange: "443", sourceAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "tcp", portRange: "3000", sourceAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "icmp", sourceAddresses: ["0.0.0.0/0", "::/0"] },
+  { protocol: 'tcp', portRange: '22', sourceAddresses: ['0.0.0.0/0', '::/0'] },
+  { protocol: 'tcp', portRange: '80', sourceAddresses: ['0.0.0.0/0', '::/0'] },
+  { protocol: 'tcp', portRange: '443', sourceAddresses: ['0.0.0.0/0', '::/0'] },
+  {
+    protocol: 'tcp',
+    portRange: '3000',
+    sourceAddresses: ['0.0.0.0/0', '::/0'],
+  },
+  { protocol: 'icmp', sourceAddresses: ['0.0.0.0/0', '::/0'] },
 ];
 
 const outboundRules: digitalocean.types.input.FirewallOutboundRule[] = [
-  { protocol: "tcp", portRange: "1-65535", destinationAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "udp", portRange: "1-65535", destinationAddresses: ["0.0.0.0/0", "::/0"] },
-  { protocol: "icmp", destinationAddresses: ["0.0.0.0/0", "::/0"] },
+  {
+    protocol: 'tcp',
+    portRange: '1-65535',
+    destinationAddresses: ['0.0.0.0/0', '::/0'],
+  },
+  {
+    protocol: 'udp',
+    portRange: '1-65535',
+    destinationAddresses: ['0.0.0.0/0', '::/0'],
+  },
+  { protocol: 'icmp', destinationAddresses: ['0.0.0.0/0', '::/0'] },
 ];
 
 // --- DEPLOY DROPLET (hosts the web app, exposed to internet) ---
-const deployDroplet = new digitalocean.Droplet("orchid-deploy", {
-  name: "orchid-deploy",
-  image: "ubuntu-24-04-x64",
+const deployDroplet = new digitalocean.Droplet('orchid-deploy', {
+  name: 'orchid-deploy',
+  image: 'ubuntu-24-04-x64',
   region: digitalocean.Region.NYC1,
-  size: "s-4vcpu-8gb", // $48/mo — 4 vCPU, 8GB RAM, 160GB SSD
+  size: 's-4vcpu-8gb', // $48/mo — 4 vCPU, 8GB RAM, 160GB SSD
   sshKeys: sshKeys.map((k) => k.fingerprint),
   userData: userData,
   monitoring: true,
   backups: false,
 });
 
-const deployFirewall = new digitalocean.Firewall("orchid-deploy", {
-  name: "orchid-deploy",
+const deployFirewall = new digitalocean.Firewall('orchid-deploy', {
+  name: 'orchid-deploy',
   dropletIds: [deployDroplet.id.apply((id) => parseInt(id))],
   inboundRules,
   outboundRules,

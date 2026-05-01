@@ -122,7 +122,10 @@ interface ParseState {
   readonly seenShas: ReadonlySet<string>;
 }
 
-const processTimestampedBlock = (state: ParseState, { block, timestamp }: TimestampedBlock): ParseState => {
+const processTimestampedBlock = (
+  state: ParseState,
+  { block, timestamp }: TimestampedBlock,
+): ParseState => {
   if (isCommitToolUse(block)) {
     return {
       ...state,
@@ -137,13 +140,16 @@ const processTimestampedBlock = (state: ParseState, { block, timestamp }: Timest
       return {
         ...state,
         seenShas: new Set([...state.seenShas, match[2]]),
-        commits: [...state.commits, {
-          sha: match[2],
-          branch: match[1],
-          message: match[3].split('\n')[0].trim(),
-          toolUseId: block.tool_use_id,
-          committedAt: timestamp,
-        }],
+        commits: [
+          ...state.commits,
+          {
+            sha: match[2],
+            branch: match[1],
+            message: match[3].split('\n')[0].trim(),
+            toolUseId: block.tool_use_id,
+            committedAt: timestamp,
+          },
+        ],
       };
     }
   }
@@ -164,6 +170,5 @@ export const extractCommitsFromTranscript = (transcript: string): readonly Extra
     .map(tryParseJsonlLine)
     .filter((entry): entry is JsonlEntry => entry !== null)
     .flatMap(getTimestampedBlocks)
-    .reduce(processTimestampedBlock, initialState)
-    .commits;
+    .reduce(processTimestampedBlock, initialState).commits;
 };
