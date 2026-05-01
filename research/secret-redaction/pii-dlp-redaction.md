@@ -221,6 +221,6 @@ Use deterministic tokens that preserve enough semantics for debugging:
 - GitHub supported secret scanning patterns: https://docs.github.com/en/code-security/reference/secret-security/supported-secret-scanning-patterns
 - TruffleHog OSS repository: https://github.com/trufflesecurity/trufflehog
 - TruffleHog data-flow/privacy documentation: https://docs.trufflesecurity.com/data-flow
-- Gitleaks repository: https://github.com/confluentinc/gitleaks
+- Gitleaks repository: https://github.com/gitleaks/gitleaks
 - Yelp detect-secrets repository: https://github.com/Yelp/detect-secrets
 - Comparative study of secret detection tools: https://arxiv.org/abs/2307.00714
