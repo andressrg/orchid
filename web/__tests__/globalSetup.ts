@@ -1,7 +1,33 @@
 import { Pool } from 'pg';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { readdir, readFile } from 'fs/promises';
 import { join } from 'path';
+
+async function runSqlMigrations(pool: Pool) {
+  const migrationsFolder = join(__dirname, '..', 'drizzle');
+  const migrationFiles = (await readdir(migrationsFolder))
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+
+  await migrationFiles.reduce(
+    (migrationPromise, file) =>
+      migrationPromise.then(async () => {
+        const migrationSql = await readFile(join(migrationsFolder, file), 'utf8');
+        const statements = migrationSql
+          .split('--> statement-breakpoint')
+          .map((statement) => statement.trim())
+          .filter(Boolean);
+
+        await statements.reduce(
+          (statementPromise, statement) =>
+            statementPromise.then(async () => {
+              await pool.query(statement);
+            }),
+          Promise.resolve(),
+        );
+      }),
+    Promise.resolve(),
+  );
+}
 
 export async function setup() {
   const pool = new Pool({
@@ -15,9 +41,7 @@ export async function setup() {
     CREATE SCHEMA public;
   `);
 
-  // Run Drizzle migrations
-  const db = drizzle(pool);
-  await migrate(db, { migrationsFolder: join(process.cwd(), 'drizzle') });
+  await runSqlMigrations(pool);
 
   await pool.end();
 }

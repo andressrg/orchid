@@ -62,6 +62,7 @@ Frontend:   Next.js 16 + Tailwind CSS
 Database:   PostgreSQL on Neon (serverless)
 Auth:       Better Auth (cookie sessions + personal access tokens)
 ORM:        Drizzle ORM
+Billing:    Stripe Checkout + Customer Portal through Better Auth
 AI:         OpenAI GPT-5.4-nano for summaries and reviews
 Hosting:    Vercel (web + API) + Neon (database)
 ```
@@ -100,6 +101,37 @@ cd web
 pnpm db:generate   # Generate migration from schema changes
 pnpm db:migrate    # Apply migrations to Neon
 ```
+
+### Stripe billing
+
+Billing is configured in the Next.js app through the Better Auth Stripe plugin. Teams are the billing entity.
+
+Required production env vars:
+
+```bash
+STRIPE_SECRET_KEY=sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_TEAM_PRICE_ID=price_...
+NEXT_PUBLIC_URL=https://orchidkeep.com
+```
+
+Optional env vars:
+
+```bash
+STRIPE_TEAM_ANNUAL_PRICE_ID=price_...
+STRIPE_TEAM_LOOKUP_KEY=orchid_team_monthly
+STRIPE_TEAM_ANNUAL_LOOKUP_KEY=orchid_team_annual
+STRIPE_TEAM_SEAT_PRICE_ID=price_...
+STRIPE_BILLING_ENFORCEMENT=true
+```
+
+Stripe webhook URL:
+
+```text
+https://<app-domain>/api/auth/stripe/webhook
+```
+
+Subscribe the webhook to `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, and `customer.subscription.deleted`.
 
 ### CLI releases
 

@@ -12,6 +12,26 @@ export const testDb = drizzle(testPool, { schema });
 let _testToken: string | null = null;
 let _testUserId: string | null = null;
 
+interface InsertTestSessionOverrides {
+  readonly id?: string;
+  readonly user_name?: string;
+  readonly userName?: string;
+  readonly user_email?: string;
+  readonly userEmail?: string;
+  readonly working_dir?: string;
+  readonly workingDir?: string;
+  readonly git_remotes?: readonly string[] | string;
+  readonly gitRemotes?: readonly string[] | string;
+  readonly branch?: string;
+  readonly tool?: string;
+  readonly transcript?: string;
+  readonly status?: string;
+  readonly message_count?: number;
+  readonly messageCount?: number;
+  readonly user_id?: string;
+  readonly userId?: string;
+}
+
 export async function getTestAuth(): Promise<{
   token: string;
   userId: string;
@@ -47,11 +67,13 @@ export async function getTestAuth(): Promise<{
 }
 
 export async function cleanTestDb() {
+  await testDb.delete(schema.subscription);
   await testDb.delete(schema.orchidSession);
+  await testDb.delete(schema.organization);
 }
 
 // Accept both snake_case (legacy test format) and camelCase keys
-export async function insertTestSession(overrides: Record<string, unknown> = {}) {
+export async function insertTestSession(overrides: InsertTestSessionOverrides = {}) {
   const { userId } = await getTestAuth();
 
   await testDb.insert(schema.orchidSession).values({
@@ -66,5 +88,62 @@ export async function insertTestSession(overrides: Record<string, unknown> = {})
     status: (overrides.status ?? 'active') as string,
     messageCount: (overrides.message_count ?? overrides.messageCount ?? 2) as number,
     userId: (overrides.user_id ?? overrides.userId ?? userId) as string,
+  });
+}
+
+export async function getTestTeamAuth(): Promise<{
+  token: string;
+  userId: string;
+  teamId: string;
+  teamSlug: string;
+  headers: Record<string, string>;
+}> {
+  const { userId } = await getTestAuth();
+  const teamId = `test-team-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const teamSlug = `team-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  await testDb.insert(schema.organization).values({
+    id: teamId,
+    name: 'Test Team',
+    slug: teamSlug,
+    createdAt: new Date(),
+  });
+
+  await testDb.insert(schema.member).values({
+    id: `member-${teamId}`,
+    organizationId: teamId,
+    userId,
+    role: 'owner',
+    createdAt: new Date(),
+  });
+
+  const { token, hash, prefix } = generateToken();
+  await testDb.insert(schema.apiKey).values({
+    userId,
+    teamId,
+    name: 'test-team-token',
+    keyHash: hash,
+    keyPrefix: prefix,
+  });
+
+  return { token, userId, teamId, teamSlug, headers: { authorization: `Bearer ${token}` } };
+}
+
+export async function insertTestSubscription({
+  teamId,
+  status = 'active',
+}: {
+  readonly teamId: string;
+  readonly status?: string;
+}) {
+  await testDb.insert(schema.subscription).values({
+    id: `sub-${teamId}`,
+    plan: 'team',
+    referenceId: teamId,
+    status,
+    stripeCustomerId: `cus_${teamId.slice(-8)}`,
+    stripeSubscriptionId: `sub_${teamId.slice(-8)}`,
+    periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    seats: 1,
   });
 }
