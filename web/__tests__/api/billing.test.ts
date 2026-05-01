@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  cleanTestDb,
-  getTestTeamAuth,
-  insertTestSubscription,
-} from '../setup';
+import { cleanTestDb, getTestAuth, getTestTeamAuth, insertTestSubscription } from '../setup';
 
 const importApiApp = async () => {
   vi.resetModules();
@@ -65,6 +61,23 @@ describe('billing API', () => {
 
     expect(res.status).toBe(402);
     expect(data.code).toBe('subscription_required');
+    expect(data.feature).toBe('session_ingest');
+  });
+
+  it('blocks session ingestion when enforcement is on and the request is not team scoped', async () => {
+    enableBillingEnforcement();
+    const app = await importApiApp();
+    const { headers } = await getTestAuth();
+
+    const res = await app.request('/api/sessions/billing-unscoped', {
+      method: 'PUT',
+      headers: { ...headers, 'content-type': 'application/json' },
+      body: JSON.stringify(sessionPayload),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(402);
+    expect(data.code).toBe('team_scope_required');
     expect(data.feature).toBe('session_ingest');
   });
 

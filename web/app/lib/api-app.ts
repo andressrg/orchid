@@ -12,6 +12,7 @@ import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
 import { getTeamBillingState } from './billing';
+import { isBillingEnforcementEnabled, isStripeBillingConfigured } from './billing-config';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -155,17 +156,32 @@ async function requireTeamBillingAccess(
   feature: string,
 ): Promise<Response | null> {
   const teamId = c.get('teamId');
-  if (!teamId) return null;
+  if (!teamId) {
+    if (!isStripeBillingConfigured() || !isBillingEnforcementEnabled) return null;
+
+    return c.json(
+      {
+        error: 'Subscription required',
+        code: 'team_scope_required',
+        feature,
+        billing_url: null,
+      },
+      402,
+    );
+  }
 
   const billing = await getTeamBillingState(teamId);
   if (billing.allowed) return null;
 
-  return c.json({
-    error: 'Subscription required',
-    code: 'subscription_required',
-    feature,
-    billing_url: billing.billingUrl,
-  }, 402);
+  return c.json(
+    {
+      error: 'Subscription required',
+      code: 'subscription_required',
+      feature,
+      billing_url: billing.billingUrl,
+    },
+    402,
+  );
 }
 
 // Health
