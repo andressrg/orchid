@@ -95,13 +95,13 @@ Orchid ships an agent skill at `skills/orchid-context` so Claude Code, Codex, an
 Install it with the `skills` CLI:
 
 ```bash
-npx skills add andressrg/orchid --skill orchid-context -a codex -a claude-code
+npx skills add andressrg/orchid
 ```
 
-Install it globally with `-g`, or omit the `-a` flags to let the CLI install to detected agents. From a checked-out repo, you can also install the local skill:
+The CLI detects your installed agents and installs the skill in the right place. Add `-g` to install it globally. From a checked-out repo, you can also install the local skill:
 
 ```bash
-npx skills add ./skills/orchid-context -a codex -a claude-code
+npx skills add ./skills/orchid-context
 ```
 
 Restart your agent if it does not detect the new skill immediately.
