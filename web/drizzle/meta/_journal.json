@@ -8,6 +8,13 @@
       "when": 1775355500088,
       "tag": "0000_empty_alice",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777606021397,
+      "tag": "0001_small_norrin_radd",
+      "breakpoints": true
     }
   ]
 }
