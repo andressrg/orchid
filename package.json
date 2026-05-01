@@ -11,9 +11,7 @@
   },
   "prettier": {
     "singleQuote": true,
-    "trailingComma": "all",
-    "semi": true,
-    "printWidth": 100
+    "trailingComma": "all"
   },
   "devDependencies": {
     "husky": "^9.1.7",
