@@ -1,4 +1,5 @@
 import { getConfig, getAuthHeaders } from '../config';
+import { parseTranscriptTurns, TranscriptTurn } from '../transcript';
 
 interface Session {
   id: string;
@@ -11,58 +12,7 @@ interface Session {
   updated_at: string;
 }
 
-interface Turn {
-  role: string;
-  text: string;
-}
-
-function extractTextContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((block: { type?: string; text?: string }) => {
-        if (typeof block === 'string') return block;
-        if (block && block.type === 'text' && typeof block.text === 'string')
-          return block.text;
-        return '';
-      })
-      .filter(Boolean)
-      .join('\n');
-  }
-  return '';
-}
-
-function parseTranscript(transcript: string): Turn[] {
-  const turns: Turn[] = [];
-  const lines = transcript.split('\n').filter((l) => l.trim());
-
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      let role: string | undefined;
-      let text = '';
-
-      if (obj.type === 'human' || obj.role === 'human' || obj.role === 'user') {
-        role = 'user';
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content),
-        );
-      } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-        role = 'assistant';
-        text = extractTextContent(
-          obj.content || (obj.message && obj.message.content),
-        );
-      }
-
-      if (role && text) turns.push({ role, text });
-    } catch {
-      // skip
-    }
-  }
-  return turns;
-}
-
-function summarizeConversation(turns: Turn[]): string {
+function summarizeConversation(turns: readonly TranscriptTurn[]): string {
   return turns
     .map((t) => {
       const prefix = t.role === 'user' ? 'Developer' : 'AI';
@@ -153,7 +103,9 @@ Environment:
 
   // Display conversation summaries
   for (const session of fullSessions) {
-    const turns = session.transcript ? parseTranscript(session.transcript) : [];
+    const turns = session.transcript
+      ? parseTranscriptTurns({ transcript: session.transcript })
+      : [];
     const userMessages = turns.filter((t) => t.role === 'user').length;
     const aiMessages = turns.filter((t) => t.role === 'assistant').length;
 
@@ -180,7 +132,7 @@ Environment:
       const prefix =
         turn.role === 'user'
           ? '\x1b[35m  Developer\x1b[0m'
-          : '\x1b[34m  Claude\x1b[0m';
+          : '\x1b[34m  AI\x1b[0m';
       const text =
         turn.text.length > 200 ? turn.text.slice(0, 200) + '...' : turn.text;
       console.log(`  ${prefix}: ${text.replace(/\n/g, ' ')}`);
@@ -209,7 +161,9 @@ Environment:
 
     const conversationText = fullSessions
       .map((s) => {
-        const turns = s.transcript ? parseTranscript(s.transcript) : [];
+        const turns = s.transcript
+          ? parseTranscriptTurns({ transcript: s.transcript })
+          : [];
         return `Session: ${s.id} (by ${s.user_name}, branch: ${s.branch})\n${summarizeConversation(turns)}`;
       })
       .join('\n\n---\n\n');

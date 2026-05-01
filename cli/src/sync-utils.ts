@@ -11,6 +11,8 @@
 export interface LocalSession {
   readonly filePath: string | null;
   readonly sessionId: string;
+  readonly tool: 'claude-code' | 'codex-cli';
+  readonly transcriptFormat: 'claude-jsonl' | 'codex-rollout-jsonl';
   readonly projectKey: string;
   readonly projectName: string;
   readonly cwd: string;

@@ -11,6 +11,7 @@ import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
+import { countMeaningfulTranscriptTurns, parseTranscriptTurns, TranscriptTurn } from './transcript';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -149,6 +150,25 @@ function escapeLike(s: string): string {
   return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+const aiConversationLabel = (role: TranscriptTurn['role']): string =>
+  role === 'user' ? 'Developer' : role === 'assistant' ? 'AI' : 'Tool';
+
+const conversationTextFromTranscript = (params: {
+  readonly transcript: string;
+  readonly maxTurnChars: number;
+  readonly includeTools?: boolean;
+}): string =>
+  parseTranscriptTurns({ transcript: params.transcript })
+    .filter((turn) => params.includeTools || turn.role === 'user' || turn.role === 'assistant')
+    .map((turn, index) => {
+      const text =
+        turn.text.length > params.maxTurnChars
+          ? `${turn.text.slice(0, params.maxTurnChars)}...`
+          : turn.text;
+      return `[Turn ${index + 1}][${aiConversationLabel(turn.role)}]: ${text}`;
+    })
+    .join('\n\n');
+
 // Health
 app.get('/health', async (c) => {
   try {
@@ -216,10 +236,7 @@ app.put('/sessions/:id', async (c) => {
   const userId = c.get('userId');
   const teamId = c.get('teamId');
 
-  let messageCount = 0;
-  if (transcript) {
-    messageCount = (transcript as string).split('\n').filter((l: string) => l.trim()).length;
-  }
+  const messageCount = transcript ? countMeaningfulTranscriptTurns(transcript as string) : 0;
 
   try {
     const result = await pool.query(
@@ -421,27 +438,10 @@ app.get('/sessions/:id/summary', async (c) => {
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
-    const lines = session.transcript.split('\n').filter((l) => l.trim());
-    const turns: Array<{ role: string; text: string }> = [];
-    for (const line of lines) {
-      try {
-        const obj = JSON.parse(line);
-        let role = '';
-        let text = '';
-        if (obj.type === 'human' || obj.role === 'user') {
-          role = 'Developer';
-          text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
-        } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-          role = 'AI';
-          text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
-        }
-        if (role && text) turns.push({ role, text: text.slice(0, 500) });
-      } catch {
-        /* skip */
-      }
-    }
-
-    const conversationText = turns.map((t) => `[${t.role}]: ${t.text}`).join('\n\n');
+    const conversationText = conversationTextFromTranscript({
+      transcript: session.transcript,
+      maxTurnChars: 500,
+    });
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -489,46 +489,12 @@ app.post('/sessions/:id/chat', async (c) => {
     if (!session.transcript)
       return c.json({ answer: 'No conversation content available to reason about.' });
 
-    function extractText(content: unknown): string {
-      if (typeof content === 'string') return content;
-      if (Array.isArray(content)) {
-        return content
-          .map((block: { type?: string; text?: string }) => {
-            if (typeof block === 'string') return block;
-            if (block?.type === 'text' && typeof block.text === 'string') return block.text;
-            return '';
-          })
-          .filter(Boolean)
-          .join('\n');
-      }
-      return '';
-    }
-
-    const lines = session.transcript.split('\n').filter((l) => l.trim());
-    const turns: Array<{ role: string; text: string }> = [];
-    for (const line of lines) {
-      try {
-        const obj = JSON.parse(line);
-        const msg = obj.message || obj;
-        const msgRole = msg.role || obj.type;
-        let role = '';
-        let text = '';
-        if (msgRole === 'user' || msgRole === 'human') {
-          role = 'Developer';
-          text = extractText(msg.content || obj.content);
-        } else if (msgRole === 'assistant') {
-          role = 'AI';
-          text = extractText(msg.content || obj.content);
-        }
-        if (role && text) turns.push({ role, text });
-      } catch {
-        /* skip */
-      }
-    }
-
-    const conversationText = turns
-      .map((t, i) => `[Turn ${i + 1}][${t.role}]: ${t.text}`)
-      .join('\n\n');
+    const turns = parseTranscriptTurns({ transcript: session.transcript });
+    const conversationText = conversationTextFromTranscript({
+      transcript: session.transcript,
+      maxTurnChars: 2000,
+      includeTools: true,
+    });
 
     const messages: Array<{ role: string; content: string }> = [
       {
@@ -542,7 +508,7 @@ Session info:
 - Tool: ${session.tool || 'unknown'}
 - Started: ${session.startedAt}
 - Status: ${session.status}
-- Total turns: ${turns.length}
+- Total turns: ${turns.filter((turn) => turn.role === 'user' || turn.role === 'assistant').length}
 
 Transcript:
 ${conversationText}
@@ -651,31 +617,12 @@ app.get('/decisions', async (c) => {
     }
 
     const transcriptBlocks = rows.map((s) => {
-      const lines = (s.transcript || '').split('\n').filter((l) => l.trim());
-      const turns: string[] = [];
-      lines.forEach((line, idx) => {
-        try {
-          const obj = JSON.parse(line);
-          let role = '',
-            text = '';
-          if (obj.type === 'human' || obj.role === 'user' || obj.role === 'human') {
-            role = 'Developer';
-            text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
-          } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-            role = 'AI';
-            text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
-          } else if (obj.message) {
-            role = obj.message.role === 'user' ? 'Developer' : 'AI';
-            text =
-              typeof obj.message.content === 'string'
-                ? obj.message.content
-                : JSON.stringify(obj.message.content);
-          }
-          if (role && text) turns.push(`[turn ${idx}][${role}]: ${text.slice(0, 400)}`);
-        } catch {
-          /* skip */
-        }
-      });
+      const turns = parseTranscriptTurns({ transcript: s.transcript || '' })
+        .filter((turn) => turn.role === 'user' || turn.role === 'assistant')
+        .map(
+          (turn, idx) =>
+            `[turn ${idx}][${aiConversationLabel(turn.role)}]: ${turn.text.slice(0, 400)}`,
+        );
       return `=== Session ${s.id} (by ${s.user_name}) ===\n${turns.join('\n')}`;
     });
 

@@ -12,7 +12,7 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ## How It Works
 
-1. **Capture**: Run `orchid claude` instead of `claude`. The conversation syncs to the cloud in real-time.
+1. **Capture**: Run `orchid claude` or `orchid codex` instead of the raw AI tool. The conversation syncs to the cloud in real-time.
 2. **Store**: Conversations are stored with git metadata — branches, remotes, users.
 3. **Review**: See the full conversation behind any code change. Search, browse, or let AI summarize.
 
@@ -22,6 +22,8 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ```bash
 orchid claude                          # Launch Claude + capture conversation
+orchid codex                           # Launch Codex CLI + capture conversation
+orchid sync --discover --tool all      # Sync past Claude and Codex sessions
 orchid data list                       # List all sessions
 orchid data show <id> [--turns]        # View full transcript
 orchid data search "why websockets"    # Search across all conversations
@@ -79,6 +81,8 @@ orchid login
 
 # Start coding with conversation capture
 orchid claude
+# or
+orchid codex
 ```
 
 ## Infrastructure

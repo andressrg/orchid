@@ -60,6 +60,12 @@ function extractTitle(session: { working_dir?: string; branch?: string }): strin
   return dir.split('/').pop() || 'Untitled Session';
 }
 
+function displayToolName(tool?: string): string {
+  if (tool === 'claude-code') return 'Claude Code';
+  if (tool === 'codex-cli') return 'Codex CLI';
+  return tool || 'Unknown';
+}
+
 export const dynamic = 'force-dynamic';
 
 export default async function SessionsPage({ params }: { params: Promise<{ teamSlug: string }> }) {
@@ -175,6 +181,13 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
               >
                 orchid claude
               </code>{' '}
+              or{' '}
+              <code
+                className="font-mono px-1.5 py-0.5 rounded"
+                style={{ background: 'var(--bg-tertiary)' }}
+              >
+                orchid codex
+              </code>{' '}
               to capture your first conversation.
             </p>
           </div>
@@ -260,7 +273,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
                         {timeAgo(session.updated_at || session.started_at)}
                       </div>
                       <div className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-                        {session.tool || 'claude'}
+                        {displayToolName(session.tool)}
                       </div>
                     </div>
 

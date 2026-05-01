@@ -4,14 +4,14 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 const terminalLines = [
-  { text: '$ orchid claude', delay: 0, style: 'command' },
+  { text: '$ orchid codex', delay: 0, style: 'command' },
   { text: '', delay: 400, style: 'blank' },
-  { text: '  Orchid v1.0 \u2014 Wrapping Claude Code', delay: 600, style: 'orchid' },
+  { text: '  Orchid v1.0 \u2014 Wrapping Codex CLI', delay: 600, style: 'orchid' },
   { text: '  \u21b3 Watching /feature-new-auth', delay: 900, style: 'dim' },
   { text: '  \u21b3 Found 2 repos: backend, frontend', delay: 1200, style: 'dim' },
   { text: '  \u21b3 Session syncing every 5s...', delay: 1500, style: 'green' },
   { text: '', delay: 1800, style: 'blank' },
-  { text: '  [Claude Code started]', delay: 2100, style: 'dim' },
+  { text: '  [Codex CLI started]', delay: 2100, style: 'dim' },
   { text: '', delay: 2300, style: 'blank' },
   { text: '> Add OAuth2 authentication with PKCE flow', delay: 2600, style: 'user' },
   { text: '', delay: 2900, style: 'blank' },
@@ -172,7 +172,7 @@ const steps = [
     num: '01',
     title: 'Capture',
     description: 'Prefix your command with orchid. Zero config, zero friction.',
-    code: '$ orchid claude',
+    code: '$ orchid claude | orchid codex',
   },
   {
     num: '02',
@@ -256,7 +256,7 @@ export default function LandingPage() {
             </svg>
           </Link>
           <div className="landing-install-cmd">
-            <code>$ orchid claude</code>
+            <code>$ orchid codex</code>
           </div>
         </div>
 
@@ -410,7 +410,7 @@ export default function LandingPage() {
             </Link>
           </div>
           <div className="landing-install-cmd" style={{ margin: '24px auto 0' }}>
-            <code>$ orchid claude</code>
+            <code>$ orchid codex</code>
           </div>
         </div>
       </section>

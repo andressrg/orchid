@@ -2,7 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { gzipSync } from 'zlib';
 import { getConfig, getAuthHeaders } from './config';
-import { GitMetadata } from './commands/claude';
+import { GitMetadata } from './git';
+import { SourceTool } from './transcript';
 
 /**
  * Derive a session ID from a transcript file path.
@@ -15,36 +16,39 @@ export function sessionIdFromPath(transcriptPath: string): string {
 /**
  * PUT the current transcript content to the server.
  */
-async function syncToServer(
-  sessionId: string,
-  metadata: GitMetadata,
-  transcriptPath: string,
-  status: 'active' | 'done',
-): Promise<void> {
+async function syncToServer(params: {
+  readonly sessionId: string;
+  readonly metadata: GitMetadata;
+  readonly transcriptPath: string;
+  readonly tool: SourceTool;
+  readonly status: 'active' | 'done';
+}): Promise<void> {
   const { apiUrl } = getConfig();
 
-  let transcript = '';
-  try {
-    transcript = fs.readFileSync(transcriptPath, 'utf-8');
-  } catch {
-    // File might not exist yet or be temporarily locked
-    return;
-  }
+  const transcript = (() => {
+    try {
+      return fs.readFileSync(params.transcriptPath, 'utf-8');
+    } catch {
+      return '';
+    }
+  })();
+
+  if (!transcript) return;
 
   const json = JSON.stringify({
-    user_name: metadata.user_name,
-    user_email: metadata.user_email,
-    working_dir: metadata.working_dir,
-    git_remotes: metadata.git_remotes,
-    branch: metadata.branch,
-    tool: 'claude-code',
+    user_name: params.metadata.user_name,
+    user_email: params.metadata.user_email,
+    working_dir: params.metadata.working_dir,
+    git_remotes: params.metadata.git_remotes,
+    branch: params.metadata.branch,
+    tool: params.tool,
     transcript,
-    status,
+    status: params.status,
   });
 
   const compressed = gzipSync(Buffer.from(json, 'utf-8'));
 
-  const url = `${apiUrl.replace(/\/$/, '')}/sessions/${sessionId}`;
+  const url = `${apiUrl.replace(/\/$/, '')}/sessions/${params.sessionId}`;
 
   const res = await fetch(url, {
     method: 'PUT',
@@ -66,22 +70,26 @@ async function syncToServer(
  * Start a periodic sync watcher that PUTs the transcript to the server every 5 seconds.
  * Returns a handle to stop the watcher and perform a final sync.
  */
-export function startSyncWatcher(
-  transcriptPath: string,
-  metadata: GitMetadata,
-): { stop: () => void; finalSync: () => Promise<void> } {
-  const sessionId = sessionIdFromPath(transcriptPath);
+export function startSyncWatcher(params: {
+  readonly transcriptPath: string;
+  readonly metadata: GitMetadata;
+  readonly tool: SourceTool;
+  readonly deriveSessionId?: (transcriptPath: string) => string;
+}): { stop: () => void; finalSync: () => Promise<void> } {
+  const sessionId = params.deriveSessionId
+    ? params.deriveSessionId(params.transcriptPath)
+    : sessionIdFromPath(params.transcriptPath);
 
   process.stderr.write(`[orchid] sync started for session ${sessionId}\n`);
 
   const interval = setInterval(() => {
-    syncToServer(sessionId, metadata, transcriptPath, 'active').catch((err) => {
+    syncToServer({ ...params, sessionId, status: 'active' }).catch((err) => {
       process.stderr.write(`[orchid] sync error: ${err.message}\n`);
     });
   }, 5000);
 
   // Do an immediate first sync
-  syncToServer(sessionId, metadata, transcriptPath, 'active').catch((err) => {
+  syncToServer({ ...params, sessionId, status: 'active' }).catch((err) => {
     process.stderr.write(`[orchid] sync error: ${err.message}\n`);
   });
 
@@ -91,7 +99,7 @@ export function startSyncWatcher(
     },
     finalSync() {
       clearInterval(interval);
-      return syncToServer(sessionId, metadata, transcriptPath, 'done').catch(
+      return syncToServer({ ...params, sessionId, status: 'done' }).catch(
         (err) => {
           process.stderr.write(`[orchid] final sync error: ${err.message}\n`);
         },

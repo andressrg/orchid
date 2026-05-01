@@ -5,7 +5,7 @@ import { SessionCommits } from './session-commits';
 import { SessionChat } from './session-chat';
 
 interface Turn {
-  role: 'user' | 'assistant' | 'unknown';
+  role: 'user' | 'assistant' | 'tool' | 'system';
   text: string;
 }
 
@@ -21,25 +21,26 @@ function MessageBubble({
   turnNumber: number;
 }) {
   const isUser = role === 'user';
+  const isTool = role === 'tool';
   const paragraphs = text.split('\n\n').filter(Boolean);
 
   return (
     <div className="animate-fade-in group" style={{ animationDelay: `${turnNumber * 0.03}s` }}>
       <div className="flex items-center gap-2 mb-2">
         <div
-          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold ${isUser ? 'bg-accent-muted text-accent' : 'bg-orchid-muted text-orchid'}`}
+          className={`w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold ${isUser ? 'bg-accent-muted text-accent' : isTool ? 'bg-night-800 text-night-300' : 'bg-orchid-muted text-orchid'}`}
         >
-          {isUser ? userName[0]?.toUpperCase() || 'H' : 'AI'}
+          {isUser ? userName[0]?.toUpperCase() || 'H' : isTool ? '$' : 'AI'}
         </div>
         <span className="text-[11px] font-medium text-night-300">
-          {isUser ? userName : 'Claude'}
+          {isUser ? userName : isTool ? 'Tool' : 'AI'}
         </span>
         <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-night-950 text-night-400">
           #{turnNumber}
         </span>
       </div>
       <div
-        className={`rounded-lg px-4 py-3 text-[13px] leading-[1.7] text-night-100 ${isUser ? 'bg-night-850 border-l-2 border-accent' : 'bg-night-900 border-l-2 border-orchid'}`}
+        className={`rounded-lg px-4 py-3 text-[13px] leading-[1.7] text-night-100 ${isUser ? 'bg-night-850 border-l-2 border-accent' : isTool ? 'bg-night-950 border-l-2 border-night-600 font-mono text-[12px]' : 'bg-night-900 border-l-2 border-orchid'}`}
       >
         {paragraphs.map((para, i) => {
           if (para.startsWith('```')) {
