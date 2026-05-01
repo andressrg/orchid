@@ -8,20 +8,34 @@ import { CopyLink } from '@/app/components/copy-link';
 import { TurnHighlighter } from './turn-highlighter';
 import { SessionTabs } from '@/app/components/session-tabs';
 
-function MetadataItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function MetadataItem({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
   return (
     <div>
-      <div className="text-[10px] uppercase font-medium tracking-wider mb-0.5" style={{ color: "var(--text-tertiary)" }}>
+      <div
+        className="text-[10px] uppercase font-medium tracking-wider mb-0.5"
+        style={{ color: 'var(--text-tertiary)' }}
+      >
         {label}
       </div>
-      <div className="text-[12px] font-mono" style={{ color: accent ? "var(--accent)" : "var(--text-secondary)" }}>
+      <div
+        className="text-[12px] font-mono"
+        style={{ color: accent ? 'var(--accent)' : 'var(--text-secondary)' }}
+      >
         {value}
       </div>
     </div>
   );
 }
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export default async function SessionPage({
   params,
@@ -41,11 +55,15 @@ export default async function SessionPage({
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-center" style={{ color: "var(--text-secondary)" }}>
-          <p className="text-lg font-medium mb-2" style={{ color: "var(--text-primary)" }}>
+        <div className="text-center" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-lg font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
             Session not found
           </p>
-          <Link href={`/t/${teamSlug}/dashboard`} className="text-sm underline" style={{ color: "var(--accent)" }}>
+          <Link
+            href={`/t/${teamSlug}/dashboard`}
+            className="text-sm underline"
+            style={{ color: 'var(--accent)' }}
+          >
             Back to sessions
           </Link>
         </div>
@@ -54,8 +72,8 @@ export default async function SessionPage({
   }
 
   const turns = session.transcript ? parseTranscript(session.transcript) : [];
-  const isActive = session.status === "active";
-  const userName = session.user_name || "unknown";
+  const isActive = session.status === 'active';
+  const userName = session.user_name || 'unknown';
 
   return (
     <div className="animate-fade-in">
@@ -66,49 +84,69 @@ export default async function SessionPage({
       <header
         className="sticky top-0 z-10 flex items-center gap-3 px-6 h-[52px] border-b backdrop-blur-sm"
         style={{
-          background: "rgba(10, 10, 15, 0.85)",
-          borderColor: "var(--border-subtle)",
+          background: 'rgba(10, 10, 15, 0.85)',
+          borderColor: 'var(--border-subtle)',
         }}
       >
         <Link
           href={`/t/${teamSlug}/dashboard`}
           className="flex items-center gap-1 text-[12px] font-medium transition-colors hover:opacity-80"
-          style={{ color: "var(--text-tertiary)" }}
+          style={{ color: 'var(--text-tertiary)' }}
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M10 4l-4 4 4 4" />
           </svg>
           Sessions
         </Link>
-        <span style={{ color: "var(--border)" }}>/</span>
+        <span style={{ color: 'var(--border)' }}>/</span>
         <span className="text-[13px] font-medium truncate">{session.id}</span>
         {isActive && (
           <span
             className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full"
             style={{
-              background: "var(--green-muted)",
-              color: "var(--green)",
+              background: 'var(--green-muted)',
+              color: 'var(--green)',
             }}
           >
-            <span className="w-1.5 h-1.5 rounded-full animate-pulse-dot" style={{ background: "var(--green)" }} />
+            <span
+              className="w-1.5 h-1.5 rounded-full animate-pulse-dot"
+              style={{ background: 'var(--green)' }}
+            />
             Live
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {session.git_remotes && session.git_remotes.length > 0 && (() => {
-            const repoName = session.git_remotes[0].split("/").pop()?.replace(/\.git$/, "") || "";
-            return repoName ? (
-              <Link
-                href={`/t/${teamSlug}/decisions?repo=${encodeURIComponent(repoName)}`}
-                className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded transition-opacity hover:opacity-80"
-                style={{ background: "var(--bg-tertiary)", color: "var(--accent)", border: "1px solid var(--border-subtle)" }}
-              >
-                🧠 Decision Log
-              </Link>
-            ) : null;
-          })()}
+          {session.git_remotes &&
+            session.git_remotes.length > 0 &&
+            (() => {
+              const repoName =
+                session.git_remotes[0]
+                  .split('/')
+                  .pop()
+                  ?.replace(/\.git$/, '') || '';
+              return repoName ? (
+                <Link
+                  href={`/t/${teamSlug}/decisions?repo=${encodeURIComponent(repoName)}`}
+                  className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded transition-opacity hover:opacity-80"
+                  style={{
+                    background: 'var(--bg-tertiary)',
+                    color: 'var(--accent)',
+                    border: '1px solid var(--border-subtle)',
+                  }}
+                >
+                  🧠 Decision Log
+                </Link>
+              ) : null;
+            })()}
           <CopyLink />
-          <span className="text-[11px]" style={{ color: "var(--text-tertiary)" }}>
+          <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
             {turns.length} turns
           </span>
         </div>
@@ -118,31 +156,48 @@ export default async function SessionPage({
       <div
         className="px-6 py-4 border-b grid grid-cols-2 md:grid-cols-4 gap-4"
         style={{
-          background: "var(--bg-secondary)",
-          borderColor: "var(--border-subtle)",
+          background: 'var(--bg-secondary)',
+          borderColor: 'var(--border-subtle)',
         }}
       >
-        <MetadataItem label="User" value={`${userName} <${session.user_email || "unknown"}>`} />
-        <MetadataItem label="Branch" value={session.branch || "unknown"} accent />
-        <MetadataItem label="Directory" value={session.working_dir || "unknown"} />
-        <MetadataItem label="Duration" value={
-          session.started_at && session.updated_at
-            ? formatDuration(session.started_at, session.updated_at)
-            : "unknown"
-        } />
-        <MetadataItem label="Tool" value={session.tool || "unknown"} />
+        <MetadataItem label="User" value={`${userName} <${session.user_email || 'unknown'}>`} />
+        <MetadataItem label="Branch" value={session.branch || 'unknown'} accent />
+        <MetadataItem label="Directory" value={session.working_dir || 'unknown'} />
+        <MetadataItem
+          label="Duration"
+          value={
+            session.started_at && session.updated_at
+              ? formatDuration(session.started_at, session.updated_at)
+              : 'unknown'
+          }
+        />
+        <MetadataItem label="Tool" value={session.tool || 'unknown'} />
         <MetadataItem label="Messages" value={`${turns.length} turns`} />
-        <MetadataItem label="Started" value={session.started_at ? new Date(session.started_at).toLocaleString() : "unknown"} />
-        <MetadataItem label="Last Update" value={session.updated_at ? timeAgo(session.updated_at) : "unknown"} />
+        <MetadataItem
+          label="Started"
+          value={session.started_at ? new Date(session.started_at).toLocaleString() : 'unknown'}
+        />
+        <MetadataItem
+          label="Last Update"
+          value={session.updated_at ? timeAgo(session.updated_at) : 'unknown'}
+        />
       </div>
 
       {/* Git remotes */}
       {session.git_remotes && session.git_remotes.length > 0 && (
         <div
           className="px-6 py-2.5 border-b flex items-center gap-2"
-          style={{ borderColor: "var(--border-subtle)", background: "var(--bg-secondary)" }}
+          style={{ borderColor: 'var(--border-subtle)', background: 'var(--bg-secondary)' }}
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: "var(--text-tertiary)" }}>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
             <circle cx="8" cy="4" r="2" />
             <circle cx="4" cy="12" r="2" />
             <circle cx="12" cy="12" r="2" />
@@ -150,8 +205,10 @@ export default async function SessionPage({
           </svg>
           <div className="flex flex-wrap gap-2">
             {session.git_remotes.map((remote: string, i: number) => {
-              const isGithub = remote.includes("github.com");
-              const url = isGithub ? remote.replace(/\.git$/, "").replace("git@github.com:", "https://github.com/") : null;
+              const isGithub = remote.includes('github.com');
+              const url = isGithub
+                ? remote.replace(/\.git$/, '').replace('git@github.com:', 'https://github.com/')
+                : null;
               return url ? (
                 <a
                   key={i}
@@ -159,7 +216,7 @@ export default async function SessionPage({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-[11px] font-mono px-2 py-0.5 rounded transition-colors hover:opacity-80"
-                  style={{ background: "var(--bg-tertiary)", color: "var(--accent)" }}
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--accent)' }}
                 >
                   {remote}
                 </a>
@@ -167,7 +224,7 @@ export default async function SessionPage({
                 <span
                   key={i}
                   className="text-[11px] font-mono px-2 py-0.5 rounded"
-                  style={{ background: "var(--bg-tertiary)", color: "var(--text-tertiary)" }}
+                  style={{ background: 'var(--bg-tertiary)', color: 'var(--text-tertiary)' }}
                 >
                   {remote}
                 </span>
@@ -181,12 +238,7 @@ export default async function SessionPage({
       <AISummary sessionId={session.id} />
 
       {/* Tabbed content: Conversation, Commits, Chat */}
-      <SessionTabs
-        sessionId={session.id}
-        turns={turns}
-        userName={userName}
-        isActive={isActive}
-      />
+      <SessionTabs sessionId={session.id} turns={turns} userName={userName} isActive={isActive} />
     </div>
   );
 }

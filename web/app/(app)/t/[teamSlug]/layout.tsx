@@ -36,32 +36,29 @@ export default async function TeamLayout({
     redirect('/login');
   }
 
-  const [team] = await db.select({ id: organization.id, name: organization.name, slug: organization.slug }).from(organization).where(eq(organization.id, teamId));
+  const [team] = await db
+    .select({ id: organization.id, name: organization.name, slug: organization.slug })
+    .from(organization)
+    .where(eq(organization.id, teamId));
   const allTeams = await getUserTeams(session.user.id);
 
   // Set active organization so client components (settings page) can read it
-  await auth.api.setActiveOrganization({ headers: await headers(), body: { organizationId: teamId } });
+  await auth.api.setActiveOrganization({
+    headers: await headers(),
+    body: { organizationId: teamId },
+  });
 
   const sidebarContent = (
-    <Sidebar
-      user={session.user}
-      team={team}
-      teams={allTeams}
-      teamSlug={teamSlug}
-    />
+    <Sidebar user={session.user} team={team} teams={allTeams} teamSlug={teamSlug} />
   );
 
   return (
     <div className="flex flex-col md:flex-row h-full">
       {/* Desktop sidebar */}
-      <div className="hidden md:block">
-        {sidebarContent}
-      </div>
+      <div className="hidden md:block">{sidebarContent}</div>
 
       {/* Mobile nav + drawer */}
-      <MobileNav>
-        {sidebarContent}
-      </MobileNav>
+      <MobileNav>{sidebarContent}</MobileNav>
 
       <main className="flex-1 overflow-auto">
         <KeyboardNav />

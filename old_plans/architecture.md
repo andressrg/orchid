@@ -44,6 +44,7 @@ READ (smart):
 ### 1. orchid CLI (TypeScript + Node.js)
 
 **Commands:**
+
 ```
 orchid init           Install hooks, create local DB, detect repo
 orchid status         Active sessions + recent linked commits
@@ -54,22 +55,28 @@ orchid login          GitHub OAuth
 ```
 
 **Hooks installed in `~/.claude/settings.json`:**
+
 ```json
 {
   "hooks": {
-    "PostToolUse": [{
-      "matcher": "Bash",
-      "hooks": [{ "type": "command", "command": "orchid capture-commit" }]
-    }],
-    "Stop": [{
-      "matcher": "",
-      "hooks": [{ "type": "command", "command": "orchid sync-session" }]
-    }]
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "orchid capture-commit" }]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": "orchid sync-session" }]
+      }
+    ]
   }
 }
 ```
 
 **`capture-commit` flow:**
+
 1. Read stdin JSON from Claude Code hook
 2. Check if `tool_input.command` contains `git commit`
 3. If yes → `git rev-parse HEAD` to get SHA
@@ -77,6 +84,7 @@ orchid login          GitHub OAuth
 5. On session end (`sync-session`), upload full transcript to Supabase Storage
 
 **`sync-session` flow:**
+
 1. Read `session_id` and `transcript_path` from stdin
 2. Parse JSONL transcript
 3. Upload to Supabase Storage
@@ -85,6 +93,7 @@ orchid login          GitHub OAuth
 ### 2. Cloud Backend (Supabase)
 
 **Schema:**
+
 ```sql
 repos (id, user_id, origin_url, name)
 sessions (id, repo_id, tool, branch, started_at, ended_at,
@@ -98,6 +107,7 @@ Transcripts in Supabase Storage: `transcripts/<user_id>/<repo>/<session_id>.json
 ### 3. Web UI (Next.js + Tailwind)
 
 **Views:**
+
 - **Dashboard** `/` — repos with recent activity
 - **Repo** `/:repo` — commit timeline with session indicators
 - **PR** `/:repo/pulls/:number` — **THE KEY VIEW** (diff + Ask)
@@ -143,6 +153,7 @@ Transcripts in Supabase Storage: `transcripts/<user_id>/<repo>/<session_id>.json
 ```
 
 **Tech choices:**
+
 - Diff: `diff2html` (MVP) → CodeMirror 6 (V2)
 - Markdown: `react-markdown` + `remark-gfm` + `shiki`
 - Layout: CSS Grid + `allotment` (resizable panels)
@@ -151,17 +162,17 @@ Transcripts in Supabase Storage: `transcripts/<user_id>/<repo>/<session_id>.json
 
 ## Phased Delivery
 
-| Phase | Weeks | Deliverable |
-|-------|-------|-------------|
-| 1 | 1-2 | CLI + git notes + GitHub Action (PR comments) |
-| 2 | 3-5 | Supabase backend + web UI (diff + conversation) |
-| 3 | 6-8 | Codex support, browser extension, search, teams |
+| Phase | Weeks | Deliverable                                     |
+| ----- | ----- | ----------------------------------------------- |
+| 1     | 1-2   | CLI + git notes + GitHub Action (PR comments)   |
+| 2     | 3-5   | Supabase backend + web UI (diff + conversation) |
+| 3     | 6-8   | Codex support, browser extension, search, teams |
 
 ## Key Technical Risks
 
-| Risk | Mitigation |
-|------|------------|
+| Risk                            | Mitigation                                              |
+| ------------------------------- | ------------------------------------------------------- |
 | Git notes lost on squash/rebase | Pre-rebase hook to carry notes (git-memento's approach) |
-| Secrets in conversations | Regex scrubbing before cloud sync; per-session opt-out |
-| Claude Code hooks API changes | Pin version; hooks API has been stable |
-| Large transcripts (>1MB) | Summaries in Postgres, full transcripts in blob storage |
+| Secrets in conversations        | Regex scrubbing before cloud sync; per-session opt-out  |
+| Claude Code hooks API changes   | Pin version; hooks API has been stable                  |
+| Large transcripts (>1MB)        | Summaries in Postgres, full transcripts in blob storage |

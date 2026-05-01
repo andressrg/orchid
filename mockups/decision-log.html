@@ -1,337 +1,528 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Orchid — Decision Log</title>
-<style>
-  :root {
-    --bg-primary: #0a0a0f;
-    --bg-secondary: #111118;
-    --bg-tertiary: #1a1a24;
-    --bg-hover: #1e1e2a;
-    --text-primary: #e8e8ed;
-    --text-secondary: #8b8b9e;
-    --text-tertiary: #5c5c72;
-    --accent: #7c5bf5;
-    --accent-muted: rgba(124,91,245,0.12);
-    --green: #3ecf71;
-    --green-muted: rgba(62,207,113,0.10);
-    --orchid-pink: #da70d6;
-    --border: #2a2a3a;
-    --border-subtle: #1e1e2e;
-  }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Geist Mono", "SF Mono", ui-monospace, monospace;
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    min-height: 100vh;
-    font-size: 13px;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orchid — Decision Log</title>
+    <style>
+      :root {
+        --bg-primary: #0a0a0f;
+        --bg-secondary: #111118;
+        --bg-tertiary: #1a1a24;
+        --bg-hover: #1e1e2a;
+        --text-primary: #e8e8ed;
+        --text-secondary: #8b8b9e;
+        --text-tertiary: #5c5c72;
+        --accent: #7c5bf5;
+        --accent-muted: rgba(124, 91, 245, 0.12);
+        --green: #3ecf71;
+        --green-muted: rgba(62, 207, 113, 0.1);
+        --orchid-pink: #da70d6;
+        --border: #2a2a3a;
+        --border-subtle: #1e1e2e;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, 'Geist Mono', 'SF Mono',
+          ui-monospace, monospace;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        font-size: 13px;
+      }
 
-  /* Header */
-  header {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 0 24px;
-    height: 52px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: rgba(10,10,15,0.88);
-    backdrop-filter: blur(12px);
-  }
-  .breadcrumb { display: flex; align-items: center; gap: 6px; color: var(--text-tertiary); font-size: 12px; }
-  .breadcrumb a { color: var(--text-tertiary); text-decoration: none; display: flex; align-items: center; gap: 3px; }
-  .breadcrumb a:hover { color: var(--text-secondary); }
-  .breadcrumb-sep { color: var(--border); }
-  .page-title { font-size: 13px; font-weight: 500; color: var(--text-primary); }
-  .repo-badge {
-    font-size: 11px;
-    font-family: monospace;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
-    color: var(--accent);
-  }
-  .header-meta { margin-left: auto; font-size: 11px; color: var(--text-tertiary); }
+      /* Header */
+      header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 24px;
+        height: 52px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: rgba(10, 10, 15, 0.88);
+        backdrop-filter: blur(12px);
+      }
+      .breadcrumb {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--text-tertiary);
+        font-size: 12px;
+      }
+      .breadcrumb a {
+        color: var(--text-tertiary);
+        text-decoration: none;
+        display: flex;
+        align-items: center;
+        gap: 3px;
+      }
+      .breadcrumb a:hover {
+        color: var(--text-secondary);
+      }
+      .breadcrumb-sep {
+        color: var(--border);
+      }
+      .page-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-primary);
+      }
+      .repo-badge {
+        font-size: 11px;
+        font-family: monospace;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: var(--bg-tertiary);
+        color: var(--accent);
+      }
+      .header-meta {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--text-tertiary);
+      }
 
-  /* Summary bar */
-  .summary-bar {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 10px 24px;
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
-  }
-  .summary-count { font-size: 22px; font-weight: 700; color: var(--text-primary); }
-  .summary-label { font-size: 12px; color: var(--text-secondary); }
-  .summary-sep { color: var(--border); }
-  .summary-sub { font-size: 12px; color: var(--text-tertiary); }
+      /* Summary bar */
+      .summary-bar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 24px;
+        border-bottom: 1px solid var(--border-subtle);
+        background: var(--bg-secondary);
+      }
+      .summary-count {
+        font-size: 22px;
+        font-weight: 700;
+        color: var(--text-primary);
+      }
+      .summary-label {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+      .summary-sep {
+        color: var(--border);
+      }
+      .summary-sub {
+        font-size: 12px;
+        color: var(--text-tertiary);
+      }
 
-  /* Cards */
-  .cards { padding: 24px; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+      /* Cards */
+      .cards {
+        padding: 24px;
+        max-width: 680px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
 
-  .card {
-    border-radius: 8px;
-    padding: 20px;
-    border: 1px solid var(--border);
-    background: var(--bg-secondary);
-    opacity: 0;
-    animation: fadeIn 0.3s ease forwards;
-  }
-  .card:nth-child(1) { animation-delay: 0.0s; }
-  .card:nth-child(2) { animation-delay: 0.06s; }
-  .card:nth-child(3) { animation-delay: 0.12s; }
-  .card:nth-child(4) { animation-delay: 0.18s; }
+      .card {
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid var(--border);
+        background: var(--bg-secondary);
+        opacity: 0;
+        animation: fadeIn 0.3s ease forwards;
+      }
+      .card:nth-child(1) {
+        animation-delay: 0s;
+      }
+      .card:nth-child(2) {
+        animation-delay: 0.06s;
+      }
+      .card:nth-child(3) {
+        animation-delay: 0.12s;
+      }
+      .card:nth-child(4) {
+        animation-delay: 0.18s;
+      }
 
-  @keyframes fadeIn { to { opacity: 1; } }
+      @keyframes fadeIn {
+        to {
+          opacity: 1;
+        }
+      }
 
-  .card-title-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
-  .card-check { font-size: 15px; color: var(--green); flex-shrink: 0; margin-top: 1px; }
-  .card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+      .card-title-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+      .card-check {
+        font-size: 15px;
+        color: var(--green);
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+      .card-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--text-primary);
+        line-height: 1.4;
+      }
 
-  .card-body { padding-left: 25px; }
-  .card-decision { font-size: 13px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px; }
+      .card-body {
+        padding-left: 25px;
+      }
+      .card-decision {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        margin-bottom: 12px;
+      }
 
-  .card-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 500;
-    color: var(--text-tertiary);
-    margin-bottom: 6px;
-  }
-  .card-reason { font-size: 12px; color: var(--text-secondary); line-height: 1.6; margin-bottom: 12px; }
+      .card-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 500;
+        color: var(--text-tertiary);
+        margin-bottom: 6px;
+      }
+      .card-reason {
+        font-size: 12px;
+        color: var(--text-secondary);
+        line-height: 1.6;
+        margin-bottom: 12px;
+      }
 
-  .alts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-  .alt-tag {
-    font-size: 11px;
-    font-family: monospace;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: var(--bg-tertiary);
-    color: var(--text-tertiary);
-    border: 1px solid var(--border-subtle);
-  }
+      .alts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 14px;
+      }
+      .alt-tag {
+        font-size: 11px;
+        font-family: monospace;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: var(--bg-tertiary);
+        color: var(--text-tertiary);
+        border: 1px solid var(--border-subtle);
+      }
 
-  .card-footer {
-    padding-top: 12px;
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-left: 0;
-  }
-  .card-meta { font-size: 11px; font-family: monospace; color: var(--text-tertiary); }
-  .see-moment {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--accent);
-    text-decoration: none;
-    transition: opacity 0.15s;
-    cursor: pointer;
-  }
-  .see-moment:hover { opacity: 0.7; }
-  .see-moment svg { flex-shrink: 0; }
+      .card-footer {
+        padding-top: 12px;
+        border-top: 1px solid var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding-left: 0;
+      }
+      .card-meta {
+        font-size: 11px;
+        font-family: monospace;
+        color: var(--text-tertiary);
+      }
+      .see-moment {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--accent);
+        text-decoration: none;
+        transition: opacity 0.15s;
+        cursor: pointer;
+      }
+      .see-moment:hover {
+        opacity: 0.7;
+      }
+      .see-moment svg {
+        flex-shrink: 0;
+      }
 
-  /* Sidebar nav (simplified) */
-  .layout { display: flex; }
-  .sidebar {
-    width: 220px;
-    flex-shrink: 0;
-    border-right: 1px solid var(--border-subtle);
-    background: var(--bg-secondary);
-    height: 100vh;
-    position: sticky;
-    top: 0;
-    padding: 16px 0;
-  }
-  .sidebar-logo {
-    padding: 0 16px 16px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--orchid-pink);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    border-bottom: 1px solid var(--border-subtle);
-    margin-bottom: 8px;
-  }
-  .nav-item {
-    padding: 6px 16px;
-    font-size: 12px;
-    color: var(--text-tertiary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-radius: 4px;
-    margin: 0 8px;
-  }
-  .nav-item:hover { background: var(--bg-hover); color: var(--text-secondary); }
-  .nav-item.active {
-    background: var(--accent-muted);
-    color: var(--accent);
-  }
-  .nav-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-tertiary); padding: 10px 16px 4px; }
-  .main { flex: 1; overflow: auto; }
-</style>
-</head>
-<body>
+      /* Sidebar nav (simplified) */
+      .layout {
+        display: flex;
+      }
+      .sidebar {
+        width: 220px;
+        flex-shrink: 0;
+        border-right: 1px solid var(--border-subtle);
+        background: var(--bg-secondary);
+        height: 100vh;
+        position: sticky;
+        top: 0;
+        padding: 16px 0;
+      }
+      .sidebar-logo {
+        padding: 0 16px 16px;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--orchid-pink);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 1px solid var(--border-subtle);
+        margin-bottom: 8px;
+      }
+      .nav-item {
+        padding: 6px 16px;
+        font-size: 12px;
+        color: var(--text-tertiary);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border-radius: 4px;
+        margin: 0 8px;
+      }
+      .nav-item:hover {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+      }
+      .nav-item.active {
+        background: var(--accent-muted);
+        color: var(--accent);
+      }
+      .nav-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-tertiary);
+        padding: 10px 16px 4px;
+      }
+      .main {
+        flex: 1;
+        overflow: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <!-- Sidebar -->
+      <nav class="sidebar">
+        <div class="sidebar-logo">🌸 Orchid</div>
+        <div class="nav-label">Workspace</div>
+        <div class="nav-item">📋 Sessions</div>
+        <div class="nav-item">🔍 Search</div>
+        <div class="nav-item">👥 Activity</div>
+        <div class="nav-label">Insights</div>
+        <div class="nav-item active">🧠 Decision Log</div>
+      </nav>
 
-<div class="layout">
-  <!-- Sidebar -->
-  <nav class="sidebar">
-    <div class="sidebar-logo">🌸 Orchid</div>
-    <div class="nav-label">Workspace</div>
-    <div class="nav-item">📋 Sessions</div>
-    <div class="nav-item">🔍 Search</div>
-    <div class="nav-item">👥 Activity</div>
-    <div class="nav-label">Insights</div>
-    <div class="nav-item active">🧠 Decision Log</div>
-  </nav>
+      <!-- Main -->
+      <div class="main">
+        <!-- Header -->
+        <header>
+          <div class="breadcrumb">
+            <a href="#">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <path d="M10 4l-4 4 4 4" />
+              </svg>
+              Sessions
+            </a>
+            <span class="breadcrumb-sep">/</span>
+            <span class="page-title">Decision Log</span>
+            <span class="repo-badge">orchid-ralph-hackaton</span>
+          </div>
+          <span class="header-meta">4 decisions · 3 sessions analyzed</span>
+        </header>
 
-  <!-- Main -->
-  <div class="main">
-    <!-- Header -->
-    <header>
-      <div class="breadcrumb">
-        <a href="#">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 4l-4 4 4 4"/></svg>
-          Sessions
-        </a>
-        <span class="breadcrumb-sep">/</span>
-        <span class="page-title">Decision Log</span>
-        <span class="repo-badge">orchid-ralph-hackaton</span>
+        <!-- Summary bar -->
+        <div class="summary-bar">
+          <span class="summary-count">4</span>
+          <span class="summary-label">architectural decisions found</span>
+          <span class="summary-sep">·</span>
+          <span class="summary-sub">across 3 conversations</span>
+        </div>
+
+        <!-- Decision cards -->
+        <div class="cards">
+          <!-- Card 1 -->
+          <div class="card">
+            <div class="card-title-row">
+              <span class="card-check">✅</span>
+              <span class="card-title">Chose PostgreSQL over MongoDB</span>
+            </div>
+            <div class="card-body">
+              <p class="card-decision">
+                Use PostgreSQL as the primary database for storing conversation
+                transcripts and session metadata.
+              </p>
+              <div class="card-label">Alternatives considered</div>
+              <div class="alts">
+                <span class="alt-tag">MongoDB</span>
+                <span class="alt-tag">SQLite</span>
+              </div>
+              <div class="card-label">Why</div>
+              <p class="card-reason">
+                PostgreSQL offers excellent JSONB support and handles relational
+                joins natively — essential for linking sessions, commits, and
+                users without application-level joins.
+              </p>
+              <div class="card-footer">
+                <span class="card-meta">session demo-ses… · turn 2</span>
+                <a class="see-moment" href="#">
+                  See the moment
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 2 -->
+          <div class="card">
+            <div class="card-title-row">
+              <span class="card-check">✅</span>
+              <span class="card-title"
+                >Dumb write, smart read — raw transcript storage</span
+              >
+            </div>
+            <div class="card-body">
+              <p class="card-decision">
+                Store the full JSONL transcript as-is with no parsing or
+                processing at write time.
+              </p>
+              <div class="card-label">Alternatives considered</div>
+              <div class="alts">
+                <span class="alt-tag">Parse at ingest</span>
+                <span class="alt-tag">Incremental diffs</span>
+                <span class="alt-tag">Summarize on upload</span>
+              </div>
+              <div class="card-label">Why</div>
+              <p class="card-reason">
+                Keeps the write path simple and crash-safe. All intelligence
+                (linking to commits, answering questions) happens at read time,
+                so new features can be added without migrating existing data.
+              </p>
+              <div class="card-footer">
+                <span class="card-meta">session demo-ses… · turn 4</span>
+                <a class="see-moment" href="#">
+                  See the moment
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 3 -->
+          <div class="card">
+            <div class="card-title-row">
+              <span class="card-check">✅</span>
+              <span class="card-title"
+                >Polling every 5s instead of WebSockets</span
+              >
+            </div>
+            <div class="card-body">
+              <p class="card-decision">
+                Sync transcripts to the server via HTTP polling every 5 seconds
+                rather than a persistent WebSocket connection.
+              </p>
+              <div class="card-label">Alternatives considered</div>
+              <div class="alts">
+                <span class="alt-tag">WebSockets</span>
+                <span class="alt-tag">SSE</span>
+                <span class="alt-tag">Post-session upload</span>
+              </div>
+              <div class="card-label">Why</div>
+              <p class="card-reason">
+                Polling is stateless and crash-safe with no reconnection logic
+                needed. Indistinguishable from real-time for this use case.
+                WebSockets can be added later if sub-second latency is required.
+              </p>
+              <div class="card-footer">
+                <span class="card-meta">session demo-ses… · turn 6</span>
+                <a class="see-moment" href="#">
+                  See the moment
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Card 4 -->
+          <div class="card">
+            <div class="card-title-row">
+              <span class="card-check">✅</span>
+              <span class="card-title"
+                >Plain TypeScript for CLI — no Commander or Oclif</span
+              >
+            </div>
+            <div class="card-body">
+              <p class="card-decision">
+                Use plain TypeScript with manual argument parsing instead of a
+                CLI framework.
+              </p>
+              <div class="card-label">Alternatives considered</div>
+              <div class="alts">
+                <span class="alt-tag">Commander</span>
+                <span class="alt-tag">Oclif</span>
+                <span class="alt-tag">Yargs</span>
+              </div>
+              <div class="card-label">Why</div>
+              <p class="card-reason">
+                For a 4-command CLI, frameworks add unnecessary dependencies and
+                learning curve. A switch on argv[2] is all that's needed.
+                Migrate later if the command surface grows.
+              </p>
+              <div class="card-footer">
+                <span class="card-meta">session demo-ses… · turn 8</span>
+                <a class="see-moment" href="#">
+                  See the moment
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <span class="header-meta">4 decisions · 3 sessions analyzed</span>
-    </header>
-
-    <!-- Summary bar -->
-    <div class="summary-bar">
-      <span class="summary-count">4</span>
-      <span class="summary-label">architectural decisions found</span>
-      <span class="summary-sep">·</span>
-      <span class="summary-sub">across 3 conversations</span>
+      <!-- /main -->
     </div>
-
-    <!-- Decision cards -->
-    <div class="cards">
-
-      <!-- Card 1 -->
-      <div class="card">
-        <div class="card-title-row">
-          <span class="card-check">✅</span>
-          <span class="card-title">Chose PostgreSQL over MongoDB</span>
-        </div>
-        <div class="card-body">
-          <p class="card-decision">Use PostgreSQL as the primary database for storing conversation transcripts and session metadata.</p>
-          <div class="card-label">Alternatives considered</div>
-          <div class="alts">
-            <span class="alt-tag">MongoDB</span>
-            <span class="alt-tag">SQLite</span>
-          </div>
-          <div class="card-label">Why</div>
-          <p class="card-reason">PostgreSQL offers excellent JSONB support and handles relational joins natively — essential for linking sessions, commits, and users without application-level joins.</p>
-          <div class="card-footer">
-            <span class="card-meta">session demo-ses… · turn 2</span>
-            <a class="see-moment" href="#">
-              See the moment
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 2 -->
-      <div class="card">
-        <div class="card-title-row">
-          <span class="card-check">✅</span>
-          <span class="card-title">Dumb write, smart read — raw transcript storage</span>
-        </div>
-        <div class="card-body">
-          <p class="card-decision">Store the full JSONL transcript as-is with no parsing or processing at write time.</p>
-          <div class="card-label">Alternatives considered</div>
-          <div class="alts">
-            <span class="alt-tag">Parse at ingest</span>
-            <span class="alt-tag">Incremental diffs</span>
-            <span class="alt-tag">Summarize on upload</span>
-          </div>
-          <div class="card-label">Why</div>
-          <p class="card-reason">Keeps the write path simple and crash-safe. All intelligence (linking to commits, answering questions) happens at read time, so new features can be added without migrating existing data.</p>
-          <div class="card-footer">
-            <span class="card-meta">session demo-ses… · turn 4</span>
-            <a class="see-moment" href="#">
-              See the moment
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 3 -->
-      <div class="card">
-        <div class="card-title-row">
-          <span class="card-check">✅</span>
-          <span class="card-title">Polling every 5s instead of WebSockets</span>
-        </div>
-        <div class="card-body">
-          <p class="card-decision">Sync transcripts to the server via HTTP polling every 5 seconds rather than a persistent WebSocket connection.</p>
-          <div class="card-label">Alternatives considered</div>
-          <div class="alts">
-            <span class="alt-tag">WebSockets</span>
-            <span class="alt-tag">SSE</span>
-            <span class="alt-tag">Post-session upload</span>
-          </div>
-          <div class="card-label">Why</div>
-          <p class="card-reason">Polling is stateless and crash-safe with no reconnection logic needed. Indistinguishable from real-time for this use case. WebSockets can be added later if sub-second latency is required.</p>
-          <div class="card-footer">
-            <span class="card-meta">session demo-ses… · turn 6</span>
-            <a class="see-moment" href="#">
-              See the moment
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-
-      <!-- Card 4 -->
-      <div class="card">
-        <div class="card-title-row">
-          <span class="card-check">✅</span>
-          <span class="card-title">Plain TypeScript for CLI — no Commander or Oclif</span>
-        </div>
-        <div class="card-body">
-          <p class="card-decision">Use plain TypeScript with manual argument parsing instead of a CLI framework.</p>
-          <div class="card-label">Alternatives considered</div>
-          <div class="alts">
-            <span class="alt-tag">Commander</span>
-            <span class="alt-tag">Oclif</span>
-            <span class="alt-tag">Yargs</span>
-          </div>
-          <div class="card-label">Why</div>
-          <p class="card-reason">For a 4-command CLI, frameworks add unnecessary dependencies and learning curve. A switch on argv[2] is all that's needed. Migrate later if the command surface grows.</p>
-          <div class="card-footer">
-            <span class="card-meta">session demo-ses… · turn 8</span>
-            <a class="see-moment" href="#">
-              See the moment
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 4l4 4-4 4"/></svg>
-            </a>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div><!-- /main -->
-</div>
-
-</body>
+  </body>
 </html>

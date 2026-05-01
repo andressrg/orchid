@@ -1,15 +1,15 @@
-import * as fs from "fs";
-import * as path from "path";
-import { gzipSync } from "zlib";
-import { getConfig, getAuthHeaders } from "./config";
-import { GitMetadata } from "./commands/claude";
+import * as fs from 'fs';
+import * as path from 'path';
+import { gzipSync } from 'zlib';
+import { getConfig, getAuthHeaders } from './config';
+import { GitMetadata } from './commands/claude';
 
 /**
  * Derive a session ID from a transcript file path.
  * The file is like /path/to/<session-id>.jsonl — strip the .jsonl extension and take the basename.
  */
 export function sessionIdFromPath(transcriptPath: string): string {
-  return path.basename(transcriptPath, ".jsonl");
+  return path.basename(transcriptPath, '.jsonl');
 }
 
 /**
@@ -19,13 +19,13 @@ async function syncToServer(
   sessionId: string,
   metadata: GitMetadata,
   transcriptPath: string,
-  status: "active" | "done"
+  status: 'active' | 'done',
 ): Promise<void> {
   const { apiUrl } = getConfig();
 
-  let transcript = "";
+  let transcript = '';
   try {
-    transcript = fs.readFileSync(transcriptPath, "utf-8");
+    transcript = fs.readFileSync(transcriptPath, 'utf-8');
   } catch {
     // File might not exist yet or be temporarily locked
     return;
@@ -37,20 +37,20 @@ async function syncToServer(
     working_dir: metadata.working_dir,
     git_remotes: metadata.git_remotes,
     branch: metadata.branch,
-    tool: "claude-code",
+    tool: 'claude-code',
     transcript,
     status,
   });
 
-  const compressed = gzipSync(Buffer.from(json, "utf-8"));
+  const compressed = gzipSync(Buffer.from(json, 'utf-8'));
 
-  const url = `${apiUrl.replace(/\/$/, "")}/sessions/${sessionId}`;
+  const url = `${apiUrl.replace(/\/$/, '')}/sessions/${sessionId}`;
 
   const res = await fetch(url, {
-    method: "PUT",
+    method: 'PUT',
     headers: {
-      "Content-Type": "application/json",
-      "Content-Encoding": "gzip",
+      'Content-Type': 'application/json',
+      'Content-Encoding': 'gzip',
       ...getAuthHeaders(),
     },
     body: compressed,
@@ -68,20 +68,20 @@ async function syncToServer(
  */
 export function startSyncWatcher(
   transcriptPath: string,
-  metadata: GitMetadata
+  metadata: GitMetadata,
 ): { stop: () => void; finalSync: () => Promise<void> } {
   const sessionId = sessionIdFromPath(transcriptPath);
 
   process.stderr.write(`[orchid] sync started for session ${sessionId}\n`);
 
   const interval = setInterval(() => {
-    syncToServer(sessionId, metadata, transcriptPath, "active").catch((err) => {
+    syncToServer(sessionId, metadata, transcriptPath, 'active').catch((err) => {
       process.stderr.write(`[orchid] sync error: ${err.message}\n`);
     });
   }, 5000);
 
   // Do an immediate first sync
-  syncToServer(sessionId, metadata, transcriptPath, "active").catch((err) => {
+  syncToServer(sessionId, metadata, transcriptPath, 'active').catch((err) => {
     process.stderr.write(`[orchid] sync error: ${err.message}\n`);
   });
 
@@ -91,12 +91,10 @@ export function startSyncWatcher(
     },
     finalSync() {
       clearInterval(interval);
-      return syncToServer(sessionId, metadata, transcriptPath, "done").catch(
+      return syncToServer(sessionId, metadata, transcriptPath, 'done').catch(
         (err) => {
-          process.stderr.write(
-            `[orchid] final sync error: ${err.message}\n`
-          );
-        }
+          process.stderr.write(`[orchid] final sync error: ${err.message}\n`);
+        },
       );
     },
   };

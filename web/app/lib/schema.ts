@@ -21,52 +21,69 @@ import { user, organization } from './auth-schema';
 
 // ── Our tables ──
 
-export const orchidSession = pgTable('orchid_session', {
-  id: text('id').primaryKey(),
-  userName: text('user_name'),
-  userEmail: text('user_email'),
-  workingDir: text('working_dir'),
-  gitRemotes: jsonb('git_remotes'),
-  branch: text('branch'),
-  tool: text('tool'),
-  transcript: text('transcript'),
-  startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  status: text('status').notNull().default('active'),
-  messageCount: integer('message_count').default(0),
-  userId: text('user_id').references(() => user.id),
-  teamId: text('team_id').references(() => organization.id),
-}, (t) => [
-  index('idx_orchid_session_team').on(t.teamId),
-  index('idx_orchid_session_user').on(t.userId),
-]);
+export const orchidSession = pgTable(
+  'orchid_session',
+  {
+    id: text('id').primaryKey(),
+    userName: text('user_name'),
+    userEmail: text('user_email'),
+    workingDir: text('working_dir'),
+    gitRemotes: jsonb('git_remotes'),
+    branch: text('branch'),
+    tool: text('tool'),
+    transcript: text('transcript'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    status: text('status').notNull().default('active'),
+    messageCount: integer('message_count').default(0),
+    userId: text('user_id').references(() => user.id),
+    teamId: text('team_id').references(() => organization.id),
+  },
+  (t) => [
+    index('idx_orchid_session_team').on(t.teamId),
+    index('idx_orchid_session_user').on(t.userId),
+  ],
+);
 
-export const sessionCommit = pgTable('session_commits', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  sessionId: text('session_id').notNull().references(() => orchidSession.id, { onDelete: 'cascade' }),
-  commitSha: text('commit_sha').notNull(),
-  branch: text('branch'),
-  remote: text('remote'),
-  message: text('message'),
-  committedAt: timestamp('committed_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index('idx_session_commits_sha').on(t.commitSha),
-  index('idx_session_commits_session').on(t.sessionId),
-]);
+export const sessionCommit = pgTable(
+  'session_commits',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => orchidSession.id, { onDelete: 'cascade' }),
+    commitSha: text('commit_sha').notNull(),
+    branch: text('branch'),
+    remote: text('remote'),
+    message: text('message'),
+    committedAt: timestamp('committed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('idx_session_commits_sha').on(t.commitSha),
+    index('idx_session_commits_session').on(t.sessionId),
+  ],
+);
 
-export const apiKey = pgTable('api_key', {
-  id: text('id').primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: text('user_id').notNull().references(() => user.id, { onDelete: 'cascade' }),
-  teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  keyHash: text('key_hash').notNull().unique(),
-  keyPrefix: text('key_prefix').notNull(),
-  lastUsed: timestamp('last_used', { withTimezone: true }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index('idx_api_key_user').on(t.userId),
-  index('idx_api_key_hash').on(t.keyHash),
-]);
+export const apiKey = pgTable(
+  'api_key',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    teamId: text('team_id').references(() => organization.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    keyHash: text('key_hash').notNull().unique(),
+    keyPrefix: text('key_prefix').notNull(),
+    lastUsed: timestamp('last_used', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_api_key_user').on(t.userId), index('idx_api_key_hash').on(t.keyHash)],
+);

@@ -8,23 +8,25 @@ You are an autonomous coding agent working on a software project.
 2. Read `critique.txt` if it exists — it contains gaps flagged by the Critic agent.
    If a story you are about to implement has a noted gap, address it as part of the story.
 3. Read the progress log at `progress.txt` (check Codebase Patterns section first)
-3. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
-4. Pick the **highest priority** user story where `passes: false`
+4. Check you're on the correct branch from PRD `branchName`. If not, check it out or create from main.
+5. Pick the **highest priority** user story where `passes: false`
 
    **Lane filter (multi-agent mode):** If the environment variable `RALPH_LANE` is set,
    only pick stories where `lane` matches `$RALPH_LANE` OR `lane` is `"shared"`.
    Skip stories belonging to other lanes — another worker is handling them.
    If `RALPH_LANE` is not set, pick any story (single-agent mode).
-5. Implement that single user story
-6. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
-7. Update CLAUDE.md files if you discover reusable patterns (see below)
-8. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
-9. Update the PRD to set `passes: true` for the completed story
-10. Append your progress to `progress.txt`
+
+6. Implement that single user story
+7. Run quality checks (e.g., typecheck, lint, test - use whatever your project requires)
+8. Update CLAUDE.md files if you discover reusable patterns (see below)
+9. If checks pass, commit ALL changes with message: `feat: [Story ID] - [Story Title]`
+10. Update the PRD to set `passes: true` for the completed story
+11. Append your progress to `progress.txt`
 
 ## Progress Report Format
 
 APPEND to progress.txt (never replace, always append):
+
 ```
 ## [Date/Time] - [Story ID]
 - What was implemented
@@ -65,12 +67,14 @@ Before committing, check if any edited files have learnings worth preserving in 
    - Configuration or environment requirements
 
 **Examples of good CLAUDE.md additions:**
+
 - "When modifying X, also update Y to keep them in sync"
 - "This module uses pattern Z for all API calls"
 - "Tests require the dev server running on PORT 3000"
 - "Field names must match the template exactly"
 
 **Do NOT add:**
+
 - Story-specific implementation details
 - Temporary debugging notes
 - Information already in progress.txt

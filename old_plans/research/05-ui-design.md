@@ -8,15 +8,16 @@
 
 ## State of the Art: Diff UIs
 
-| Platform | Key Strength | Relevance to Orchid |
-|----------|-------------|---------------------|
-| **GitHub** | Baseline everyone knows. File tree sidebar, inline comments, "Viewed" checkboxes. Gap: conversation tab is separate from "Files changed" tab. | Our starting point — match this baseline |
-| **Graphite** | Minimalist, clean aesthetic. Stacked PRs. AI-generated PR summaries. Fast. | **Closest to "super simplistic" goal** |
-| **Reviewable** | Most sophisticated diff UI. Discussions anchored to line ranges that survive rebases. | Power-user reference |
-| **Gerrit** | Dense, keyboard-driven. "Attention set" (knows who needs to act). | Keyboard nav reference |
-| **GitButler** | Hunks as draggable units. Spatial approach to code changes. | Novel "unit of change" thinking |
+| Platform       | Key Strength                                                                                                                                  | Relevance to Orchid                      |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| **GitHub**     | Baseline everyone knows. File tree sidebar, inline comments, "Viewed" checkboxes. Gap: conversation tab is separate from "Files changed" tab. | Our starting point — match this baseline |
+| **Graphite**   | Minimalist, clean aesthetic. Stacked PRs. AI-generated PR summaries. Fast.                                                                    | **Closest to "super simplistic" goal**   |
+| **Reviewable** | Most sophisticated diff UI. Discussions anchored to line ranges that survive rebases.                                                         | Power-user reference                     |
+| **Gerrit**     | Dense, keyboard-driven. "Attention set" (knows who needs to act).                                                                             | Keyboard nav reference                   |
+| **GitButler**  | Hunks as draggable units. Spatial approach to code changes.                                                                                   | Novel "unit of change" thinking          |
 
 ### Universal Diff Patterns
+
 - Split view (side-by-side) — default for most users
 - File tree sidebar — essential for large PRs
 - Inline comments with threading
@@ -29,14 +30,15 @@
 
 ## State of the Art: Conversation UIs
 
-| Product | Key Pattern | Relevance |
-|---------|------------|-----------|
-| **Claude.ai** | Collapsible thinking blocks. Tool use as collapsible blocks ("Searched 3 files"). Artifacts panel on the right. | Artifacts model = separate "conversation" from "output" |
-| **Cursor** | Chat panel on right side of editor. Inline diff previews in chat. "Apply" button. | "Chat that references code locations" is directly relevant |
-| **Windsurf** | "Cascade" flow: waterfall of actions (searched → read → edited). | Cascade metaphor for AI coding session progression |
-| **Aider** | Terminal-based. Git diffs inline in conversation. Each turn maps to a commit. | "Conversation turn = commit" conceptual mapping |
+| Product       | Key Pattern                                                                                                     | Relevance                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Claude.ai** | Collapsible thinking blocks. Tool use as collapsible blocks ("Searched 3 files"). Artifacts panel on the right. | Artifacts model = separate "conversation" from "output"    |
+| **Cursor**    | Chat panel on right side of editor. Inline diff previews in chat. "Apply" button.                               | "Chat that references code locations" is directly relevant |
+| **Windsurf**  | "Cascade" flow: waterfall of actions (searched → read → edited).                                                | Cascade metaphor for AI coding session progression         |
+| **Aider**     | Terminal-based. Git diffs inline in conversation. Each turn maps to a commit.                                   | "Conversation turn = commit" conceptual mapping            |
 
 ### Key Conversation Patterns
+
 - Collapsible tool calls (must show AI actions compactly)
 - Inline code diffs in chat (preview changes within conversation)
 - Side panel for output (separates talk from result)
@@ -227,12 +229,12 @@ Combine A (side-by-side) + B (inline hints) + D (cross-linking):
 
 ### Three Levels of Detail
 
-| Level | What | When | Learning Curve |
-|-------|------|------|----------------|
-| **0** | Standard diff + colored gutter bars on AI hunks | Default view | Zero — looks like GitHub |
-| **1** | Hover gutter bar → popover with prompt + first AI response | On hover | None — tooltips are universal |
-| **2** | Toggle conversation side panel with scroll sync | On click / keyboard shortcut | Minimal — like Cursor's chat panel |
-| **3** | Full conversation view, timeline replay, overview map | Separate tabs | Low — each tab is self-explanatory |
+| Level | What                                                       | When                         | Learning Curve                     |
+| ----- | ---------------------------------------------------------- | ---------------------------- | ---------------------------------- |
+| **0** | Standard diff + colored gutter bars on AI hunks            | Default view                 | Zero — looks like GitHub           |
+| **1** | Hover gutter bar → popover with prompt + first AI response | On hover                     | None — tooltips are universal      |
+| **2** | Toggle conversation side panel with scroll sync            | On click / keyboard shortcut | Minimal — like Cursor's chat panel |
+| **3** | Full conversation view, timeline replay, overview map      | Separate tabs                | Low — each tab is self-explanatory |
 
 ### Key Design Principles
 
@@ -246,13 +248,13 @@ Combine A (side-by-side) + B (inline hints) + D (cross-linking):
 
 ## Adjacent Product Inspiration
 
-| Product | Lesson for Orchid |
-|---------|-------------------|
-| **Loom** | Context attachment should be optional and non-intrusive. A small link, not a dominant element. |
-| **Linear** | Clean main view, expandable side panel for details. Side panels that slide in < new pages. |
-| **Figma** | Time-travel through iterations. Seeing code at the point of an AI suggestion is valuable. |
+| Product     | Lesson for Orchid                                                                                        |
+| ----------- | -------------------------------------------------------------------------------------------------------- |
+| **Loom**    | Context attachment should be optional and non-intrusive. A small link, not a dominant element.           |
+| **Linear**  | Clean main view, expandable side panel for details. Side panels that slide in < new pages.               |
+| **Figma**   | Time-travel through iterations. Seeing code at the point of an AI suggestion is valuable.                |
 | **Jupyter** | The notebook model (alternating narrative + code cells) is close to a "timeline view" of AI development. |
-| **Replit** | Location-anchored conversations (threads tied to line ranges) > free-floating chat. |
+| **Replit**  | Location-anchored conversations (threads tied to line ranges) > free-floating chat.                      |
 
 ---
 
@@ -260,20 +262,20 @@ Combine A (side-by-side) + B (inline hints) + D (cross-linking):
 
 ### Diff Rendering Libraries
 
-| Library | Best For | Bundle | Verdict |
-|---------|----------|--------|---------|
-| **diff2html** | Fast MVP. Takes unified diff → HTML. | ~50KB | **MVP pick** — fast to integrate |
-| **react-diff-view** | Hunk-level control for conversation mapping. | ~30KB | **Strong alternative** — better API for linking |
-| **CodeMirror 6** (merge ext) | Long-term. Custom gutters, decorations, virtual scrolling. | ~150KB | **V2 migration target** |
-| **Monaco** (diff mode) | VS Code fidelity. | ~2MB | Overkill for display-only |
-| **react-diff-viewer** | Beautiful defaults but less flexible. | ~80KB | Pass — performance issues with large diffs |
+| Library                      | Best For                                                   | Bundle | Verdict                                         |
+| ---------------------------- | ---------------------------------------------------------- | ------ | ----------------------------------------------- |
+| **diff2html**                | Fast MVP. Takes unified diff → HTML.                       | ~50KB  | **MVP pick** — fast to integrate                |
+| **react-diff-view**          | Hunk-level control for conversation mapping.               | ~30KB  | **Strong alternative** — better API for linking |
+| **CodeMirror 6** (merge ext) | Long-term. Custom gutters, decorations, virtual scrolling. | ~150KB | **V2 migration target**                         |
+| **Monaco** (diff mode)       | VS Code fidelity.                                          | ~2MB   | Overkill for display-only                       |
+| **react-diff-viewer**        | Beautiful defaults but less flexible.                      | ~80KB  | Pass — performance issues with large diffs      |
 
 ### Conversation Rendering
 
-| Concern | Library |
-|---------|---------|
-| Markdown | `react-markdown` + `remark-gfm` |
-| Syntax highlighting | `shiki` (VS Code themes, WASM-based) |
+| Concern              | Library                               |
+| -------------------- | ------------------------------------- |
+| Markdown             | `react-markdown` + `remark-gfm`       |
+| Syntax highlighting  | `shiki` (VS Code themes, WASM-based)  |
 | Collapsible sections | Native `<details>` + custom component |
 
 ### Layout
@@ -290,17 +292,17 @@ Use `allotment` for VS Code-style resizable split panels. Conversation panel use
 
 ### Full Stack
 
-| Concern | Pick | Why |
-|---------|------|-----|
-| Framework | Next.js App Router or SvelteKit | React ecosystem for diff libs; Svelte for smaller bundle |
-| Diff rendering | `diff2html` (MVP) → CodeMirror 6 (V2) | Fast start, extensible future |
-| Syntax highlighting | `shiki` | Beautiful, VS Code themes |
-| Markdown | `react-markdown` + `remark-gfm` | Standard |
-| Virtual scrolling | `@tanstack/virtual` | Variable-height rows, framework-agnostic |
-| Resizable panels | `allotment` | VS Code-style |
-| Icons | `lucide-react` | Clean, consistent |
-| Theming | CSS custom properties + Tailwind | Dark/light mode |
-| State | Zustand or Jotai | Scroll sync state, panel visibility |
+| Concern             | Pick                                  | Why                                                      |
+| ------------------- | ------------------------------------- | -------------------------------------------------------- |
+| Framework           | Next.js App Router or SvelteKit       | React ecosystem for diff libs; Svelte for smaller bundle |
+| Diff rendering      | `diff2html` (MVP) → CodeMirror 6 (V2) | Fast start, extensible future                            |
+| Syntax highlighting | `shiki`                               | Beautiful, VS Code themes                                |
+| Markdown            | `react-markdown` + `remark-gfm`       | Standard                                                 |
+| Virtual scrolling   | `@tanstack/virtual`                   | Variable-height rows, framework-agnostic                 |
+| Resizable panels    | `allotment`                           | VS Code-style                                            |
+| Icons               | `lucide-react`                        | Clean, consistent                                        |
+| Theming             | CSS custom properties + Tailwind      | Dark/light mode                                          |
+| State               | Zustand or Jotai                      | Scroll sync state, panel visibility                      |
 
 ### Performance Strategy
 
@@ -313,12 +315,12 @@ Use `allotment` for VS Code-style resizable split panels. Conversation panel use
 
 ## What Exists in This Space Today
 
-| Product | What It Does | Gap |
-|---------|-------------|-----|
-| **Graphite** | Clean PR review, AI summaries | No AI conversation context |
-| **CodeRabbit / Ellipsis** | AI reviews PRs after the fact | Doesn't show original AI conversation |
-| **Devin** | Session replay of agent work | Watching an agent, not reviewing a PR |
-| **Cursor** | Shows AI-generated code indicators | Local to editor, not in code review |
-| **SWE-agent / OpenHands** | Log full interaction traces | JSON/markdown logs, no review UI |
+| Product                   | What It Does                       | Gap                                   |
+| ------------------------- | ---------------------------------- | ------------------------------------- |
+| **Graphite**              | Clean PR review, AI summaries      | No AI conversation context            |
+| **CodeRabbit / Ellipsis** | AI reviews PRs after the fact      | Doesn't show original AI conversation |
+| **Devin**                 | Session replay of agent work       | Watching an agent, not reviewing a PR |
+| **Cursor**                | Shows AI-generated code indicators | Local to editor, not in code review   |
+| **SWE-agent / OpenHands** | Log full interaction traces        | JSON/markdown logs, no review UI      |
 
 **No product has nailed "review PR with AI conversation context" yet. This is genuine whitespace.**

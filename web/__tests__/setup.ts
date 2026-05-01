@@ -26,12 +26,15 @@ export async function getTestAuth(): Promise<{
   }
 
   const userId = `test-user-${Date.now()}`;
-  await testDb.insert(schema.user).values({
-    id: userId,
-    name: 'Test User',
-    email: `test-${Date.now()}@example.com`,
-    emailVerified: true,
-  }).onConflictDoNothing();
+  await testDb
+    .insert(schema.user)
+    .values({
+      id: userId,
+      name: 'Test User',
+      email: `test-${Date.now()}@example.com`,
+      emailVerified: true,
+    })
+    .onConflictDoNothing();
 
   const { token, hash, prefix } = generateToken();
   await testDb.insert(schema.apiKey).values({
@@ -59,10 +62,12 @@ export async function insertTestSession(overrides: Record<string, unknown> = {})
     userName: (overrides.user_name ?? overrides.userName ?? 'testuser') as string,
     userEmail: (overrides.user_email ?? overrides.userEmail ?? 'test@example.com') as string,
     workingDir: (overrides.working_dir ?? overrides.workingDir ?? '/home/test/project') as string,
-    gitRemotes: (overrides.git_remotes ?? overrides.gitRemotes ?? ['https://github.com/test/repo.git']) as string[],
+    gitRemotes: (overrides.git_remotes ??
+      overrides.gitRemotes ?? ['https://github.com/test/repo.git']) as string[],
     branch: (overrides.branch ?? 'main') as string,
     tool: (overrides.tool ?? 'claude') as string,
-    transcript: (overrides.transcript ?? '{"role":"user","content":"hello"}\n{"role":"assistant","content":"hi there"}') as string,
+    transcript: (overrides.transcript ??
+      '{"role":"user","content":"hello"}\n{"role":"assistant","content":"hi there"}') as string,
     status: (overrides.status ?? 'active') as string,
     messageCount: (overrides.message_count ?? overrides.messageCount ?? 2) as number,
     userId: (overrides.user_id ?? overrides.userId ?? userId) as string,

@@ -2,17 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { extractCommitsFromTranscript } from '@/app/lib/extract-commits';
 
 // Helper: build a JSONL transcript from structured entries
-const jsonl = (...entries: object[]): string =>
-  entries.map((e) => JSON.stringify(e)).join('\n');
+const jsonl = (...entries: object[]): string => entries.map((e) => JSON.stringify(e)).join('\n');
 
 // Helper: build a tool_use line for a Bash git commit
 const bashToolUse = (id: string, command: string) => ({
   type: 'assistant',
   message: {
     role: 'assistant',
-    content: [
-      { type: 'tool_use', id, name: 'Bash', input: { command } },
-    ],
+    content: [{ type: 'tool_use', id, name: 'Bash', input: { command } }],
   },
 });
 
@@ -21,9 +18,7 @@ const toolResult = (toolUseId: string, content: string) => ({
   type: 'user',
   message: {
     role: 'user',
-    content: [
-      { type: 'tool_result', tool_use_id: toolUseId, content },
-    ],
+    content: [{ type: 'tool_result', tool_use_id: toolUseId, content }],
   },
 });
 
@@ -78,9 +73,7 @@ describe('extractCommitsFromTranscript', () => {
         type: 'assistant',
         message: {
           role: 'assistant',
-          content: [
-            { type: 'tool_use', id: 'read_1', name: 'Read', input: { file_path: '/foo' } },
-          ],
+          content: [{ type: 'tool_use', id: 'read_1', name: 'Read', input: { file_path: '/foo' } }],
         },
       },
       toolResult('read_1', '[main abc1234] This looks like a commit but is from Read tool'),
@@ -111,9 +104,7 @@ describe('extractCommitsFromTranscript', () => {
   });
 
   it('ignores pasted commit output in assistant messages', () => {
-    const transcript = jsonl(
-      assistantMessage('The last commit was [feat/x 1234abc] Some change'),
-    );
+    const transcript = jsonl(assistantMessage('The last commit was [feat/x 1234abc] Some change'));
 
     const commits = extractCommitsFromTranscript(transcript);
     expect(commits).toHaveLength(0);
@@ -122,7 +113,10 @@ describe('extractCommitsFromTranscript', () => {
   it('handles git merge commits', () => {
     const transcript = jsonl(
       bashToolUse('t1', 'git merge feat/auth'),
-      toolResult('t1', "Merge made by the 'ort' strategy.\n[main 8a3b2c1] Merge branch 'feat/auth'\n 5 files changed"),
+      toolResult(
+        't1',
+        "Merge made by the 'ort' strategy.\n[main 8a3b2c1] Merge branch 'feat/auth'\n 5 files changed",
+      ),
     );
 
     const commits = extractCommitsFromTranscript(transcript);
@@ -166,7 +160,10 @@ describe('extractCommitsFromTranscript', () => {
   it('handles pre-commit hook failure (no commit created)', () => {
     const transcript = jsonl(
       bashToolUse('t1', 'git commit -m "Fails lint"'),
-      toolResult('t1', 'Running pre-commit hooks...\neslint: 3 errors\nhusky - pre-commit hook exited with code 1'),
+      toolResult(
+        't1',
+        'Running pre-commit hooks...\neslint: 3 errors\nhusky - pre-commit hook exited with code 1',
+      ),
     );
 
     const commits = extractCommitsFromTranscript(transcript);
@@ -210,24 +207,19 @@ describe('extractCommitsFromTranscript', () => {
   });
 
   it('handles tool_result with array content blocks', () => {
-    const transcript = jsonl(
-      bashToolUse('t1', 'git commit -m "Array content"'),
-      {
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: 't1',
-              content: [
-                { type: 'text', text: '[main bbb2222] Array content\n 1 file changed' },
-              ],
-            },
-          ],
-        },
+    const transcript = jsonl(bashToolUse('t1', 'git commit -m "Array content"'), {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 't1',
+            content: [{ type: 'text', text: '[main bbb2222] Array content\n 1 file changed' }],
+          },
+        ],
       },
-    );
+    });
 
     const commits = extractCommitsFromTranscript(transcript);
     expect(commits).toHaveLength(1);
@@ -247,7 +239,10 @@ describe('extractCommitsFromTranscript', () => {
 
   it('handles heredoc commit messages (Claude Code pattern)', () => {
     const transcript = jsonl(
-      bashToolUse('t1', 'git commit -m "$(cat <<\'EOF\'\nAdd feature\n\nCo-Authored-By: Claude\nEOF\n)"'),
+      bashToolUse(
+        't1',
+        'git commit -m "$(cat <<\'EOF\'\nAdd feature\n\nCo-Authored-By: Claude\nEOF\n)"',
+      ),
       toolResult('t1', '[main ddd4444] Add feature\n 2 files changed'),
     );
 
@@ -260,7 +255,10 @@ describe('extractCommitsFromTranscript', () => {
   it('handles commit output with extra text before the [branch sha] line', () => {
     const transcript = jsonl(
       bashToolUse('t1', 'git add . && git commit -m "After warnings"'),
-      toolResult('t1', 'warning: LF will be replaced by CRLF\n[main eee5555] After warnings\n 1 file changed'),
+      toolResult(
+        't1',
+        'warning: LF will be replaced by CRLF\n[main eee5555] After warnings\n 1 file changed',
+      ),
     );
 
     const commits = extractCommitsFromTranscript(transcript);
@@ -273,10 +271,7 @@ describe('extractCommitsFromTranscript', () => {
   });
 
   it('returns empty array for transcript with no tool use', () => {
-    const transcript = jsonl(
-      userMessage('Hello'),
-      assistantMessage('Hi there'),
-    );
+    const transcript = jsonl(userMessage('Hello'), assistantMessage('Hi there'));
 
     expect(extractCommitsFromTranscript(transcript)).toHaveLength(0);
   });
@@ -296,10 +291,13 @@ describe('extractCommitsFromTranscript', () => {
 
   it('handles real-world transcript pattern with Shell cwd reset', () => {
     const transcript = jsonl(
-      bashToolUse('toolu_01RsKtog8W2hnNp4YoSVEjuC', 'cd /project && git add file.ts && git commit -m "$(cat <<\'EOF\'\nAdd hooks command\n\nCo-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>\nEOF\n)"'),
+      bashToolUse(
+        'toolu_01RsKtog8W2hnNp4YoSVEjuC',
+        'cd /project && git add file.ts && git commit -m "$(cat <<\'EOF\'\nAdd hooks command\n\nCo-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>\nEOF\n)"',
+      ),
       toolResult(
         'toolu_01RsKtog8W2hnNp4YoSVEjuC',
-        '[feat/cli-hooks cf14a7a] Add hooks command\n 3 files changed, 797 insertions(+)\n create mode 100644 cli/src/commands/hooks.ts\nShell cwd was reset to /Users/user/project\n[result-id: r23]\n[rerun: b18]'
+        '[feat/cli-hooks cf14a7a] Add hooks command\n 3 files changed, 797 insertions(+)\n create mode 100644 cli/src/commands/hooks.ts\nShell cwd was reset to /Users/user/project\n[result-id: r23]\n[rerun: b18]',
       ),
     );
 
@@ -326,25 +324,22 @@ describe('extractCommitsFromTranscript', () => {
   });
 
   it('handles multiple content blocks in a single tool_result', () => {
-    const transcript = jsonl(
-      bashToolUse('t1', 'git commit -m "Multi block"'),
-      {
-        type: 'user',
-        message: {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: 't1',
-              content: [
-                { type: 'text', text: '[main aaf7777] Multi block' },
-                { type: 'text', text: ' 1 file changed, 5 insertions(+)' },
-              ],
-            },
-          ],
-        },
+    const transcript = jsonl(bashToolUse('t1', 'git commit -m "Multi block"'), {
+      type: 'user',
+      message: {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 't1',
+            content: [
+              { type: 'text', text: '[main aaf7777] Multi block' },
+              { type: 'text', text: ' 1 file changed, 5 insertions(+)' },
+            ],
+          },
+        ],
       },
-    );
+    });
 
     const commits = extractCommitsFromTranscript(transcript);
     expect(commits).toHaveLength(1);
@@ -358,7 +353,14 @@ describe('extractCommitsFromTranscript', () => {
         type: 'assistant',
         message: {
           role: 'assistant',
-          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'git commit -m "Timestamped"' } }],
+          content: [
+            {
+              type: 'tool_use',
+              id: 't1',
+              name: 'Bash',
+              input: { command: 'git commit -m "Timestamped"' },
+            },
+          ],
         },
       }),
       JSON.stringify({
@@ -366,7 +368,13 @@ describe('extractCommitsFromTranscript', () => {
         type: 'user',
         message: {
           role: 'user',
-          content: [{ type: 'tool_result', tool_use_id: 't1', content: '[main abc1234] Timestamped\n 1 file changed' }],
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 't1',
+              content: '[main abc1234] Timestamped\n 1 file changed',
+            },
+          ],
         },
       }),
     ].join('\n');

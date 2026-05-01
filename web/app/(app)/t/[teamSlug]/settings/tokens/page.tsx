@@ -107,8 +107,7 @@ export default function TokensPage() {
               <div>
                 <div className="text-sm font-medium text-white">{t.name}</div>
                 <div className="text-xs text-neutral-500">
-                  {t.key_prefix}... &middot; Created{' '}
-                  {new Date(t.created_at).toLocaleDateString()}
+                  {t.key_prefix}... &middot; Created {new Date(t.created_at).toLocaleDateString()}
                   {t.last_used && (
                     <> &middot; Last used {new Date(t.last_used).toLocaleDateString()}</>
                   )}

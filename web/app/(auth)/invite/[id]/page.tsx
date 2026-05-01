@@ -72,9 +72,7 @@ export default function AcceptInvitePage({ params }: { params: Promise<{ id: str
         </>
       )}
 
-      {status === 'loading' && (
-        <p className="text-sm text-neutral-400">Joining team...</p>
-      )}
+      {status === 'loading' && <p className="text-sm text-neutral-400">Joining team...</p>}
 
       {status === 'success' && (
         <p className="text-sm text-green-400">Joined! Redirecting to dashboard...</p>

@@ -6,13 +6,7 @@ import { authClient } from '../lib/auth-client';
 
 function OrchidLogo() {
   return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <circle
         cx="12"
         cy="12"
@@ -110,9 +104,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-4 h-[52px] border-b border-night-750">
         <OrchidLogo />
-        <span className="text-sm font-semibold tracking-tight text-night-100">
-          Orchid
-        </span>
+        <span className="text-sm font-semibold tracking-tight text-night-100">Orchid</span>
       </div>
 
       {/* Team switcher */}
@@ -136,10 +128,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
       <nav className="flex flex-col gap-0.5 p-2">
         {navItems.map((item) => {
           const href = `${base}${item.path}`;
-          const active =
-            item.path === '/dashboard'
-              ? pathname === href
-              : pathname.startsWith(href);
+          const active = item.path === '/dashboard' ? pathname === href : pathname.startsWith(href);
           return (
             <Link
               key={item.path}
@@ -177,9 +166,7 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
             <path d="M10 10l3 3" />
           </svg>
           <span>Quick Find</span>
-          <kbd className="ml-auto text-[9px] px-1 py-0.5 rounded bg-night-850">
-            {'\u2318'}K
-          </kbd>
+          <kbd className="ml-auto text-[9px] px-1 py-0.5 rounded bg-night-850">{'\u2318'}K</kbd>
         </div>
       </div>
 
@@ -199,12 +186,8 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
                 {step}
               </span>
               <div>
-                <span className="text-[11px] font-medium text-night-300">
-                  {text}
-                </span>
-                <span className="text-[10px] ml-1 text-night-400">
-                  {desc}
-                </span>
+                <span className="text-[11px] font-medium text-night-300">{text}</span>
+                <span className="text-[10px] ml-1 text-night-400">{desc}</span>
               </div>
             </div>
           ))}
@@ -213,12 +196,8 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
 
       {/* CLI hint */}
       <div className="mx-3 mb-3 p-2.5 rounded-md border bg-night-950 border-night-750">
-        <div className="text-[10px] font-medium mb-1 text-night-400">
-          Quick start
-        </div>
-        <code className="text-[11px] font-mono text-orchid">
-          $ orchid claude
-        </code>
+        <div className="text-[10px] font-medium mb-1 text-night-400">Quick start</div>
+        <code className="text-[11px] font-mono text-orchid">$ orchid claude</code>
       </div>
 
       {/* Settings */}
@@ -249,12 +228,8 @@ export function Sidebar({ user, teams = [], teamSlug = '' }: SidebarProps) {
             {user.name?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[12px] font-medium truncate text-night-100">
-              {user.name}
-            </div>
-            <div className="text-[10px] truncate text-night-400">
-              {user.email}
-            </div>
+            <div className="text-[12px] font-medium truncate text-night-100">{user.name}</div>
+            <div className="text-[10px] truncate text-night-400">{user.email}</div>
           </div>
           <button
             onClick={() => authClient.signOut().then(() => router.push('/login'))}

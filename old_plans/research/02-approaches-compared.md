@@ -13,6 +13,7 @@
 **Language & Runtime**: TypeScript on Bun. Monorepo managed by Turborepo with ~20 packages in `packages/`.
 
 **Core packages**:
+
 - `packages/opencode` - The CLI agent core (business logic, LLM streaming, tools, session management, server)
 - `packages/app` - Shared web UI components (SolidJS)
 - `packages/desktop` / `packages/desktop-electron` - Native desktop apps (Tauri + Electron)
@@ -26,6 +27,7 @@
 **Client/Server Architecture**: OpenCode runs as a local HTTP server (Hono framework on port 4096). The TUI, desktop app, and web app are all just clients of this server. The server exposes a full REST/WebSocket API with OpenAPI specs. This means the TUI is decoupled from the core logic -- you can drive OpenCode from a mobile app or any HTTP client.
 
 **Storage**: SQLite via Drizzle ORM. Sessions, messages, parts (tool calls, text chunks, reasoning), and todos are all stored relationally. Key tables:
+
 - `session` - Conversation sessions with project/workspace references, titles, share URLs, summary stats (additions/deletions/files)
 - `message` - Messages within sessions (user/assistant)
 - `part` - Individual parts of messages (text, tool calls, reasoning, step-start/step-finish, patches)
@@ -85,6 +87,7 @@ OpenCode has a **rich plugin system** that is highly relevant to our use case:
 ### Feasibility of Conversation-Per-Commit Tracking
 
 **As a plugin (no fork required)**: HIGH feasibility. The `tool.execute.after` hook fires after every tool execution, including bash commands. A plugin could:
+
 1. Detect `git commit` in the bash tool args
 2. Extract the commit SHA from the output
 3. Attach the current `sessionID` as a git note or trailer
@@ -93,44 +96,44 @@ OpenCode has a **rich plugin system** that is highly relevant to our use case:
 This would require **zero modifications to OpenCode itself**. The plugin SDK provides everything needed.
 
 **As a fork**: Also feasible but likely unnecessary. The integration points are:
+
 - `packages/opencode/src/session/processor.ts` (`tool-result` event) - add commit detection after bash tool completion
 - `packages/opencode/src/snapshot/index.ts` - already tracks per-step diffs; could be extended to also create git notes
 - `packages/opencode/src/session/session.sql.ts` - add a `commit_sha` column to the session or part table
 
 **Difficulty assessment**:
+
 - Plugin approach: 2-3 days to build a working prototype. No fork maintenance burden.
 - Fork approach: 1-2 weeks. But maintaining a fork of a 131k-star project with daily commits is a **massive ongoing burden**. Effect-TS codebase is non-trivial to work in.
 
 ### Comparison to Claude Code and Codex CLI (Extensibility)
 
-| Dimension              | OpenCode                                                    | Claude Code                                    | Codex CLI                          |
-| ---------------------- | ----------------------------------------------------------- | ---------------------------------------------- | ---------------------------------- |
-| Extension model        | Plugin SDK (npm packages with typed hooks), custom agents/commands via Markdown, MCP | Hooks in settings.json (PreToolUse, PostToolUse, Stop, etc.), slash commands, MCP | Minimal (JSONL output, filesystem) |
-| Hook granularity       | 15+ hook points covering tools, chat, permissions, system prompts, events | 5-6 lifecycle hooks with stdin JSON             | None                               |
-| Conversation access    | Full SDK client in plugin, direct DB access possible        | session_id + transcript_path in hook payload   | Raw JSONL files                    |
-| Tool interception      | `tool.execute.before` / `tool.execute.after` with full args and output | `PostToolUse` with tool name and input         | N/A                                |
-| Custom tools           | Yes, plugins can register custom tools                      | No custom tools                                | No                                 |
-| API/Server             | Full REST + WebSocket API (documented via OpenAPI)          | None (CLI only)                                | None                               |
-| Provider flexibility   | 15+ providers, fully configurable                           | Anthropic only                                 | OpenAI only                        |
-| Self-hostable          | Yes, fully open source                                      | No (proprietary)                               | Yes (open source)                  |
+| Dimension            | OpenCode                                                                             | Claude Code                                                                       | Codex CLI                          |
+| -------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- | ---------------------------------- |
+| Extension model      | Plugin SDK (npm packages with typed hooks), custom agents/commands via Markdown, MCP | Hooks in settings.json (PreToolUse, PostToolUse, Stop, etc.), slash commands, MCP | Minimal (JSONL output, filesystem) |
+| Hook granularity     | 15+ hook points covering tools, chat, permissions, system prompts, events            | 5-6 lifecycle hooks with stdin JSON                                               | None                               |
+| Conversation access  | Full SDK client in plugin, direct DB access possible                                 | session_id + transcript_path in hook payload                                      | Raw JSONL files                    |
+| Tool interception    | `tool.execute.before` / `tool.execute.after` with full args and output               | `PostToolUse` with tool name and input                                            | N/A                                |
+| Custom tools         | Yes, plugins can register custom tools                                               | No custom tools                                                                   | No                                 |
+| API/Server           | Full REST + WebSocket API (documented via OpenAPI)                                   | None (CLI only)                                                                   | None                               |
+| Provider flexibility | 15+ providers, fully configurable                                                    | Anthropic only                                                                    | OpenAI only                        |
+| Self-hostable        | Yes, fully open source                                                               | No (proprietary)                                                                  | Yes (open source)                  |
 
 OpenCode is **significantly more extensible** than both Claude Code and Codex CLI. Its plugin system alone could support our conversation-per-commit feature without any forking.
 
-
-| Pros                                                       | Cons                                                              |
-| ---------------------------------------------------------- | ----------------------------------------------------------------- |
-| Plugin system could support our feature with zero forking  | 131k-star project = massive codebase, hard to fork-and-maintain   |
-| Already tracks per-step diffs and file changes             | Effect-TS paradigm has steep learning curve                       |
-| Client/server architecture + SDK enable external tooling   | Rapidly evolving -- fork would diverge quickly                    |
-| MIT license, multi-provider, desktop + web + TUI clients   | Monorepo with ~20 packages, complex build system (Bun + Turbo)   |
-| Full conversation history in SQLite with rich metadata     | No existing commit-level tracking (only step-level snapshots)     |
-| Existing snapshot/revert system is 80% of what we need     | Huge community means PR expectations are high if contributing upstream |
-| Active development means bugs get fixed upstream           | We would be a tiny fork of a massive project                      |
-
+| Pros                                                      | Cons                                                                   |
+| --------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Plugin system could support our feature with zero forking | 131k-star project = massive codebase, hard to fork-and-maintain        |
+| Already tracks per-step diffs and file changes            | Effect-TS paradigm has steep learning curve                            |
+| Client/server architecture + SDK enable external tooling  | Rapidly evolving -- fork would diverge quickly                         |
+| MIT license, multi-provider, desktop + web + TUI clients  | Monorepo with ~20 packages, complex build system (Bun + Turbo)         |
+| Full conversation history in SQLite with rich metadata    | No existing commit-level tracking (only step-level snapshots)          |
+| Existing snapshot/revert system is 80% of what we need    | Huge community means PR expectations are high if contributing upstream |
+| Active development means bugs get fixed upstream          | We would be a tiny fork of a massive project                           |
 
 **Verdict**: The verdict changes significantly now that we know the correct project.
 
-Forking is **not recommended** -- not because OpenCode is inadequate, but because it is *too much*. It is a 220MB monorepo with 131k stars, daily commits, Effect-TS throughout, and 20+ packages. Maintaining a fork would be an enormous distraction.
+Forking is **not recommended** -- not because OpenCode is inadequate, but because it is _too much_. It is a 220MB monorepo with 131k stars, daily commits, Effect-TS throughout, and 20+ packages. Maintaining a fork would be an enormous distraction.
 
 However, OpenCode is **highly relevant** in two other ways:
 
@@ -162,14 +165,12 @@ However, OpenCode is **highly relevant** in two other ways:
 2. Git notes: full/summarized transcript at `refs/notes/ai-sessions`
 3. Hook-based: real-time `(session_id, commit_sha)` mapping via PostToolUse
 
-
 | Pros                                          | Cons                                       |
 | --------------------------------------------- | ------------------------------------------ |
 | Zero manual effort (hooks fire automatically) | Claude Code hooks API could change         |
 | No forking or maintaining an AI CLI           | Need separate integration per tool         |
 | Data lives in git (notes) AND cloud           | Git notes not pushed by default            |
 | Simplest architecture                         | Privacy: conversations may contain secrets |
-
 
 **Verdict**: **Best approach.** Lightweight, composable, works with existing tools.
 
@@ -181,14 +182,12 @@ However, OpenCode is **highly relevant** in two other ways:
 
 **Fastest to MVP** (1-2 weeks). git-memento already does this.
 
-
 | Pros                                | Cons                                  |
 | ----------------------------------- | ------------------------------------- |
 | Data travels with the repo forever  | GitHub doesn't display notes natively |
 | Proven at scale (Gerrit uses notes) | Limited to ~1MB per note              |
 | git-memento has working GH Action   | PR comments are basic markdown        |
 | Lowest barrier to adoption          | No rich interactive UI                |
-
 
 **Verdict**: Great as Phase 1 / foundation layer. Not sufficient alone for the vision.
 
@@ -198,13 +197,11 @@ However, OpenCode is **highly relevant** in two other ways:
 
 **What**: Chrome extension that injects a "Conversations" panel on GitHub PR pages.
 
-
 | Pros                             | Cons                            |
 | -------------------------------- | ------------------------------- |
 | Highest UX quality potential     | Chrome-only, adoption barrier   |
 | Works with existing GitHub repos | GitHub DOM changes break it     |
 | No backend needed for rendering  | Only visible to extension users |
-
 
 **Verdict**: Good as a Phase 2 enhancement on top of the core product.
 
@@ -214,13 +211,11 @@ However, OpenCode is **highly relevant** in two other ways:
 
 **What**: Fork Forgejo (Go, MIT) and add a native "Conversations" tab to PRs.
 
-
 | Pros                           | Cons                             |
 | ------------------------------ | -------------------------------- |
 | Full control over UI/UX        | Requires switching git hosting   |
 | Native git notes reading       | 4-8 week MVP, highest complexity |
 | Could become major OSS project | Most teams won't leave GitHub    |
-
 
 **Verdict**: Long-term vision, not MVP.
 
@@ -230,13 +225,11 @@ However, OpenCode is **highly relevant** in two other ways:
 
 **What**: Standalone web app linked to GitHub via SHAs. Teams keep GitHub, Orchid provides the conversation layer.
 
-
 | Pros                    | Cons                               |
 | ----------------------- | ---------------------------------- |
 | Works with any git host | Context-switching between two apps |
 | Rich, purpose-built UI  | External service dependency        |
 | SaaS business model     | Data not in repo if service dies   |
-
 
 **Verdict**: This is essentially Option 2 with a web UI. **Our chosen path.**
 
@@ -261,4 +254,3 @@ However, OpenCode is **highly relevant** in two other ways:
 - Browser extension for enhanced GitHub experience
 - Support for Cursor, Windsurf, Copilot
 - Conversation search, analytics, team features
-

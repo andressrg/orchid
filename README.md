@@ -19,6 +19,7 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 ## Features
 
 ### CLI
+
 ```bash
 orchid claude                          # Launch Claude + capture conversation
 orchid data list                       # List all sessions
@@ -45,6 +46,7 @@ orchid explain <commit-sha>            # Explain why a commit was made
 - **Team Activity** — Per-user session cards, active indicators
 
 ### API
+
 - Create/update/delete sessions
 - Full-text search
 - AI-powered summaries (OpenAI)
@@ -81,11 +83,11 @@ orchid claude
 
 ## Infrastructure
 
-| Service      | Provider | Details                                      |
-| ------------ | -------- | -------------------------------------------- |
+| Service       | Provider | Details                                               |
+| ------------- | -------- | ----------------------------------------------------- |
 | **Web + API** | Vercel   | Next.js app with API routes, auto-deploys from `main` |
-| **Database** | Neon     | Serverless PostgreSQL                        |
-| **CLI**      | npm      | Published as `orchid-cli`                    |
+| **Database**  | Neon     | Serverless PostgreSQL                                 |
+| **CLI**       | npm      | Published as `orchid-cli`                             |
 
 ## Deploying
 
@@ -142,4 +144,4 @@ bash check.sh
 
 ---
 
-*See [PLAN.md](PLAN.md) for the full spec and [DOCS.md](DOCS.md) for CLI documentation.*
+_See [PLAN.md](PLAN.md) for the full spec and [DOCS.md](DOCS.md) for CLI documentation._

@@ -1,6 +1,6 @@
 # orchid
 
-Code tells you *what*. Git tells you *when*. Orchid tells you **why**.
+Code tells you _what_. Git tells you _when_. Orchid tells you **why**.
 
 Orchid captures the conversations between developers and AI tools (Claude Code, etc.) and makes them searchable, reviewable, and useful. The context behind every commit, PR, and architectural decision — preserved instead of lost.
 
