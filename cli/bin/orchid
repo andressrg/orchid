@@ -1,2 +1,50 @@
 #!/usr/bin/env node
-require("../dist/main.js");
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { spawnSync } = require("child_process");
+
+const packageRoot = path.dirname(__dirname);
+const distMain = path.join(packageRoot, "dist", "main.js");
+const srcMain = path.join(packageRoot, "src", "main.ts");
+
+const tryResolveTsxCli = () => {
+  try {
+    return require.resolve("tsx/cli", { paths: [packageRoot] });
+  } catch {
+    return null;
+  }
+};
+
+const printIncompleteInstallMessage = () => {
+  process.stderr.write(
+    [
+      "orchid: install is incomplete. Neither dist/main.js nor src/main.ts with tsx is available.",
+      `Run \`npm run build\` in ${packageRoot}, or reinstall orchid-cli.`,
+      "",
+    ].join("\n")
+  );
+};
+
+const exitCodeFromSpawnResult = (result) =>
+  result.status === null ? 1 : result.status;
+
+if (fs.existsSync(distMain)) {
+  require(distMain);
+} else {
+  const tsxCli = tryResolveTsxCli();
+
+  if (tsxCli === null || !fs.existsSync(srcMain)) {
+    printIncompleteInstallMessage();
+    process.exit(1);
+  }
+
+  const result = spawnSync(
+    process.execPath,
+    [tsxCli, srcMain, ...process.argv.slice(2)],
+    { stdio: "inherit" }
+  );
+
+  process.exit(exitCodeFromSpawnResult(result));
+}

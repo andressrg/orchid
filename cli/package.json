@@ -1,6 +1,6 @@
 {
   "name": "orchid-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Capture and query AI coding conversations — CLI for orchidkeep.com",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {

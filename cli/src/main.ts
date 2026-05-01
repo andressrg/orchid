@@ -8,7 +8,7 @@ import { runLogin } from "./commands/login";
 import { runLogout } from "./commands/logout";
 import { runHooks } from "./commands/hooks";
 
-const VERSION = "0.1.0";
+const VERSION = "0.1.2";
 
 const HELP = `orchid - capture and query AI coding sessions
 
