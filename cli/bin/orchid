@@ -1,2 +1,41 @@
 #!/usr/bin/env node
-require("../dist/main.js");
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+const packageRoot = path.dirname(__dirname);
+const distMain = path.join(packageRoot, "dist", "main.js");
+
+if (fs.existsSync(distMain)) {
+  require(distMain);
+} else {
+  // Fallback for dev installs (git checkout, `npm link`, or workspace package
+  // where `dist` was never built). Re-exec the TypeScript entrypoint via tsx
+  // so hooks like SessionStart never fail with a module-not-found error.
+  const srcMain = path.join(packageRoot, "src", "main.ts");
+
+  const tsxCli = (() => {
+    try {
+      return require.resolve("tsx/cli", { paths: [packageRoot] });
+    } catch {
+      return null;
+    }
+  })();
+
+  if (tsxCli === null || !fs.existsSync(srcMain)) {
+    process.stderr.write(
+      "orchid: install is incomplete — neither dist/main.js nor src/main.ts (with tsx) is available.\n" +
+      `  Run \`npm run build\` in ${packageRoot}, or reinstall the package.\n`
+    );
+    process.exit(1);
+  }
+
+  const { spawnSync } = require("child_process");
+  const result = spawnSync(
+    process.execPath,
+    [tsxCli, srcMain, ...process.argv.slice(2)],
+    { stdio: "inherit" }
+  );
+  process.exit(result.status === null ? 1 : result.status);
+}
