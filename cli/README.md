@@ -21,10 +21,13 @@ orchid config
 # 2. Authenticate
 orchid login
 
-# 3. Wrap your AI tool — conversations sync automatically
-orchid claude
+# 3. Install Claude Code hooks — conversations sync automatically
+orchid hooks install --mode auto
 
-# 4. Or bulk-sync past conversations you already had
+# 4. Confirm hooks and auth are ready
+orchid hooks status
+
+# 5. Or bulk-sync past conversations you already had
 orchid sync --discover
 ```
 
@@ -33,12 +36,21 @@ orchid sync --discover
 ### Capture
 
 ```bash
-orchid claude [args]          # Launch Claude Code, sync conversation in real-time
+orchid hooks install          # Install hooks with auto-sync
+orchid hooks install --mode auto
+orchid hooks install --mode prompt
+orchid hooks status           # Show hook installation and auth status
+orchid hooks uninstall        # Remove Orchid hooks from Claude Code
 orchid sync --discover        # Interactive TUI to find and sync past sessions
 orchid sync <file.jsonl>      # Sync a single transcript file
+orchid claude [args]          # Legacy wrapper for launching Claude Code
 ```
 
-`orchid claude` is a transparent wrapper — it launches Claude Code with full interactivity and periodically uploads the transcript to your Orchid server. When you're done, a final sync captures everything.
+`orchid hooks install` is the recommended Claude Code integration. It writes Orchid lifecycle hooks into `~/.claude/settings.json` and installs a launcher at `~/.orchid/hooks/orchid-hook`, so you can keep using `claude` normally.
+
+Use `--mode auto` to sync every conversation automatically. Use `--mode prompt` when you want Claude to ask at the start of each conversation before enabling sync. `orchid hooks status` shows whether hooks are installed, which mode is active, whether auth is configured, and whether any sessions are currently syncing.
+
+`orchid claude` is still available as a legacy wrapper. It launches Claude Code with full interactivity and periodically uploads the transcript to your Orchid server. Hooks are preferred because they work with your normal Claude Code launch flow.
 
 `orchid sync --discover` scans `~/.claude/projects/` for all your local sessions (including archived ones), shows them in a vim-style browser, and lets you select which to upload. Supports `j/k` navigation, space to select, `s` to sync.
 
@@ -76,6 +88,22 @@ orchid explain abc123f
 
 No MCP server, no special integration. The CLI is the agent interface.
 
+### Agent skill
+
+This repo includes an agent skill at `skills/orchid-context`. Install it with:
+
+```bash
+npx skills add andressrg/orchid
+```
+
+The CLI detects your installed agents and installs the skill in the right place. Add `-g` to install it globally. From a checked-out repo, you can also install the local skill:
+
+```bash
+npx skills add ./skills/orchid-context
+```
+
+Restart your agent if it does not detect the new skill immediately.
+
 ## Configuration
 
 ```
@@ -91,11 +119,11 @@ ORCHID_TOKEN=orc_your_token_here
 
 ## How it works
 
-1. You run `orchid claude` instead of `claude`
-2. Claude Code runs normally — you don't notice anything different
-3. In the background, Orchid reads the JSONL transcript file and uploads it every 5 seconds
-4. The conversation appears on your Orchid server in near real-time
-5. Anyone on your team can read it, search it, or ask questions about it
+1. You run `orchid hooks install --mode auto` once
+2. Claude Code runs normally
+3. Claude Code calls Orchid on `SessionStart`, `Stop`, and `SessionEnd`
+4. Orchid reads the JSONL transcript file and syncs active and completed sessions
+5. The conversation appears on your Orchid server for search, review, and Q&A
 
 For past conversations, `orchid sync --discover` reads both `.jsonl` files and Claude Code's `sessions-index.json` to find everything, including sessions whose transcripts have been cleaned up.
 

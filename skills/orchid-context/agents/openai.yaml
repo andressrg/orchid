@@ -1,0 +1,4 @@
+interface:
+  display_name: "Orchid Context"
+  short_description: "Query Orchid AI coding history"
+  default_prompt: "Use $orchid-context to find the conversation context behind this change."
