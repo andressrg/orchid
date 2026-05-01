@@ -12,7 +12,7 @@ Orchid captures AI coding conversations and makes them available to anyone who n
 
 ## How It Works
 
-1. **Capture**: Install Claude Code hooks with `orchid hooks install --mode auto`. Conversations sync while you keep using Claude normally.
+1. **Capture**: Install Claude Code hooks with `orchid hooks install --mode auto`, or run `orchid codex` for Codex CLI capture. Conversations sync to the cloud in real time.
 2. **Store**: Conversations are stored with git metadata — branches, remotes, users.
 3. **Review**: See the full conversation behind any code change. Search, browse, or let AI summarize.
 
@@ -27,7 +27,8 @@ orchid hooks install --mode auto       # Sync every Claude Code conversation
 orchid hooks install --mode prompt     # Ask before syncing each conversation
 orchid hooks status                    # Show hook and auth status
 orchid hooks uninstall                 # Remove Orchid hooks from Claude Code
-orchid sync --discover                 # Backfill past Claude Code conversations
+orchid codex                           # Launch Codex CLI + capture conversation
+orchid sync --discover --tool all      # Sync past Claude and Codex sessions
 orchid data list                       # List all sessions
 orchid data show <id> [--turns]        # View full transcript
 orchid data search "why websockets"    # Search across all conversations
@@ -88,6 +89,9 @@ orchid hooks install --mode auto
 
 # Confirm hooks and auth are ready
 orchid hooks status
+
+# Capture Codex CLI conversations
+orchid codex
 ```
 
 ## Agent Skill

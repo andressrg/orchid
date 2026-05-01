@@ -237,6 +237,71 @@ describe('extractCommitsFromTranscript', () => {
     expect(commits[0].sha).toBe('ccc3333');
   });
 
+  it('extracts Codex commits from exec_command events', () => {
+    const transcript = jsonl(
+      {
+        type: 'response_item',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        payload: {
+          type: 'function_call',
+          name: 'exec_command',
+          call_id: 'call_1',
+          arguments: JSON.stringify({
+            cmd: 'git add . && git commit -m "Add Codex support"',
+            workdir: '/repo',
+          }),
+        },
+      },
+      {
+        type: 'event_msg',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        payload: {
+          type: 'exec_command_end',
+          call_id: 'call_1',
+          command: 'git add . && git commit -m "Add Codex support"',
+          stdout: '[codex/support abc1234] Add Codex support\n 2 files changed',
+          stderr: '',
+        },
+      },
+    );
+
+    const commits = extractCommitsFromTranscript(transcript);
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toEqual({
+      sha: 'abc1234',
+      branch: 'codex/support',
+      message: 'Add Codex support',
+      toolUseId: 'call_1',
+      committedAt: '2026-05-01T00:00:01.000Z',
+    });
+  });
+
+  it('falls back to Codex function_call_output for commit output', () => {
+    const transcript = jsonl(
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call',
+          name: 'exec_command',
+          call_id: 'call_2',
+          arguments: JSON.stringify({ cmd: 'git commit -m "Fallback"' }),
+        },
+      },
+      {
+        type: 'response_item',
+        payload: {
+          type: 'function_call_output',
+          call_id: 'call_2',
+          output: '[main def5678] Fallback\n 1 file changed',
+        },
+      },
+    );
+
+    const commits = extractCommitsFromTranscript(transcript);
+    expect(commits).toHaveLength(1);
+    expect(commits[0].sha).toBe('def5678');
+  });
+
   it('handles heredoc commit messages (Claude Code pattern)', () => {
     const transcript = jsonl(
       bashToolUse(

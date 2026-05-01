@@ -1,5 +1,6 @@
 import { execSync } from 'child_process';
 import { getConfig, getAuthHeaders } from '../config';
+import { parseTranscriptTurns } from '../transcript';
 
 interface Session {
   id: string;
@@ -122,29 +123,22 @@ Environment:
           `\x1b[90m  By ${full.user_name} on ${full.branch}\x1b[0m\n`,
         );
 
-        // Show first 2 turns as context
         if (full.transcript) {
-          const lines = full.transcript.split('\n').filter((l) => l.trim());
-          let shown = 0;
-          for (const line of lines) {
-            if (shown >= 4) break;
-            try {
-              const obj = JSON.parse(line);
-              const text = typeof obj.content === 'string' ? obj.content : '';
-              if (text) {
-                const role =
-                  obj.type === 'human' || obj.role === 'user'
-                    ? '\x1b[35m  Developer\x1b[0m'
-                    : '\x1b[34m  Claude\x1b[0m';
-                const snippet =
-                  text.length > 150 ? text.slice(0, 150) + '...' : text;
-                console.log(`  ${role}: ${snippet.replace(/\n/g, ' ')}\n`);
-                shown++;
-              }
-            } catch {
-              // skip
-            }
-          }
+          parseTranscriptTurns({ transcript: full.transcript })
+            .filter((turn) => turn.role === 'user' || turn.role === 'assistant')
+            .slice(0, 4)
+            .map((turn) => {
+              const role =
+                turn.role === 'user'
+                  ? '\x1b[35m  Developer\x1b[0m'
+                  : '\x1b[34m  AI\x1b[0m';
+              const snippet =
+                turn.text.length > 150
+                  ? turn.text.slice(0, 150) + '...'
+                  : turn.text;
+              console.log(`  ${role}: ${snippet.replace(/\n/g, ' ')}\n`);
+              return null;
+            });
         }
       }
     } catch {

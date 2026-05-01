@@ -1,4 +1,5 @@
 import { runClaude } from './commands/claude';
+import { runCodex } from './commands/codex';
 import { runData } from './commands/data';
 import { runSync } from './commands/sync';
 import { runReview } from './commands/review';
@@ -8,7 +9,7 @@ import { runLogin } from './commands/login';
 import { runLogout } from './commands/logout';
 import { runHooks } from './commands/hooks';
 
-const VERSION = '0.1.2';
+const VERSION = '0.1.0';
 
 const HELP = `orchid - capture and query AI coding sessions
 
@@ -19,6 +20,7 @@ Commands:
   login     Authenticate with a Personal Access Token
   logout    Remove stored credentials
   claude    Launch Claude Code and sync the conversation
+  codex     Launch Codex CLI and sync the conversation
   sync      Sync past conversations (--discover to scan all)
   hooks     Manage Claude Code hooks (install, uninstall, status)
   config    Set up CLI configuration (~/.orchid/config.json)
@@ -59,6 +61,9 @@ function main() {
       break;
     case 'claude':
       runClaude(subArgs);
+      break;
+    case 'codex':
+      runCodex(subArgs);
       break;
     case 'sync':
       runSync(subArgs);
