@@ -12,6 +12,7 @@ import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
 import { getTeamBillingState } from './billing';
+import { isBillingEnforcementEnabled, isStripeBillingConfigured } from './billing-config';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
@@ -77,10 +78,19 @@ app.use('*', async (c, next) => {
       const [key] = await db
         .select({ userId: apiKey.userId, teamId: apiKey.teamId })
         .from(apiKey)
-        .where(and(eq(apiKey.keyHash, hash), or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, new Date()))));
+        .where(
+          and(
+            eq(apiKey.keyHash, hash),
+            or(isNull(apiKey.expiresAt), gt(apiKey.expiresAt, new Date())),
+          ),
+        );
 
       if (key) {
-        db.update(apiKey).set({ lastUsed: new Date() }).where(eq(apiKey.keyHash, hash)).execute().catch(() => {});
+        db.update(apiKey)
+          .set({ lastUsed: new Date() })
+          .where(eq(apiKey.keyHash, hash))
+          .execute()
+          .catch(() => {});
         c.set('userId', key.userId);
         c.set('teamId', key.teamId);
         c.set('authMethod', 'pat');
@@ -106,7 +116,10 @@ app.use('*', async (c, next) => {
           .where(and(eq(organization.slug, teamSlug), eq(member.userId, session.user.id)));
         c.set('teamId', team?.id || null);
       } else {
-        c.set('teamId', (session.session as { activeOrganizationId?: string }).activeOrganizationId || null);
+        c.set(
+          'teamId',
+          (session.session as { activeOrganizationId?: string }).activeOrganizationId || null,
+        );
       }
       c.set('authMethod', 'session');
       return next();
@@ -143,17 +156,32 @@ async function requireTeamBillingAccess(
   feature: string,
 ): Promise<Response | null> {
   const teamId = c.get('teamId');
-  if (!teamId) return null;
+  if (!teamId) {
+    if (!isStripeBillingConfigured() || !isBillingEnforcementEnabled) return null;
+
+    return c.json(
+      {
+        error: 'Subscription required',
+        code: 'team_scope_required',
+        feature,
+        billing_url: null,
+      },
+      402,
+    );
+  }
 
   const billing = await getTeamBillingState(teamId);
   if (billing.allowed) return null;
 
-  return c.json({
-    error: 'Subscription required',
-    code: 'subscription_required',
-    feature,
-    billing_url: billing.billingUrl,
-  }, 402);
+  return c.json(
+    {
+      error: 'Subscription required',
+      code: 'subscription_required',
+      feature,
+      billing_url: billing.billingUrl,
+    },
+    402,
+  );
 }
 
 // Health
@@ -246,7 +274,20 @@ app.put('/sessions/:id', async (c) => {
          updated_at = NOW()
        WHERE orchid_session.user_id = $11 OR orchid_session.user_id IS NULL
        RETURNING *`,
-      [id, user_name, user_email, working_dir, JSON.stringify(git_remotes), branch, tool, transcript, status || 'active', messageCount, userId, teamId],
+      [
+        id,
+        user_name,
+        user_email,
+        working_dir,
+        JSON.stringify(git_remotes),
+        branch,
+        tool,
+        transcript,
+        status || 'active',
+        messageCount,
+        userId,
+        teamId,
+      ],
     );
 
     // After responding, extract commit SHAs from the transcript and store them
@@ -286,7 +327,10 @@ app.put('/sessions/:id', async (c) => {
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const deleted = await db.delete(orchidSession).where(scopeConditionForId(c, id)!).returning({ id: orchidSession.id });
+    const deleted = await db
+      .delete(orchidSession)
+      .where(scopeConditionForId(c, id)!)
+      .returning({ id: orchidSession.id });
     if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
@@ -342,11 +386,21 @@ app.post('/tokens', async (c) => {
   const { token, hash, prefix } = generateToken();
 
   try {
-    const [row] = await db.insert(apiKey).values({
-      userId, teamId, name, keyHash: hash, keyPrefix: prefix,
-    }).returning({
-      id: apiKey.id, name: apiKey.name, key_prefix: apiKey.keyPrefix, created_at: apiKey.createdAt,
-    });
+    const [row] = await db
+      .insert(apiKey)
+      .values({
+        userId,
+        teamId,
+        name,
+        keyHash: hash,
+        keyPrefix: prefix,
+      })
+      .returning({
+        id: apiKey.id,
+        name: apiKey.name,
+        key_prefix: apiKey.keyPrefix,
+        created_at: apiKey.createdAt,
+      });
     return c.json({ ...row, token });
   } catch (err) {
     console.error('POST /api/tokens error:', err);
@@ -361,8 +415,12 @@ app.get('/tokens', async (c) => {
   try {
     const rows = await db
       .select({
-        id: apiKey.id, name: apiKey.name, key_prefix: apiKey.keyPrefix,
-        last_used: apiKey.lastUsed, expires_at: apiKey.expiresAt, created_at: apiKey.createdAt,
+        id: apiKey.id,
+        name: apiKey.name,
+        key_prefix: apiKey.keyPrefix,
+        last_used: apiKey.lastUsed,
+        expires_at: apiKey.expiresAt,
+        created_at: apiKey.createdAt,
       })
       .from(apiKey)
       .where(eq(apiKey.userId, userId))
@@ -380,7 +438,10 @@ app.delete('/tokens/:id', async (c) => {
 
   const id = c.req.param('id');
   try {
-    const deleted = await db.delete(apiKey).where(and(eq(apiKey.id, id), eq(apiKey.userId, userId))).returning({ id: apiKey.id });
+    const deleted = await db
+      .delete(apiKey)
+      .where(and(eq(apiKey.id, id), eq(apiKey.userId, userId)))
+      .returning({ id: apiKey.id });
     if (deleted.length === 0) return c.json({ error: 'Token not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
@@ -428,7 +489,9 @@ app.get('/sessions/:id/summary', async (c) => {
           text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
         }
         if (role && text) turns.push({ role, text: text.slice(0, 500) });
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
 
     const conversationText = turns.map((t) => `[${t.role}]: ${t.text}`).join('\n\n');
@@ -439,7 +502,11 @@ app.get('/sessions/:id/summary', async (c) => {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: 'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.' },
+          {
+            role: 'system',
+            content:
+              'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.',
+          },
           { role: 'user', content: conversationText },
         ],
         max_tokens: 200,
@@ -450,7 +517,9 @@ app.get('/sessions/:id/summary', async (c) => {
     if (!response.ok) return c.json({ error: 'AI service error' }, 502);
 
     const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return c.json({ summary: data.choices?.[0]?.message?.content || 'Unable to generate summary.' });
+    return c.json({
+      summary: data.choices?.[0]?.message?.content || 'Unable to generate summary.',
+    });
   } catch (err) {
     console.error('GET /api/sessions/:id/summary error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -472,7 +541,8 @@ app.post('/sessions/:id/chat', async (c) => {
   try {
     const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
-    if (!session.transcript) return c.json({ answer: 'No conversation content available to reason about.' });
+    if (!session.transcript)
+      return c.json({ answer: 'No conversation content available to reason about.' });
 
     function extractText(content: unknown): string {
       if (typeof content === 'string') return content;
@@ -506,10 +576,14 @@ app.post('/sessions/:id/chat', async (c) => {
           text = extractText(msg.content || obj.content);
         }
         if (role && text) turns.push({ role, text });
-      } catch { /* skip */ }
+      } catch {
+        /* skip */
+      }
     }
 
-    const conversationText = turns.map((t, i) => `[Turn ${i + 1}][${t.role}]: ${t.text}`).join('\n\n');
+    const conversationText = turns
+      .map((t, i) => `[Turn ${i + 1}][${t.role}]: ${t.text}`)
+      .join('\n\n');
 
     const messages: Array<{ role: string; content: string }> = [
       {
@@ -553,7 +627,9 @@ Answer based on this conversation. Cite turn numbers when possible. Be concise b
     }
 
     const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return c.json({ answer: data.choices?.[0]?.message?.content || 'Unable to generate an answer.' });
+    return c.json({
+      answer: data.choices?.[0]?.message?.content || 'Unable to generate an answer.',
+    });
   } catch (err) {
     console.error('POST /api/sessions/:id/chat error:', err);
     return c.json({ error: 'Internal server error' }, 500);
@@ -594,7 +670,11 @@ app.get('/decisions', async (c) => {
     ];
 
     const rows = await db
-      .select({ id: orchidSession.id, user_name: orchidSession.userName, transcript: orchidSession.transcript })
+      .select({
+        id: orchidSession.id,
+        user_name: orchidSession.userName,
+        transcript: orchidSession.transcript,
+      })
       .from(orchidSession)
       .where(and(...conditions))
       .orderBy(desc(orchidSession.startedAt))
@@ -605,8 +685,24 @@ app.get('/decisions', async (c) => {
     if (!OPENAI_API_KEY) {
       return c.json({
         decisions: [
-          { title: 'Chose PostgreSQL over MongoDB', decision: 'Use PostgreSQL as the primary database', alternatives: ['MongoDB', 'SQLite'], reason: 'PostgreSQL provides better relational integrity and the team has existing expertise.', session_id: rows[0].id, turn_index: 3 },
-          { title: 'Periodic sync instead of real-time streaming', decision: 'Sync transcripts every 5 seconds via polling', alternatives: ['WebSockets', 'SSE', 'post-session upload'], reason: 'Simplest approach that keeps data crash-safe without requiring persistent connections.', session_id: rows[0].id, turn_index: 7 },
+          {
+            title: 'Chose PostgreSQL over MongoDB',
+            decision: 'Use PostgreSQL as the primary database',
+            alternatives: ['MongoDB', 'SQLite'],
+            reason:
+              'PostgreSQL provides better relational integrity and the team has existing expertise.',
+            session_id: rows[0].id,
+            turn_index: 3,
+          },
+          {
+            title: 'Periodic sync instead of real-time streaming',
+            decision: 'Sync transcripts every 5 seconds via polling',
+            alternatives: ['WebSockets', 'SSE', 'post-session upload'],
+            reason:
+              'Simplest approach that keeps data crash-safe without requiring persistent connections.',
+            session_id: rows[0].id,
+            turn_index: 7,
+          },
         ],
         sessions_analyzed: rows.length,
       });
@@ -618,7 +714,8 @@ app.get('/decisions', async (c) => {
       lines.forEach((line, idx) => {
         try {
           const obj = JSON.parse(line);
-          let role = '', text = '';
+          let role = '',
+            text = '';
           if (obj.type === 'human' || obj.role === 'user' || obj.role === 'human') {
             role = 'Developer';
             text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
@@ -627,10 +724,15 @@ app.get('/decisions', async (c) => {
             text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
           } else if (obj.message) {
             role = obj.message.role === 'user' ? 'Developer' : 'AI';
-            text = typeof obj.message.content === 'string' ? obj.message.content : JSON.stringify(obj.message.content);
+            text =
+              typeof obj.message.content === 'string'
+                ? obj.message.content
+                : JSON.stringify(obj.message.content);
           }
           if (role && text) turns.push(`[turn ${idx}][${role}]: ${text.slice(0, 400)}`);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       });
       return `=== Session ${s.id} (by ${s.user_name}) ===\n${turns.join('\n')}`;
     });
@@ -641,7 +743,10 @@ app.get('/decisions', async (c) => {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [
-          { role: 'system', content: `You are analyzing AI coding conversation transcripts to extract architectural decisions.\n\nFor each significant decision, extract:\n- title, decision, alternatives (array), reason, session_id, turn_index\n\nReturn ONLY a valid JSON array. No markdown.` },
+          {
+            role: 'system',
+            content: `You are analyzing AI coding conversation transcripts to extract architectural decisions.\n\nFor each significant decision, extract:\n- title, decision, alternatives (array), reason, session_id, turn_index\n\nReturn ONLY a valid JSON array. No markdown.`,
+          },
           { role: 'user', content: transcriptBlocks.join('\n\n').slice(0, 12000) },
         ],
         max_tokens: 1500,
@@ -655,8 +760,15 @@ app.get('/decisions', async (c) => {
     const raw = data.choices?.[0]?.message?.content || '[]';
     let decisions = [];
     try {
-      decisions = JSON.parse(raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/i, '').trim());
-    } catch { decisions = []; }
+      decisions = JSON.parse(
+        raw
+          .replace(/^```[a-z]*\n?/i, '')
+          .replace(/```$/i, '')
+          .trim(),
+      );
+    } catch {
+      decisions = [];
+    }
 
     return c.json({ decisions, sessions_analyzed: rows.length });
   } catch (err) {
@@ -668,7 +780,10 @@ app.get('/decisions', async (c) => {
 // Reverse lookup: find sessions for one or more commit SHAs
 app.get('/commits/sessions', async (c) => {
   const shasParam = c.req.query('shas') || '';
-  const shas = shasParam.split(',').map((s) => s.trim()).filter(Boolean);
+  const shas = shasParam
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
 
   if (shas.length === 0) {
     return c.json({ error: 'shas query parameter is required (comma-separated)' }, 400);
@@ -695,7 +810,6 @@ app.get('/commits/sessions', async (c) => {
   }
 });
 
-
 // GitHub webhook
 app.post('/webhook/github', async (c) => {
   const event = c.req.header('x-github-event');
@@ -713,16 +827,21 @@ app.post('/webhook/github', async (c) => {
     const branch = pull_request.head.ref;
     const rows = await db
       .select({
-        id: orchidSession.id, user_name: orchidSession.userName, branch: orchidSession.branch,
-        started_at: orchidSession.startedAt, updated_at: orchidSession.updatedAt,
+        id: orchidSession.id,
+        user_name: orchidSession.userName,
+        branch: orchidSession.branch,
+        started_at: orchidSession.startedAt,
+        updated_at: orchidSession.updatedAt,
         status: orchidSession.status,
         transcript_length: sql<number>`length(${orchidSession.transcript})`,
       })
       .from(orchidSession)
-      .where(or(
-        ilike(sql`${orchidSession.gitRemotes}::text`, `%${repository.full_name}%`),
-        eq(orchidSession.branch, branch),
-      ))
+      .where(
+        or(
+          ilike(sql`${orchidSession.gitRemotes}::text`, `%${repository.full_name}%`),
+          eq(orchidSession.branch, branch),
+        ),
+      )
       .orderBy(desc(orchidSession.updatedAt))
       .limit(10);
 
@@ -730,7 +849,9 @@ app.post('/webhook/github', async (c) => {
 
     const baseUrl = WEB_UI_URL.startsWith('http') ? WEB_UI_URL : `https://${WEB_UI_URL}`;
     const sessionLines = rows.map((s) => {
-      const duration = Math.round((new Date(s.updated_at).getTime() - new Date(s.started_at).getTime()) / 60000);
+      const duration = Math.round(
+        (new Date(s.updated_at).getTime() - new Date(s.started_at).getTime()) / 60000,
+      );
       const msgEstimate = Math.round((s.transcript_length || 0) / 500);
       const emoji = s.status === 'active' ? '🟢' : '✅';
       return `- ${emoji} **Session by @${s.user_name}** (${duration}m, ~${msgEstimate} messages) — [View conversation](${baseUrl}/sessions/${encodeURIComponent(s.id)})`;
@@ -739,18 +860,27 @@ app.post('/webhook/github', async (c) => {
     const comment = `🌸 **Orchid**: ${rows.length} AI conversation${rows.length > 1 ? 's' : ''} related to this PR\n\n${sessionLines.join('\n')}\n\n---\n*These conversations capture the reasoning behind the code changes.*`;
 
     const [owner, repo] = repository.full_name.split('/');
-    const ghRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${pull_request.number}/comments`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body: comment }),
-    });
+    const ghRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/issues/${pull_request.number}/comments`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${GITHUB_TOKEN}`,
+          Accept: 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ body: comment }),
+      },
+    );
 
     if (!ghRes.ok) {
       console.error('GitHub API error:', ghRes.status, await ghRes.text());
       return c.json({ error: 'GitHub API error' }, 502);
     }
 
-    console.log(`Posted comment on ${repository.full_name}#${pull_request.number} with ${rows.length} sessions`);
+    console.log(
+      `Posted comment on ${repository.full_name}#${pull_request.number} with ${rows.length} sessions`,
+    );
     return c.json({ ok: true, sessions: rows.length });
   } catch (err) {
     console.error('Webhook error:', err);

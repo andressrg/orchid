@@ -35,6 +35,7 @@ ALTER TABLE "user" ADD COLUMN "stripe_customer_id" text;--> statement-breakpoint
 ALTER TABLE "session_commits" ADD CONSTRAINT "session_commits_session_id_orchid_session_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."orchid_session"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_session_commits_sha" ON "session_commits" USING btree ("commit_sha");--> statement-breakpoint
 CREATE INDEX "idx_session_commits_session" ON "session_commits" USING btree ("session_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "session_commits_session_commit_uidx" ON "session_commits" USING btree ("session_id","commit_sha");--> statement-breakpoint
 CREATE INDEX "idx_subscription_reference" ON "subscription" USING btree ("reference_id");--> statement-breakpoint
 CREATE INDEX "idx_subscription_stripe_customer" ON "subscription" USING btree ("stripe_customer_id");--> statement-breakpoint
 CREATE INDEX "idx_subscription_stripe_subscription" ON "subscription" USING btree ("stripe_subscription_id");

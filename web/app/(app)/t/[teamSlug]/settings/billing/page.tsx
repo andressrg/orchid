@@ -54,7 +54,8 @@ export default async function BillingPage({
         <div className="mb-6 rounded-md border border-neutral-800 bg-neutral-900 p-4">
           <div className="text-sm font-medium text-white">Billing enforcement is off</div>
           <p className="mt-1 text-sm text-neutral-400">
-            Set <code className="text-violet-300">STRIPE_BILLING_ENFORCEMENT=true</code> when paid access should gate capture and AI features.
+            Set <code className="text-violet-300">STRIPE_BILLING_ENFORCEMENT=true</code> when paid
+            access should gate capture and AI features.
           </p>
         </div>
       ) : null}
@@ -65,7 +66,10 @@ export default async function BillingPage({
           { label: 'Seats', value: String(currentSubscription?.seats || memberCount) },
           { label: 'Renews', value: displayDate(currentSubscription?.periodEnd || null) },
         ].map((item) => (
-          <div key={item.label} className="rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3">
+          <div
+            key={item.label}
+            className="rounded-md border border-neutral-800 bg-neutral-900 px-4 py-3"
+          >
             <div className="text-xs text-neutral-500">{item.label}</div>
             <div className="mt-1 text-sm font-medium text-white">{item.value}</div>
           </div>
@@ -103,6 +107,7 @@ export default async function BillingPage({
             teamSlug={teamSlug}
             memberCount={memberCount}
             hasAnnualPrice={teamPlan.annualPriceIdConfigured}
+            hasSeatPrice={teamPlan.seatPriceIdConfigured}
             hasSubscription={hasSubscription}
           />
         </div>

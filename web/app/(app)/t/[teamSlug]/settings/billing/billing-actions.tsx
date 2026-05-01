@@ -11,6 +11,7 @@ interface BillingActionsProps {
   readonly teamSlug: string;
   readonly memberCount: number;
   readonly hasAnnualPrice: boolean;
+  readonly hasSeatPrice: boolean;
   readonly hasSubscription: boolean;
 }
 
@@ -20,8 +21,44 @@ interface StripeRedirectResponse {
   readonly message?: string;
 }
 
+interface StripeCheckoutRequestBodyParams {
+  readonly action: Exclude<BillingAction, 'portal'>;
+  readonly teamId: string;
+  readonly teamSlug: string;
+  readonly memberCount: number;
+  readonly hasSeatPrice: boolean;
+}
+
+interface StripeCheckoutRequestBody {
+  readonly plan: typeof TEAM_BILLING_PLAN_NAME;
+  readonly annual: boolean;
+  readonly referenceId: string;
+  readonly customerType: 'organization';
+  readonly successUrl: string;
+  readonly cancelUrl: string;
+  readonly disableRedirect: true;
+  readonly seats?: number;
+}
+
 const parseStripeRedirectResponse = async (response: Response): Promise<StripeRedirectResponse> =>
   response.json() as Promise<StripeRedirectResponse>;
+
+export const buildStripeCheckoutRequestBody = ({
+  action,
+  teamId,
+  teamSlug,
+  memberCount,
+  hasSeatPrice,
+}: StripeCheckoutRequestBodyParams): StripeCheckoutRequestBody => ({
+  plan: TEAM_BILLING_PLAN_NAME,
+  annual: action === 'annual',
+  referenceId: teamId,
+  customerType: 'organization',
+  successUrl: `/t/${teamSlug}/settings/billing?checkout=success`,
+  cancelUrl: `/t/${teamSlug}/settings/billing`,
+  disableRedirect: true,
+  ...(hasSeatPrice ? { seats: memberCount } : {}),
+});
 
 export function BillingActions({
   configured,
@@ -29,6 +66,7 @@ export function BillingActions({
   teamSlug,
   memberCount,
   hasAnnualPrice,
+  hasSeatPrice,
   hasSubscription,
 }: BillingActionsProps) {
   const [pendingAction, setPendingAction] = useState<BillingAction | null>(null);
@@ -72,16 +110,7 @@ export function BillingActions({
     redirectToStripe({
       action,
       path: '/api/auth/subscription/upgrade',
-      body: {
-        plan: TEAM_BILLING_PLAN_NAME,
-        annual: action === 'annual',
-        referenceId: teamId,
-        customerType: 'organization',
-        seats: memberCount,
-        successUrl: `/t/${teamSlug}/settings/billing?checkout=success`,
-        cancelUrl: `/t/${teamSlug}/settings/billing`,
-        disableRedirect: true,
-      },
+      body: buildStripeCheckoutRequestBody({ action, teamId, teamSlug, memberCount, hasSeatPrice }),
     });
 
   const openBillingPortal = () =>
@@ -105,7 +134,11 @@ export function BillingActions({
           onClick={() => startCheckout('monthly')}
           className="min-w-32 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {pendingAction === 'monthly' ? 'Opening...' : hasSubscription ? 'Change plan' : 'Start monthly'}
+          {pendingAction === 'monthly'
+            ? 'Opening...'
+            : hasSubscription
+              ? 'Change plan'
+              : 'Start monthly'}
         </button>
         <button
           type="button"
