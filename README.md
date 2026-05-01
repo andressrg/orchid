@@ -44,7 +44,7 @@ orchid explain <commit-sha>            # Explain why a commit was made
 - **Search** — Full-text search across all conversations
 - **Team Activity** — Per-user session cards, active indicators
 
-### Server API
+### API
 - Create/update/delete sessions
 - Full-text search
 - AI-powered summaries (OpenAI)
@@ -57,7 +57,7 @@ orchid explain <commit-sha>            # Explain why a commit was made
 
 ```
 CLI:        TypeScript (wrapper + file watcher + HTTP sync), published as orchid-cli on npm
-Server:     Node.js + Hono (API routes inside Next.js)
+API:        Hono routes inside the Next.js app
 Frontend:   Next.js 16 + Tailwind CSS
 Database:   PostgreSQL on Neon (serverless)
 Auth:       Better Auth (cookie sessions + personal access tokens)

@@ -7,18 +7,14 @@ const CONFIG_DIR = path.join(os.homedir(), ".orchid");
 const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 
 const DEFAULTS = {
-  api_url: "http://24.144.97.81:3000",
-  api_key: "",
-  openai_api_key: "",
-  web_url: "http://24.144.97.81",
+  api_url: "https://www.orchidkeep.com/api",
+  web_url: "https://www.orchidkeep.com",
 };
 
 type ConfigKey = keyof typeof DEFAULTS;
 
 const LABELS: Record<ConfigKey, string> = {
   api_url: "API URL",
-  api_key: "API Key",
-  openai_api_key: "OpenAI API Key (optional, enables AI features)",
   web_url: "Web UI URL",
 };
 

@@ -120,9 +120,9 @@ Because transcripts sync periodically, we get **live viewing for free**:
 - Useful for pair programming, mentoring, or just staying aware of what AI is doing
 - No screen sharing needed — the conversation is the artifact
 
-## Server Architecture
+## API Architecture
 
-A dedicated **Node.js server** with **Postgres**, hosted on a single DigitalOcean droplet (or EC2).
+The production API is a **Hono app mounted inside the Next.js web package**, backed by **Postgres**. There should be one API implementation: `web/app/lib/api-app.ts`, exposed by `web/app/api/[[...route]]/route.ts`.
 
 ### Dumb Write, Smart Read
 
@@ -147,12 +147,12 @@ Building without testing leads to a demo that falls apart on stage. Testing as y
 
 The minimum to prove the idea works. After this phase, conversations are being captured and stored.
 
-**Server**
+**API**
 
-- Node.js + Express/Fastify + Postgres
+- Hono routes inside the Next.js app + Postgres
 - REST endpoints: create session, push chunks
-- No auth for POC — server is open / uses a simple API key
-- Deploy on DigitalOcean (single droplet: Node.js + Postgres). You will have root access to this droplet
+- Personal access token auth for CLI writes and cookie auth for web reads
+- Deploy web UI and API together on Vercel
 
 **CLI: `orchid claude`** (and `orchid codex`, etc.)
 
@@ -277,14 +277,14 @@ Every repo has a set of architectural decisions buried in AI conversations — "
 
 ```
 CLI:        TypeScript (wrapper + file watcher + HTTP sync client)
-Server:     Node.js + Express or Fastify
-Database:   Postgres
+API:        Hono routes inside the Next.js app
+Database:   Postgres via Drizzle
 Realtime:   Polling for POC (WebSockets later)
 Frontend:   Next.js App Router + Tailwind
-Hosting:    Single DigitalOcean droplet (everything on one box)
+Hosting:    Vercel for web/API, managed Postgres for data
 ```
 
-**POC deployment**: Everything runs on a single droplet with root access — Node.js server, Postgres, frontend, all on the same box. Nginx as a reverse proxy if needed, open whatever ports are necessary. Keep it simple — no containers, no separate services, no CI/CD. SSH in, deploy, done.
+**POC deployment**: The web UI and API deploy as one Next.js app. Keep all API route work in the web package unless there is a deliberate migration plan.
 
 ---
 

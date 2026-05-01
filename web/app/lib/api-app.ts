@@ -16,6 +16,16 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const WEB_UI_URL = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || 'http://localhost:3000';
 
+const scheduleAfterResponse = (task: () => Promise<void>): void => {
+  try {
+    after(task);
+  } catch {
+    task().catch((err) => {
+      console.error('after() fallback error:', err);
+    });
+  }
+};
+
 type AuthContext = {
   userId: string | null;
   teamId: string | null;
@@ -219,7 +229,7 @@ app.put('/sessions/:id', async (c) => {
 
     // After responding, extract commit SHAs from the transcript and store them
     if (transcript && (status === 'done' || !status)) {
-      after(async () => {
+      scheduleAfterResponse(async () => {
         try {
           const commits = extractCommitsFromTranscript(transcript as string);
           if (commits.length > 0) {
