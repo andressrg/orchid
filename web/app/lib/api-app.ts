@@ -233,7 +233,25 @@ app.get('/sessions', async (c) => {
 app.get('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
-    const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
+    const [session] = await db
+      .select({
+        id: orchidSession.id,
+        user_name: orchidSession.userName,
+        user_email: orchidSession.userEmail,
+        working_dir: orchidSession.workingDir,
+        git_remotes: orchidSession.gitRemotes,
+        branch: orchidSession.branch,
+        tool: orchidSession.tool,
+        transcript: orchidSession.transcript,
+        started_at: orchidSession.startedAt,
+        updated_at: orchidSession.updatedAt,
+        status: orchidSession.status,
+        message_count: orchidSession.messageCount,
+        user_id: orchidSession.userId,
+        team_id: orchidSession.teamId,
+      })
+      .from(orchidSession)
+      .where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
     return c.json(session);
   } catch (err) {
