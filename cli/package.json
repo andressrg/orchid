@@ -1,6 +1,6 @@
 {
   "name": "orchid-cli",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Capture and query AI coding conversations — CLI for orchidkeep.com",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
@@ -30,6 +30,7 @@
     "test": "tsx --test test/*.test.ts",
     "test:e2e": "tsx test/e2e.ts",
     "check": "tsc --noEmit",
+    "prepare": "tsc",
     "prepublishOnly": "tsc"
   },
   "dependencies": {},
