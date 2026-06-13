@@ -76,9 +76,13 @@ context — it delegates each task to a fresh workflow.
   `claude`, `gh`, `vercel`, `neonctl`, `pulumi`, Docker (`docker-compose.yml`), the browser.
   The conductor builds against a **local dev DB**, runs under `tmux` with `bypassPermissions`
   (accepted once), and stays alive for the full run (sleep is already disabled on this Mac).
-- **GitHub drives previews.** The orchestrator commits with `gh` (no token) and **pushes
-  branches to GitHub**; each push **auto-updates that branch's Vercel preview + a Neon branch
-  DB**. That preview is what every task is verified against. Nothing to set up — just push.
+- **GitHub drives previews (never the `vercel` CLI).** The orchestrator commits with `gh` (no
+  token) and **pushes branches + opens a PR**; opening the PR is what makes the GitHub→Vercel
+  integration **auto-build that branch's Vercel preview + a Neon branch DB**. That preview is
+  what every task is verified against. **Do not `vercel deploy` or `vercel link --yes` to
+  create previews** — just push + open the PR, then read the preview URL off the PR (Vercel
+  bot comment / `gh pr view --json statusCheckRollup` / deployment status). The `vercel` CLI
+  is read-only babysitting only (`vercel logs`, `vercel inspect`). Nothing to set up.
 - **Droplet (`orchid-deploy`) → the agent's services sandbox.** Where the agent freely
   installs/runs whatever it needs: Redis (cache/presence), **Temporal OSS** / a job queue,
   object storage (MinIO), scratch DBs. SSH via `~/.ssh/orchid-agent`. Docker + Caddy ready.
@@ -173,11 +177,13 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 ### Always test the Vercel preview (decision 4 detail)
 
 Every task's verify + adversarial review runs against the **Vercel preview deployment** of
-the branch — the real deployed app, not localhost. Flow: build locally → **push the task
-branch to GitHub** → that push **auto-builds a Vercel preview + a Neon branch DB** → headed
-browser + CLI tests + reviewers hit the **preview URL**; **babysit the PR** (wait for CI, fix
-failures, run bg review/test agents) → on full-gate green, **squash-merge into `main`** →
-Vercel deploys prod. Nothing to provision — the repo↔Vercel↔Neon wiring updates on push.
+the branch — the real deployed app, not localhost. Flow: build locally → **push the branch +
+open a PR with `gh`** → opening the PR makes the GitHub↔Vercel integration **auto-build a
+Vercel preview + a Neon branch DB** (no `vercel` CLI — never `vercel deploy`/`vercel link
+--yes`) → read the preview URL off the PR → headed browser + CLI tests + reviewers hit the
+**preview URL**; **babysit the PR** (wait for CI, fix failures, run bg review/test agents) →
+on full-gate green, **squash-merge into `main`** → Vercel deploys prod. Nothing to provision —
+the repo↔Vercel↔Neon wiring fires on push + PR.
 
 ## Remaining to unblock the first run
 
