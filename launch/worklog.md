@@ -29,6 +29,38 @@
 
 ---
 
+## 2026-06-13 — Auto-migrate pipeline + parallel ships (#54 #55 #56 #57 #58)
+
+- **Auto-migrate on deploy (#57)** — modeled on nanosas (`build: "pnpm db:migrate && next build"`
+  - `web/scripts/migrate.ts` with a pg advisory lock + a **baseline** shim for the drifted prod).
+    Confirmed live: prod build runs the migrator; new migrations self-apply on deploy. Nothing
+    auto-migrated before (CI = check.sh, build = next build, `runMigrations()` was dead code; prod
+    schema had been `drizzle push`-managed → drift). Julian chose "set up auto-migrate first".
+- **P7-4 efficiency profile (#56)** — public `/u/<handle>` (Orchid Efficiency Score = PRs ÷ tokens
+  as PR/MTok + tiers, contribution heatmap). **Live on prod**, `/u/julian` → 200.
+- **P7-2 token accounting (#54)** — persisted input/output token columns; CLI sends them; backfill.
+  Verified in prod: `/api/sessions` returns `input_tokens`/`output_tokens` (proves auto-migrate
+  applied the `0003` ALTER to prod).
+- **P0-4 FTS (#55 + #58)** — tsvector generated column + GIN index + ranked `websearch_to_tsquery`.
+  #55's first prod build FAILED (`to_tsvector` rejects >1MB input; a 2.4MB transcript) — caught by
+  the migrator (rolled back, build failed, **prod stayed healthy on the prior deploy**). #58 fixed
+  it: `left(coalesce(transcript,''), 250000)` (byte-safe, ~537KB worst-case vector). Deploys
+  unblocked.
+- Learnings (→ Patterns):
+  - **The auto-migrate baseline was too coarse** at first: it baselined ALL migrations when
+    `orchid_session` existed, but `session_commits` (0001) had never actually been created on the
+    drifted DB → the CREATE was skipped → `/u/<handle>` 500'd ("relation session_commits does not
+    exist"). Healed with a corrective **idempotent** `0002_ensure_session_commits` (CREATE IF NOT
+    EXISTS). Lesson: a coarse "schema exists → baseline everything" shim can skip a genuinely-missing
+    object; corrective idempotent migrations are the safe heal.
+  - **CI `check` passes don't prove a migration deploys** — generated-column ALTERs only fail when a
+    real row violates a limit (empty test DBs pass). The migrator + a >1MB-transcript scratch DB is
+    the real test. **Previews run against the prod DB** (no per-PR Neon branch) — additive migrations
+    are safe but worth isolating later.
+  - **Parallel worktree agents must each use a unique test DB** (globalSetup drops `orchid_test`'s
+    schema). Rebasing parallel migration PRs: take main's `web/drizzle/`, drop the agent's stray
+    migration, regenerate via `db:generate` (renumbers cleanly).
+
 ## 2026-06-13 22:10 — AI live on Claude in prod (#52) + P0-3 (#53) + parallel push
 
 - **PR #52 (urgent prod fix):** prod AI returned 502 for every session. Root cause (found by a
