@@ -105,6 +105,24 @@ function parseDecisions(raw: string): readonly Decision[] {
   }
 }
 
+// Extract human-readable text from a Claude Code transcript message's
+// `content`, which is either a plain string or an array of content blocks
+// (only `type === 'text'` blocks carry displayable text).
+const extractTranscriptText = (content: unknown): string => {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((block: { type?: string; text?: string } | string) => {
+        if (typeof block === 'string') return block;
+        if (block?.type === 'text' && typeof block.text === 'string') return block.text;
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+};
+
 const scheduleAfterResponse = (task: () => Promise<void>): void => {
   try {
     after(task);
@@ -510,27 +528,44 @@ app.get('/sessions/:id/summary', async (c) => {
     if (!session) return c.json({ error: 'Session not found' }, 404);
     if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
-    const lines = session.transcript.split('\n').filter((l) => l.trim());
-    const turns: Array<{ role: string; text: string }> = [];
-    for (const line of lines) {
-      try {
-        const obj = JSON.parse(line);
-        let role = '';
-        let text = '';
-        if (obj.type === 'human' || obj.role === 'user') {
-          role = 'Developer';
-          text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
-        } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-          role = 'AI';
-          text = typeof obj.content === 'string' ? obj.content : JSON.stringify(obj.content);
+    // Claude Code transcripts are JSONL where conversation turns are nested
+    // under `obj.message` ({ role, content }), and `content` may be a string or
+    // an array of content blocks. Mirror the parsing used by /chat so the role
+    // and text are always read from the right fields.
+    const turns = session.transcript
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line) as {
+            message?: { role?: string; content?: unknown };
+            role?: string;
+            type?: string;
+            content?: unknown;
+          };
+        } catch {
+          return null;
         }
-        if (role && text) turns.push({ role, text: text.slice(0, 500) });
-      } catch {
-        /* skip */
-      }
-    }
+      })
+      .map((obj) => {
+        if (!obj) return null;
+        const msg = obj.message ?? obj;
+        const msgRole = msg.role ?? obj.type;
+        if (msgRole === 'user' || msgRole === 'human') {
+          return { role: 'Developer', text: extractTranscriptText(msg.content ?? obj.content) };
+        }
+        if (msgRole === 'assistant') {
+          return { role: 'AI', text: extractTranscriptText(msg.content ?? obj.content) };
+        }
+        return null;
+      })
+      .filter((t): t is { role: string; text: string } => t !== null && t.text.trim() !== '');
 
-    const conversationText = turns.map((t) => `[${t.role}]: ${t.text}`).join('\n\n');
+    const conversationText = turns.map((t) => `[${t.role}]: ${t.text.slice(0, 500)}`).join('\n\n');
+
+    if (conversationText.trim() === '') {
+      return c.json({ summary: 'No conversation content available.' });
+    }
 
     const summary = await generateAiText({
       systemPrompt:
@@ -564,42 +599,34 @@ app.post('/sessions/:id/chat', async (c) => {
     if (!session.transcript)
       return c.json({ answer: 'No conversation content available to reason about.' });
 
-    function extractText(content: unknown): string {
-      if (typeof content === 'string') return content;
-      if (Array.isArray(content)) {
-        return content
-          .map((block: { type?: string; text?: string }) => {
-            if (typeof block === 'string') return block;
-            if (block?.type === 'text' && typeof block.text === 'string') return block.text;
-            return '';
-          })
-          .filter(Boolean)
-          .join('\n');
-      }
-      return '';
-    }
-
-    const lines = session.transcript.split('\n').filter((l) => l.trim());
-    const turns: Array<{ role: string; text: string }> = [];
-    for (const line of lines) {
-      try {
-        const obj = JSON.parse(line);
-        const msg = obj.message || obj;
-        const msgRole = msg.role || obj.type;
-        let role = '';
-        let text = '';
-        if (msgRole === 'user' || msgRole === 'human') {
-          role = 'Developer';
-          text = extractText(msg.content || obj.content);
-        } else if (msgRole === 'assistant') {
-          role = 'AI';
-          text = extractText(msg.content || obj.content);
+    const turns = session.transcript
+      .split('\n')
+      .filter((l) => l.trim())
+      .map((line) => {
+        try {
+          return JSON.parse(line) as {
+            message?: { role?: string; content?: unknown };
+            role?: string;
+            type?: string;
+            content?: unknown;
+          };
+        } catch {
+          return null;
         }
-        if (role && text) turns.push({ role, text });
-      } catch {
-        /* skip */
-      }
-    }
+      })
+      .map((obj) => {
+        if (!obj) return null;
+        const msg = obj.message ?? obj;
+        const msgRole = msg.role ?? obj.type;
+        if (msgRole === 'user' || msgRole === 'human') {
+          return { role: 'Developer', text: extractTranscriptText(msg.content ?? obj.content) };
+        }
+        if (msgRole === 'assistant') {
+          return { role: 'AI', text: extractTranscriptText(msg.content ?? obj.content) };
+        }
+        return null;
+      })
+      .filter((t): t is { role: string; text: string } => t !== null && t.text !== '');
 
     const conversationText = turns
       .map((t, i) => `[Turn ${i + 1}][${t.role}]: ${t.text}`)
