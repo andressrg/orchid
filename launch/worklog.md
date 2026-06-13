@@ -37,3 +37,17 @@
   `tasks.md`, `worklog.md`.
 - Result: foundation set on branch `orchestrator`. Next: provision secrets (P0-5), then
   execute Phase 0.
+
+## 2026-06-13 — Orchestrator setup
+- Settled all run decisions (local conductor, serial + in-task fan-out, Opus/no cap, full
+  send, full adversarial-review gate verified on Vercel preview, ping-then-2min-assume).
+- Conductor scaffolding: `.claude/loop.md`, `.husky/pre-push` (main-guard), kill switch + lock.
+- Validated local build env: docker Postgres up + schema applied (`bash check.sh` baseline).
+- Positivity pass across all docs; "everything is possible" mindset added to `AGENTS.md`.
+- Captured before-screenshots (landing, login, dashboard, session, search, activity).
+- Opened **PR #49** (`orchestrator` → `main`) so progress is reviewable.
+- Droplet: Pulumi `dev` stack created in the **personal org** (`juliankmazo/orchid-infra`),
+  preview clean (SSH key + droplet + firewall). `pulumi up` returned **401 from DO** — the
+  provided token is well-formed but rejected; next attempt uses a freshly generated DO token,
+  then the droplet comes up.
+- Next: fresh DO token → `pulumi up`; accept `bypassPermissions`; supervised dry-run of one task.
