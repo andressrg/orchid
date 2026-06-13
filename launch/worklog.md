@@ -29,6 +29,33 @@
 
 ---
 
+## 2026-06-13 22:10 — AI live on Claude in prod (#52) + P0-3 (#53) + parallel push
+
+- **PR #52 (urgent prod fix):** prod AI returned 502 for every session. Root cause (found by a
+  bg diagnosis agent reading prod runtime logs): Anthropic 400 "user messages must have non-empty
+  content" — the `/summary` + `/decisions` parsers read `obj.content`, but Claude Code transcripts
+  nest turns under `obj.message` (`{role, content[]}`). Zero turns → empty payload → 400 → 502.
+  OpenAI tolerated it; the Claude swap exposed it. Fixed with a shared `extractTranscriptText`
+  helper + `obj.message` parsing + empty-content guard; regression test. Merged → **verified in a
+  real headed browser on prod: AI Summary now returns 200 with real Claude output.** Headline goal
+  (AI on Claude, working in prod) is live.
+- **PR #53 (P0-3):** `getSessionById` metadata-only + `getSessionTranscriptById`; session-detail
+  conversation streamed via `<Suspense>` so metadata/AI-summary paint without the JSONL. Lean
+  reviewer: SHIP. Merged (`d1733c5`).
+- **Parallel push (user: "go fasterrr", prioritize virality + backend in parallel):** launched 3
+  **bg worktree agents**, each → its own PR: **P7-2** token accounting (data foundation), **P7-4**
+  public efficiency profile page (the shareable flywheel demo), **P0-4** Postgres FTS search.
+  Each uses an isolated test DB (`orchid_test_p72/p74/p04`) to avoid clobbering the shared one.
+- Learnings (→ Patterns):
+  - **Parallel agents must NOT share the `orchid_test` DB** — globalSetup drops/recreates its
+    schema, so concurrent `pnpm test` runs corrupt each other. Give each worktree agent a unique
+    DB (createdb + point globalSetup/vitest.config at it in-worktree, revert before commit).
+  - **CI's `check` job does NOT run web vitest** (only tsc+eslint+CLI tests) — DB-backed web tests
+    are a local-only gate, so validate them locally/in-agent before merge.
+  - **P7-1 (Sign up with GitHub) is blocked on a GitHub OAuth app** — `GITHUB_CLIENT_ID/SECRET` are
+    empty in `.env.orchestrator`. Needs Julian to register the OAuth app (homepage + callback URLs
+    in stack-and-access.md) before the virality front door can be built.
+
 ## 2026-06-13 21:45 — P0-1 + P0-2: AI on Claude (PR #51)
 
 - Shipped the typed Claude provider (`web/app/lib/ai.ts`: `askClaude` + `streamClaude`,

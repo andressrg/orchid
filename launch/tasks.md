@@ -54,10 +54,14 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
       ✅ PR #51 — single `generateAiText` helper (Claude-first, OpenAI fallback); Claude
       failures map to 502 (+regression test); README + stack-and-access updated. Key wired
       into Vercel prod by Julian 2026-06-13 (P0-5 prod portion).
-- [ ] **P0-3 · Stop over-fetching transcripts.** Remove `transcript` from `SELECT *` in
+- [x] **P0-3 · Stop over-fetching transcripts.** Remove `transcript` from `SELECT *` in
       `getSessionById`/`/sessions/:id` list paths where the body isn't rendered; add a
       dedicated transcript fetch. _Accept:_ list/detail metadata reads don't pull the JSONL.
-- [ ] **P0-4 · Postgres FTS index + search.** Add a `tsvector` generated column +
+      ✅ PR #53 (`d1733c5`) — `getSessionById` metadata-only + `getSessionTranscriptById`;
+      conversation streamed via `<Suspense>`; count from `message_count`. (Also shipped PR #52:
+      fixed the prod AI 502 — Claude Code transcripts nest turns under `obj.message`; the
+      summary/decisions parser sent empty content. AI on Claude verified live in prod, 200.)
+- [~] **P0-4 · Postgres FTS index + search.** Add a `tsvector` generated column +
       GIN index on transcript; rewrite `searchSessions` to use it (ranked) instead of `ilike`.
       Migration via `pnpm db:generate`. _Accept:_ search uses FTS, returns ranked results,
       `< 300ms` on a few hundred sessions; falls back gracefully.
@@ -209,14 +213,14 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 
 - [ ] **P7-1 · Sign up with GitHub.** Add GitHub OAuth to Better Auth. _Accept:_ GitHub
       signup/login works; stores GitHub identity + token scopes for repo/PR reads.
-- [ ] **P7-2 · Token accounting (persist).** Today the CLI computes `totalTokens` from
+- [~] **P7-2 · Token accounting (persist).** Today the CLI computes `totalTokens` from
       transcript `usage` only for the local TUI — **the server never stores tokens** (schema has
       `message_count` only). Add token columns to `orchid_session`, send them on sync, and
       backfill. _Accept:_ sessions carry persisted input/output token totals queryable for the
       PRs-÷-tokens metric.
 - [ ] **P7-3 · Sessions ↔ commits ↔ merged PRs.** Join GitHub PR/merge data to sessions via
       commits. _Accept:_ a merged PR maps to its building sessions + tokens.
-- [ ] **P7-4 · Efficiency profile page.** Public `/u/<handle>`: PRs shipped ÷ tokens,
+- [~] **P7-4 · Efficiency profile page.** Public `/u/<handle>`: PRs shipped ÷ tokens,
       contribution-graph style, beautiful (Linear-grade). _Accept:_ renders from imported data;
       proud-to-share.
 - [ ] **P7-5 · Share + OG image.** `@vercel/og` renders the graph as a PNG; share-to-X/
