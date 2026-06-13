@@ -9,9 +9,12 @@ Visual record so we can show the difference the orchestrator makes.
 | File | What |
 |------|------|
 | `orchid-landing-before.png` | Public landing page (www.orchidkeep.com) |
-| `orchid-login-before.png` | Login wall — the app (dashboard/sessions/search/decisions) is auth-gated |
+| `orchid-login-before.png` | Login wall |
+| `app-dashboard-before.png` | Sessions dashboard (149 sessions, 31 live, 4 users — all team-visible) |
+| `app-session-before.png` | Session viewer (transcript turns) |
+| `app-search-before.png` | Search page |
+| `app-activity-before.png` | Team activity page |
 
-> The authenticated app pages (dashboard, session viewer, search, decisions, settings) need
-> login to capture. To get a complete before-set, we need either test credentials, a
-> demo/seeded account, or a local run with `DATABASE_URL` + seed data. See the "what I need
-> from you" ask in the conversation / `stack-and-access.md`.
+> ⚠️ **Before making the repo public:** these shots contain real internal session titles and
+> branch names (incl. Snappr repos). Decide whether to redact/blur them or keep the
+> before-set in a private location. Owner OK'd capture for now.
