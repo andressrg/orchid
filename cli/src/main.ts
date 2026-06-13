@@ -1,7 +1,7 @@
 import { runClaude } from './commands/claude';
 import { runData } from './commands/data';
 import { runSync } from './commands/sync';
-import { runReview } from './commands/review';
+import { runReview, runAskContext } from './commands/review';
 import { runExplain } from './commands/explain';
 import { runConfig } from './commands/config';
 import { runLogin } from './commands/login';
@@ -22,9 +22,10 @@ Commands:
   sync      Sync past conversations (--discover to scan all)
   hooks     Manage Claude Code hooks (install, uninstall, status)
   config    Set up CLI configuration (~/.orchid/config.json)
-  data      Query stored sessions (list, show, search, summary)
-  review    Conversation-aware code review
-  explain   Explain why a commit was made
+  data         Query stored sessions (list, show, search, summary)
+  ask-context  Pre-review: who built a PR/branch, across which sessions, and why
+  review       Conversation-aware code review (brief grounded in intent)
+  explain      Explain why a commit was made
 
 Options:
   --help      Show this help message
@@ -80,6 +81,12 @@ function main() {
       break;
     case 'review':
       runReview(subArgs).catch((err) => {
+        console.error(`Error: ${err.message}`);
+        process.exit(1);
+      });
+      break;
+    case 'ask-context':
+      runAskContext(subArgs).catch((err) => {
         console.error(`Error: ${err.message}`);
         process.exit(1);
       });
