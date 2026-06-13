@@ -49,6 +49,8 @@ export async function listSessions(teamId: string) {
       updated_at: orchidSession.updatedAt,
       status: orchidSession.status,
       message_count: orchidSession.messageCount,
+      input_tokens: orchidSession.inputTokens,
+      output_tokens: orchidSession.outputTokens,
     })
     .from(orchidSession)
     .where(eq(orchidSession.teamId, teamId))
@@ -64,6 +66,8 @@ export async function listSessions(teamId: string) {
     started_at: r.started_at.toISOString(),
     updated_at: r.updated_at.toISOString(),
     message_count: r.message_count || 0,
+    input_tokens: r.input_tokens || 0,
+    output_tokens: r.output_tokens || 0,
   }));
 }
 
@@ -101,6 +105,8 @@ export async function getSessionById(sessionId: string, teamId: string) {
       updatedAt: orchidSession.updatedAt,
       status: orchidSession.status,
       messageCount: orchidSession.messageCount,
+      inputTokens: orchidSession.inputTokens,
+      outputTokens: orchidSession.outputTokens,
     })
     .from(orchidSession)
     .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
@@ -117,6 +123,8 @@ export async function getSessionById(sessionId: string, teamId: string) {
     updated_at: row.updatedAt.toISOString(),
     status: row.status,
     message_count: row.messageCount || 0,
+    input_tokens: row.inputTokens || 0,
+    output_tokens: row.outputTokens || 0,
   };
 }
 

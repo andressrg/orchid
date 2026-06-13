@@ -36,6 +36,12 @@ export const orchidSession = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     status: text('status').notNull().default('active'),
     messageCount: integer('message_count').default(0),
+    // Persisted token totals parsed from transcript `usage`. inputTokens folds
+    // in cache_creation/cache_read (all input-side), so
+    // inputTokens + outputTokens == the TUI's totalTokens. Powers the
+    // PRs-÷-tokens metric without re-parsing every transcript on read.
+    inputTokens: integer('input_tokens').default(0),
+    outputTokens: integer('output_tokens').default(0),
     userId: text('user_id').references(() => user.id),
     teamId: text('team_id').references(() => organization.id),
   },

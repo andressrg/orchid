@@ -130,15 +130,26 @@ export const extractMessageText = (content: unknown): string => {
   return '';
 };
 
-export const sumTokensFromUsage = (obj: Record<string, unknown>): number => {
+// Input vs output token split parsed from a single transcript line's `usage`.
+// Cache creation/read tokens are input-side, so they fold into inputTokens.
+export interface TokenUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+}
+
+export const ZERO_TOKEN_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0 };
+
+// Split one transcript object's `usage` into input/output totals. Reads either a
+// top-level `usage` or a nested `message.usage` (Claude Code shape).
+export const splitTokensFromUsage = (
+  obj: Record<string, unknown>,
+): TokenUsage => {
   const usage = (obj.usage ||
     (typeof obj.message === 'object' && obj.message !== null
       ? (obj.message as Record<string, unknown>).usage
       : null)) as Record<string, unknown> | null;
-  if (!usage) return 0;
+  if (!usage) return ZERO_TOKEN_USAGE;
   const input = typeof usage.input_tokens === 'number' ? usage.input_tokens : 0;
-  const output =
-    typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
   const cacheCreate =
     typeof usage.cache_creation_input_tokens === 'number'
       ? usage.cache_creation_input_tokens
@@ -147,8 +158,38 @@ export const sumTokensFromUsage = (obj: Record<string, unknown>): number => {
     typeof usage.cache_read_input_tokens === 'number'
       ? usage.cache_read_input_tokens
       : 0;
-  return input + output + cacheCreate + cacheRead;
+  const output =
+    typeof usage.output_tokens === 'number' ? usage.output_tokens : 0;
+  return { inputTokens: input + cacheCreate + cacheRead, outputTokens: output };
 };
+
+export const sumTokensFromUsage = (obj: Record<string, unknown>): number => {
+  const { inputTokens, outputTokens } = splitTokensFromUsage(obj);
+  return inputTokens + outputTokens;
+};
+
+// Reduce parsed transcript lines into persisted input/output token totals.
+export const sumTokenUsageFromTranscript = (
+  parsed: readonly Record<string, unknown>[],
+): TokenUsage =>
+  parsed.reduce<TokenUsage>((acc, obj) => {
+    const { inputTokens, outputTokens } = splitTokensFromUsage(obj);
+    return {
+      inputTokens: acc.inputTokens + inputTokens,
+      outputTokens: acc.outputTokens + outputTokens,
+    };
+  }, ZERO_TOKEN_USAGE);
+
+// Parse a raw JSONL transcript string straight into input/output token totals.
+// Used by the live sync watcher, which holds the full transcript text in memory.
+export const tokenUsageFromTranscriptText = (transcript: string): TokenUsage =>
+  sumTokenUsageFromTranscript(
+    transcript
+      .split('\n')
+      .filter((l) => l.trim())
+      .map(tryParseJson)
+      .filter((obj): obj is Record<string, unknown> => obj !== null),
+  );
 
 // ── Session grouping ───────────────────────────────────────────────────────
 

@@ -11,6 +11,9 @@ import {
   tryParseJson,
   extractMessageText,
   sumTokensFromUsage,
+  splitTokensFromUsage,
+  sumTokenUsageFromTranscript,
+  tokenUsageFromTranscriptText,
   groupSessionsByProject,
   markSessionsSynced,
   markGroupSessionsSynced,
@@ -263,6 +266,99 @@ describe('sumTokensFromUsage', () => {
       usage: { input_tokens: 100 },
     });
     assert.equal(result, 100);
+  });
+});
+
+// ── splitTokensFromUsage ───────────────────────────────────────────────────
+
+describe('splitTokensFromUsage', () => {
+  it('folds cache tokens into inputTokens, keeps output separate', () => {
+    const result = splitTokensFromUsage({
+      usage: {
+        input_tokens: 100,
+        output_tokens: 200,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 400,
+      },
+    });
+    assert.deepEqual(result, { inputTokens: 800, outputTokens: 200 });
+  });
+
+  it('reads nested message.usage', () => {
+    const result = splitTokensFromUsage({
+      message: { usage: { input_tokens: 50, output_tokens: 75 } },
+    });
+    assert.deepEqual(result, { inputTokens: 50, outputTokens: 75 });
+  });
+
+  it('returns zero usage when no usage object', () => {
+    assert.deepEqual(splitTokensFromUsage({}), {
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+
+  it('stays consistent with sumTokensFromUsage total', () => {
+    const obj = {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 200,
+        cache_creation_input_tokens: 300,
+        cache_read_input_tokens: 400,
+      },
+    };
+    const { inputTokens, outputTokens } = splitTokensFromUsage(obj);
+    assert.equal(inputTokens + outputTokens, sumTokensFromUsage(obj));
+  });
+});
+
+// ── sumTokenUsageFromTranscript / tokenUsageFromTranscriptText ──────────────
+
+describe('sumTokenUsageFromTranscript', () => {
+  it('sums input/output across parsed lines', () => {
+    const result = sumTokenUsageFromTranscript([
+      { type: 'user', content: 'hi' },
+      { usage: { input_tokens: 10, output_tokens: 20 } },
+      {
+        message: {
+          usage: {
+            input_tokens: 5,
+            output_tokens: 7,
+            cache_read_input_tokens: 3,
+          },
+        },
+      },
+    ]);
+    assert.deepEqual(result, { inputTokens: 18, outputTokens: 27 });
+  });
+
+  it('returns zero usage for empty input', () => {
+    assert.deepEqual(sumTokenUsageFromTranscript([]), {
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+  });
+});
+
+describe('tokenUsageFromTranscriptText', () => {
+  it('parses a raw JSONL transcript string', () => {
+    const transcript = [
+      '{"type":"user","content":"Hello"}',
+      '{"type":"assistant","usage":{"input_tokens":10,"output_tokens":20}}',
+      'not valid json',
+      '{"type":"assistant","message":{"usage":{"input_tokens":4,"output_tokens":6,"cache_creation_input_tokens":2}}}',
+    ].join('\n');
+    assert.deepEqual(tokenUsageFromTranscriptText(transcript), {
+      inputTokens: 16,
+      outputTokens: 26,
+    });
+  });
+
+  it('returns zero usage for an empty transcript', () => {
+    assert.deepEqual(tokenUsageFromTranscriptText(''), {
+      inputTokens: 0,
+      outputTokens: 0,
+    });
   });
 });
 
