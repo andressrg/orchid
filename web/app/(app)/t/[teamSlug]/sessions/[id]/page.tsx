@@ -1,12 +1,13 @@
 import Link from 'next/link';
-import { parseTranscript, timeAgo, formatDuration } from '@/app/lib/api';
+import { Suspense } from 'react';
+import { timeAgo, formatDuration } from '@/app/lib/api';
 import { getServerAuth } from '@/app/lib/server-auth';
 import { getSessionById } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
 import { AISummary } from '@/app/components/ai-summary';
 import { CopyLink } from '@/app/components/copy-link';
-import { TurnHighlighter } from './turn-highlighter';
 import { SessionTabs } from '@/app/components/session-tabs';
+import { SessionConversation, ConversationSkeleton } from './session-conversation';
 
 function MetadataItem({
   label,
@@ -71,14 +72,13 @@ export default async function SessionPage({
     );
   }
 
-  const turns = session.transcript ? parseTranscript(session.transcript) : [];
   const isActive = session.status === 'active';
   const userName = session.user_name || 'unknown';
+  const messageCount = session.message_count;
 
   return (
     <div className="animate-fade-in">
       {isActive && <LiveRefresh />}
-      {highlightTurn !== null && !isNaN(highlightTurn) && <TurnHighlighter turn={highlightTurn} />}
 
       {/* Header */}
       <header
@@ -147,7 +147,7 @@ export default async function SessionPage({
             })()}
           <CopyLink />
           <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
-            {turns.length} turns
+            {messageCount} turns
           </span>
         </div>
       </header>
@@ -172,7 +172,7 @@ export default async function SessionPage({
           }
         />
         <MetadataItem label="Tool" value={session.tool || 'unknown'} />
-        <MetadataItem label="Messages" value={`${turns.length} turns`} />
+        <MetadataItem label="Messages" value={`${messageCount} turns`} />
         <MetadataItem
           label="Started"
           value={session.started_at ? new Date(session.started_at).toLocaleString() : 'unknown'}
@@ -237,8 +237,23 @@ export default async function SessionPage({
       {/* AI Summary */}
       <AISummary sessionId={session.id} />
 
-      {/* Tabbed content: Conversation, Commits, Chat */}
-      <SessionTabs sessionId={session.id} turns={turns} userName={userName} isActive={isActive} />
+      {/* Tabbed content: Conversation, Commits, Chat. The conversation body is
+          streamed in via Suspense so this metadata shell paints without waiting
+          on the (potentially large) transcript read. */}
+      <SessionTabs
+        sessionId={session.id}
+        conversation={
+          <Suspense fallback={<ConversationSkeleton />}>
+            <SessionConversation
+              sessionId={session.id}
+              teamId={serverAuth.teamId}
+              userName={userName}
+              isActive={isActive}
+              highlightTurn={highlightTurn}
+            />
+          </Suspense>
+        }
+      />
     </div>
   );
 }
