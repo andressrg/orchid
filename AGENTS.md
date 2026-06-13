@@ -1,6 +1,8 @@
-## CRITICAL:
+## Harness:
 
-DO NOT STOP WORKING AND LOOPING EVER. I WILL TELL YOU WHEN TO STOP
+The orchestrator runs on **Claude workflows** (the Workflow tool) — not a bash loop. Each
+agent does one bounded task and returns. Persistence, looping, and sequencing are decided by
+the workflow/orchestrator, never by a blanket "never stop" instruction in this file.
 
 ## Coding Style:
 
