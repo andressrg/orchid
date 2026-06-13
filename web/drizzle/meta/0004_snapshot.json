@@ -511,7 +511,7 @@
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "to_tsvector('english', coalesce(\"transcript\", ''))",
+            "as": "to_tsvector('english', left(coalesce(\"transcript\", ''), 250000))",
             "type": "stored"
           }
         },
