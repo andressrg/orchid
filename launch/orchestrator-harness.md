@@ -66,12 +66,21 @@ which survives detach/sleep and shows live in `claude agents`). The *unit of wor
 adversarial review, structured verdicts. The conductor stays small and never holds large
 context — it delegates each task to a fresh workflow.
 
-## Where it runs
+## Where it runs (two separate things — don't conflate)
 
-The **DO droplet** (`orchid-deploy`, 4 vCPU / 8 GB, Docker, Claude + Codex preinstalled),
-so it keeps running for 12h regardless of your laptop. The repo is cloned there on the
-`orchestrator` branch; the conductor runs under `tmux` (or as a background session) with
-`bypassPermissions` (accepted once interactively).
+- **Conductor → local (this Mac), local-first.** All the tooling is already here and authed:
+  `claude`, `gh`, `vercel`, `neonctl`, `pulumi`, Docker (`docker-compose.yml`), the browser.
+  The conductor builds + validates against a **local dev DB** and never touches prod. Runs
+  under `tmux` with `bypassPermissions` (accepted once). Caveat: the Mac must stay **awake**
+  (`caffeinate -dimsu`); `/loop` is session-scoped and stops on shutdown. If we want
+  laptop-closed hands-off, move the conductor to the droplet (or Claude cloud **Routines**).
+- **Droplet (`orchid-deploy`) → the agent's services sandbox**, not the conductor's home.
+  It's where the agent freely installs/runs services it needs so it's never blocked: Redis
+  (cache/presence), a job queue (BullMQ/Temporal), object storage (MinIO), scratch DBs, etc.
+  SSH via `~/.ssh/orchid-agent` (key present locally). Docker + Caddy preinstalled.
+- **Prod (Vercel + Neon)** is touched only at **promotion** (human-gated), and appears to
+  live under **Andres's** accounts — so deploys/migrations there need his access. The
+  orchestrator does not need it to do its build work.
 
 ## How `/loop` works & how we prevent overlap
 
@@ -132,20 +141,20 @@ being off, the durable alternatives are **Routines** (Anthropic cloud), **GitHub
 
 ## Pre-launch checklist
 
-- [ ] Secrets on droplet + Vercel: `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `DATABASE_URL`,
-      GitHub OAuth, Resend (P0-5).
-- [ ] Repo cloned on droplet, `orchestrator` branch, `pnpm install`, `bash check.sh` green.
-- [ ] `bypassPermissions` accepted once on the droplet.
-- [ ] Browser for headed UI tests installed (Playwright + Chromium; `xvfb` for headed on a
-      headless server — or decide headless is acceptable server-side; see decisions).
-- [ ] `pre-push` hook blocking `main` installed.
-- [ ] Kill switch (`launch/STOP`) + budget cap configured.
-- [ ] A first dry-run of ONE task end-to-end (build → verify → PR → merge) watched live.
+- [ ] `ANTHROPIC_API_KEY` in local `.env` (the app's Claude calls need it). `vercel`/`neon`/
+      `gh` already authed locally — no tokens needed for build work.
+- [ ] Local dev DB up (`docker compose up` + `pnpm db:migrate`); `bash check.sh` green.
+- [ ] `bypassPermissions` accepted once locally; `caffeinate -dimsu` keeps the Mac awake.
+- [ ] Browser ready for headed UI tests (Playwright already working here).
+- [ ] Droplet reachable as the services sandbox (`ssh -i ~/.ssh/orchid-agent root@<ip>`).
+- [ ] `pre-push` hook blocking `main` installed; kill switch (`launch/STOP`) + budget cap set.
+- [ ] First dry-run of ONE task end-to-end (build → verify → PR → merge) watched live.
 
 ## Open decisions (let's settle these together)
 
-1. **Run location:** droplet (persistent, recommended) — confirm? Or local for the first
-   supervised run, then move to droplet?
+1. **Conductor location:** **local (this Mac) + `caffeinate`** (recommended — all tooling is
+   here, builds locally, never touches prod). Move to the droplet only if you want to close
+   the laptop and walk away. The droplet stays the **services sandbox** either way. Confirm local?
 2. **Parallelism:** serial-with-in-task-fanout (recommended) vs. 2 parallel lanes?
 3. **Model tier & budget:** which Claude model for building (Opus?) vs. mechanical edits vs.
    summaries (Haiku); and the $/token cap for the 12h run?

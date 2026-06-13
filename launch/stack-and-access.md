@@ -1,19 +1,38 @@
 # Stack & Access — what the orchestrator needs to ship everything
 
 > Drop credentials into a local `.env` / `.secrets` (gitignored) and the droplet's env.
-> Status legend: ✅ have · 🔑 you provide · 🆕 to create · ⚙️ to set up
+> Status legend: ✅ already have (authed locally) · 🔑 you provide · 🆕 to create · ⚙️ later
 
 ---
 
-## You already agreed to provide these (top priority — unblocks the most)
+## Reality check (verified 2026-06-13)
 
-| Need | Why | Where it goes | Status |
-|------|-----|---------------|--------|
-| **Anthropic API key** | Claude becomes the brain (summaries, review context, Q&A), replacing `gpt-4o-mini` | `ANTHROPIC_API_KEY` (Vercel env + droplet) | 🔑 |
-| **DO droplet SSH + API token** | Redis (cache/live status), background jobs, object storage option, and running the orchestrator for hours | `~/.ssh/orchid-agent`, `DIGITALOCEAN_TOKEN` | 🔑 (droplet exists in Pulumi) |
-| **Vercel access (token)** | Deploys, env vars, preview URLs end-to-end | `VERCEL_TOKEN` (local for CLI) | 🔑 |
-| **Neon access (connection + admin)** | Run migrations, add the FTS index, manage DB | `DATABASE_URL` | 🔑 |
-| **GitHub OAuth app + token** | "Sign up with GitHub", PR-review webhook, read repos/PRs for the public profile | `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_TOKEN` | 🆕 app + 🔑 token |
+Most CLIs are **already authed locally as Julian** — so the orchestrator runs **local-first**
+and we need far less than first thought:
+
+| Need | Why | Status |
+|------|-----|--------|
+| `vercel` CLI | deploys / env / preview URLs | ✅ authed (julian) |
+| `neonctl` CLI | migrations, FTS index, DB admin | ✅ authed (julian) |
+| `gh` CLI | git ops, PRs, webhooks | ✅ authed (julian) |
+| `claude`, `pulumi` | conductor + droplet IaC | ✅ present |
+| Droplet SSH key | services sandbox access | ✅ `~/.ssh/orchid-agent` present (need IP) |
+| **Anthropic API key** | the app's Claude calls (summaries/review/Q&A) — the one true must-have | 🔑 **provide** → `ANTHROPIC_API_KEY` |
+| Droplet IP / reachability | confirm `ssh -i ~/.ssh/orchid-agent root@<ip>` works | 🔑 confirm |
+| **Prod DB + Vercel ownership** | Orchid's Vercel project + Neon DB appear to be under **Andres**, not Julian (no `orchid` Vercel project here; only Neon project visible is `el-topo-diamantina`). Needed only at **promotion**, not for build work | ⚙️ confirm with Andres |
+| GitHub OAuth app | "Sign up with GitHub" + public profile | 🆕 later (Phase 7) |
+| Claude GitHub app + `GITHUB_TOKEN` | PR-review gate / webhook bot | ⚙️ later (Phase 2) |
+| ~~Resend~~ | invite/verification email only — **not a blocker** | skip |
+
+**Build env = local:** the conductor uses a **local dev DB** (`docker compose up` +
+`pnpm db:migrate`) and never needs prod creds. Prod deploy/migrations happen at promotion,
+gated by you + Andres.
+
+### GitHub OAuth app setup (Phase 7)
+- Create at github.com → Settings → Developer settings → OAuth Apps → New.
+- Homepage: `https://www.orchidkeep.com` · Callback: `https://www.orchidkeep.com/api/auth/callback/github`
+  (and `http://localhost:3000/api/auth/callback/github` for dev).
+- `GITHUB_TOKEN` for the webhook bot: fine-grained PAT, **Contents: read**, **Pull requests: write**, **Issues: write**.
 
 ### Exact GitHub OAuth app setup
 - Create at github.com → Settings → Developer settings → OAuth Apps → New.
