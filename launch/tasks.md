@@ -26,6 +26,11 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
       fake: add automatic migration on Vercel build (a `db:migrate` build/postinstall step, or
       boot-time migrate-with-lock) and confirm `ANTHROPIC_API_KEY` is in Vercel **preview** env
       (`vercel env add`). Until then, also verify locally against the migrated docker DB.
+      **ALSO (found 2026-06-13, PR #51):** authed browser login **fails on every preview** with
+      **"Invalid origin"** — Better Auth (`web/app/lib/auth.ts`) only trusts the configured
+      `baseURL`; preview hosts aren't in `trustedOrigins`. Add Vercel preview hosts to
+      `trustedOrigins` (scope to our project, e.g. `https://orchid-web-*-frecuenti.vercel.app` + the per-deploy `VERCEL_URL`) so dashboard/sessions/chat can be verified on previews, not
+      just prod. This is the real blocker to "verify on the preview URL."
 - [ ] **S-1 · Authenticate the GitHub webhook.** Verify `X-Hub-Signature-256` HMAC on
       `/webhook/github` (unauthenticated today — api-app.ts:63 skips it) and `escapeLike` the
       repo name (api-app.ts:783).
@@ -38,13 +43,17 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 
 ## Phase 0 — Foundation & quick speed wins _(unblocks everything; do first)_
 
-- [ ] **P0-1 · Claude provider abstraction.** Create `web/app/lib/ai.ts` with a typed
+- [x] **P0-1 · Claude provider abstraction.** Create `web/app/lib/ai.ts` with a typed
       `askClaude({system, messages, stream})` using `ANTHROPIC_API_KEY` and the best available
       Claude model. _Accept:_ one module, typed, streaming-capable; no endpoint calls OpenAI
-      directly anymore after P0-2.
-- [ ] **P0-2 · Swap summary/chat/decisions to Claude.** Replace the three `fetch`
+      directly anymore after P0-2. ✅ PR #51 (`a7b9f0b`) — `askClaude`/`streamClaude`, typed
+      readonly, injection-safe (`system` ≠ message); 271-line unit suite.
+- [x] **P0-2 · Swap summary/chat/decisions to Claude.** Replace the three `fetch`
       `gpt-4o-mini` calls in `api-app.ts` with `askClaude`. _Accept:_ summary/chat/decisions
       run on Claude; README/`stack-and-access.md` updated; OpenAI is optional fallback only.
+      ✅ PR #51 — single `generateAiText` helper (Claude-first, OpenAI fallback); Claude
+      failures map to 502 (+regression test); README + stack-and-access updated. Key wired
+      into Vercel prod by Julian 2026-06-13 (P0-5 prod portion).
 - [ ] **P0-3 · Stop over-fetching transcripts.** Remove `transcript` from `SELECT *` in
       `getSessionById`/`/sessions/:id` list paths where the body isn't rendered; add a
       dedicated transcript fetch. _Accept:_ list/detail metadata reads don't pull the JSONL.

@@ -13,6 +13,7 @@
 - Sessions are **private by default** after P1-1 — don't reintroduce team-wide reads.
 - SQL columns are **table-qualified**; code is **functional** (no loops/mutation/`any`).
 - Quality gate per task: `bash check.sh` + tests + headed-browser verify for UI.
+- **Authed preview verify is blocked by "Invalid origin"** (Better Auth `trustedOrigins`); until S-0 fixes it, verify authed flows on **prod** (login works) with revert-ready discipline. `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 
 ---
 
@@ -27,6 +28,29 @@
 ```
 
 ---
+
+## 2026-06-13 21:45 — P0-1 + P0-2: AI on Claude (PR #51)
+
+- Shipped the typed Claude provider (`web/app/lib/ai.ts`: `askClaude` + `streamClaude`,
+  readonly typed shapes, injection-safe — `system` is top-level, never a message) and swapped
+  summary/chat/decisions to it via one `generateAiText` helper (Claude-first, OpenAI fallback).
+- Lean adversarial review caught one real blocker: Claude-path failures fell through to **HTTP
+  500** instead of **502** (the OpenAI path threw `AiServiceError`). Wrapped the Claude call so
+  both providers map uniformly to 502; added a regression test (`__tests__/api/ai-error-mapping.test.ts`)
+  that stubs the key + a failing Anthropic fetch and asserts 502. Updated README + stack-and-access.
+- PR #51 → squash-merged to `main` (`a7b9f0b`); branch deleted. CI green; 63 web + 79 CLI tests pass.
+- Result: prod `/api/health` → ok. Verified the headline goal in a **real headed browser on prod**
+  (logged in with `ORCHID_TEST_EMAIL`): "Generate AI Summary" initially returned **503** because
+  `ANTHROPIC_API_KEY` wasn't in Vercel prod env yet (P0-5). **Julian then set the key + redeployed.**
+- Learnings (→ Patterns):
+  - **Previews aren't browser-verifiable today**: Better Auth `trustedOrigins` only trusts the
+    configured `baseURL`, so logging into a preview deploy fails with **"Invalid origin."** That's
+    the core of **S-0 (make the verify gate real)** — fix `trustedOrigins` to include Vercel preview
+    hosts so authed flows can be tested on previews, not just prod. Until then, verify authed flows
+    on **prod** (login works there) with revert-ready discipline.
+  - AI features **fail safe**: no key → 503 (summary) / mock (decisions), never a crash. No regression.
+  - `generateAiText` reads `ANTHROPIC_API_KEY` at module load → to test the Claude branch, `vi.stubEnv`
+    - `vi.resetModules()` + dynamic `import()` of `api-app`.
 
 ## 2026-06-13 — docs: PR-driven previews (user correction)
 

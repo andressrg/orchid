@@ -55,7 +55,7 @@ orchid explain <commit-sha>            # Explain why a commit was made
 
 - Create/update/delete sessions
 - Full-text search
-- AI-powered summaries (OpenAI)
+- AI-powered summaries (Claude)
 - Session chat Q&A (`POST /sessions/:id/chat`)
 - Commit history per session (`GET /sessions/:id/commits`)
 - Decision log extraction (`GET /decisions`)
@@ -70,7 +70,7 @@ Frontend:   Next.js 16 + Tailwind CSS
 Database:   PostgreSQL on Neon (serverless)
 Auth:       Better Auth (cookie sessions + personal access tokens)
 ORM:        Drizzle ORM
-AI:         OpenAI GPT-5.4-nano for summaries and reviews
+AI:         Claude (claude-opus-4-8) for summaries, decisions, and Q&A; OpenAI optional fallback
 Hosting:    Vercel (web + API) + Neon (database)
 ```
 
