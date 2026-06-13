@@ -26,8 +26,12 @@ babysits the PR, and merges.
    workflow holds the plan and fans out subagents:
    - Implements in a fresh git **worktree**, functional style, **the simplest version that
      meets the acceptance criteria**. **Write/extend tests for everything you build.**
-   - Pushes the task branch + opens a **PR**; the push auto-builds a **Vercel preview + Neon
-     branch DB**.
+   - Pushes the task branch + opens a **PR** with `gh`. **Opening the PR is what creates the
+     preview** — the GitHub→Vercel integration auto-builds a **Vercel preview + Neon branch
+     DB**. **Never use the `vercel` CLI to create or deploy a preview** (no `vercel deploy`,
+     no `vercel link --yes` — that just spawns stray projects). Grab the preview URL from the
+     PR itself: the Vercel bot's PR comment, `gh pr view <pr> --json statusCheckRollup`, or
+     `gh api repos/andressrg/orchid/deployments`.
    - **Verifies on the preview URL** (not localhost): `bash check.sh` + tests + **headed
      browser** click-through (**log in with `ORCHID_TEST_EMAIL`/`ORCHID_TEST_PASSWORD`** to
      test the real authed flows — dashboard, sessions, review) + exercises the affected
@@ -66,7 +70,10 @@ babysits the PR, and merges.
 
 - Local build DB: `DATABASE_URL=postgresql://orchid:orchid@localhost:5432/orchid` (docker).
 - `ANTHROPIC_API_KEY` from `.env.orchestrator`.
-- **Git/PRs/deploy:** authed `gh` + `vercel` CLIs (no tokens). **`main` auto-deploys prod**;
-  previews build per PR. Always `gh pr merge --squash`.
+- **Git/PRs/deploy:** authed `gh` CLI (no tokens). **Open a PR → preview builds
+  automatically; squash-merge to `main` → prod auto-deploys.** Previews and prod deploys are
+  **100% PR/branch driven — never run `vercel deploy` or `vercel link --yes`.** The `vercel`
+  CLI is for **read-only babysitting only** (`vercel logs`, `vercel inspect`) when debugging a
+  deploy. Always `gh pr merge --squash`.
 - **Droplet** (`137.184.108.61`, infra-only, services sandbox): SSH `~/.ssh/orchid-agent`.
   Background jobs: **Vercel Workflows** or **Temporal OSS** there.
