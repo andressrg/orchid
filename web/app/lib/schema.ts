@@ -45,7 +45,7 @@ export const orchidSession = pgTable(
     // ranked search (`websearch_to_tsquery` @@ + `ts_rank`) that replaced the
     // old `ilike` full scan. Read-only at the app layer.
     transcriptSearch: tsvector('transcript_search').generatedAlwaysAs(
-      sql`to_tsvector('english', coalesce("transcript", ''))`,
+      sql`to_tsvector('english', left(coalesce("transcript", ''), 250000))`,
     ),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
