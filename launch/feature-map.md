@@ -111,7 +111,7 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 | Personal access tokens | ✅ | `api_key` table, hashed | — |
 | GitHub OAuth provider | ❌ | — | needed for profile |
 | Stripe billing | 📄 | PR #33 plan | not built |
-| Secret redaction before store | 📄 | PR #40 research | transcripts stored raw |
+| Secret redaction before store | 📄→**planned (Phase T, high pri)** | PR #40 research done; transcripts stored **raw** today | implement local-first redaction in CLI + server gate |
 
 ## 11. Infra · Background jobs · Realtime
 | Feature | Status | Reality | Gap |

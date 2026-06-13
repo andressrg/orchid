@@ -54,6 +54,38 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 - [ ] **P1-5 · Share UI.** A "Share" affordance on a session (copy link / pick teammate).
   *Accept:* Linear-style, instant, generates a working share.
 
+## Phase T — Secret redaction (TRUST — do early)  *(depends: none; land before raw transcripts pile up)*
+
+> "We never store your secrets." Users *will* paste API keys into prompts. Today the CLI
+> uploads the raw JSONL and the server stores it verbatim — every downstream feature (search,
+> AI, webhook) then handles secrets. Fix at the source. Based on PR #40's research:
+> **local-first, deterministic, redacted-canonical-storage.** This is also a selling point
+> that makes "capture everything" safe → feeds the flywheel.
+
+- [ ] **T-1 · Transcript-aware parsing.** In the CLI, parse JSONL into typed fragments
+  (model text, tool input/output, command output, diffs, env dumps, MCP config) before
+  scanning. *Accept:* a fragment model the scanner runs over; tests on real transcripts.
+- [ ] **T-2 · Deterministic redaction before upload (CLI, default-on).** Scan fragments for
+  provider tokens (`sk-…`, `ghp_…`, AWS `AKIA…`, GCP, Slack), private keys, JWTs, connection
+  strings with passwords, and `KEY=secret` env lines; context-bound entropy for the rest.
+  Replace with typed placeholders (`[REDACTED:aws_key]`). Upload **only redacted** transcript
+  + a **manifest** (span coords, detector, rule version, HMAC fingerprint — **never the raw
+  secret**). *Accept:* known secrets never leave the machine in raw form; opt-out flag exists;
+  fast (no perceptible sync delay).
+- [ ] **T-3 · Server ingestion gate + schema.** Add `redaction_status`, `scanner_version`,
+  and a findings table. **Re-scan on ingest**; do not persist/expose transcript until
+  `redaction_status = passed`. Search/AI/webhook read only redacted canonical text.
+  *Accept:* an unredacted upload is quarantined, not stored raw; existing rows flagged for
+  re-scan.
+- [ ] **T-4 · AI prompt-boundary hardening.** Put transcript in an explicitly-untrusted data
+  section, never in the system prompt; run AI features only after redaction passes; use
+  structured outputs for extraction. *Accept:* chat/summary/decisions can't be hijacked by
+  transcript content; verified with an injection probe. (Pairs with P0-2.)
+- [ ] **T-5 · (optional) Preventive hook + MCP scan.** Optional Claude Code `PreToolUse` hook
+  that warns/blocks secret-printing commands (`cat .env`, `env`, `kubectl get secret -o yaml`);
+  scan `.mcp.json`/`.claude/settings.json` when they enter transcript context. *Accept:* opt-in;
+  documented.
+
 ## Phase 2 — The 80% feature: conversation-aware review  *(depends: P0, P1-3)*
 
 - [ ] **P2-1 · Harden commit↔session capture.** Today linking is **regex over transcript
@@ -186,5 +218,7 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 
 ### Sequencing note
 Phases 0→1→2 are the critical path to the headline demo (fast Claude + private + review
-loop). 3/4 run alongside. 5 (takeover) and 7 (virality) are the two most *shareable* demos —
-prioritize one of them early for momentum once the critical path is green.
+loop). **Phase T (secret redaction) runs in parallel and must land early** — every day
+without it adds raw transcripts we'd have to re-scan. 3/4 run alongside. 5 (takeover) and 7
+(virality) are the two most *shareable* demos — prioritize one early for momentum once the
+critical path is green.

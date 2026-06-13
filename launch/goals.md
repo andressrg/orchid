@@ -150,6 +150,10 @@ thoughts into Orchid.
 - **Private by default.** No teammate or agent sees another's session unless it was
   shared, handed off, or taken over — all brokered through Orchid. Team dashboards show
   *aggregate* stats, not content, unless shared.
+- **Never store users' secrets.** Redact secrets **locally in the CLI before upload**
+  (local-first); the server re-scans and stores only redacted, canonical transcripts.
+  Raw secrets never become canonical. This is both a trust promise and what makes "capture
+  everything" safe enough to feed the flywheel. (Phase T.)
 - **Design:** interfaces like **Linear** (calm, dense, fast). CLI like the **Claude Code
   TUI**. The public profile must be something you're *proud* to post on X / LinkedIn.
 - **The CLI is the API for agents.** Every capability an agent needs is a shell command;
