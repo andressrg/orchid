@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, writeFile, copyFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, copyFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Pool } from 'pg';
@@ -11,6 +11,17 @@ const ADMIN_URL = 'postgresql://orchid:orchid@localhost:5432/orchid';
 const SCRATCH_URL = `postgresql://orchid:orchid@localhost:5432/${SCRATCH_DB}`;
 
 const REAL_DRIZZLE_DIR = resolve(process.cwd(), 'drizzle');
+
+// The real, committed migration tags in journal order — read at runtime so this
+// test never needs editing when a migration is added. `trackedTags` returns them
+// sorted, so keep a sorted copy for ledger assertions.
+type JournalEntry = { readonly idx: number; readonly tag: string };
+async function realJournalTags(): Promise<readonly string[]> {
+  const raw = await readFile(join(REAL_DRIZZLE_DIR, 'meta', '_journal.json'), 'utf8');
+  const journal = JSON.parse(raw) as { entries: readonly JournalEntry[] };
+  return [...journal.entries].sort((a, b) => a.idx - b.idx).map((entry) => entry.tag);
+}
+const sorted = (tags: readonly string[]): readonly string[] => [...tags].sort();
 
 const adminPool = new Pool({ connectionString: ADMIN_URL });
 
@@ -67,20 +78,22 @@ afterAll(async () => {
 });
 
 describe('migrate (build-time runner)', () => {
-  it('fresh DB: applies 0000 + 0001 from scratch and tracks both', async () => {
+  it('fresh DB: applies every committed migration from scratch and tracks them', async () => {
+    const expected = await realJournalTags();
     const result = await migrate({ databaseUrl: SCRATCH_URL });
 
     expect(result.baselined).toBe(false);
-    expect(result.applied).toEqual(['0000_empty_alice', '0001_dear_dragon_lord']);
+    expect(result.applied).toEqual(expected);
 
     await withScratch(async (pool) => {
       expect(await tableExists({ pool, table: 'orchid_session' })).toBe(true);
       expect(await tableExists({ pool, table: 'session_commits' })).toBe(true);
-      expect(await trackedTags({ pool })).toEqual(['0000_empty_alice', '0001_dear_dragon_lord']);
+      expect(await trackedTags({ pool })).toEqual(sorted(expected));
     });
   });
 
   it('re-run with nothing pending is a no-op', async () => {
+    const expected = await realJournalTags();
     await migrate({ databaseUrl: SCRATCH_URL });
     const second = await migrate({ databaseUrl: SCRATCH_URL });
 
@@ -88,7 +101,7 @@ describe('migrate (build-time runner)', () => {
     expect(second.applied).toEqual([]);
 
     await withScratch(async (pool) => {
-      expect(await trackedTags({ pool })).toEqual(['0000_empty_alice', '0001_dear_dragon_lord']);
+      expect(await trackedTags({ pool })).toEqual(sorted(expected));
     });
   });
 
@@ -110,29 +123,28 @@ describe('migrate (build-time runner)', () => {
     //    (which would error on the already-existing tables). The fact that this
     //    call resolves (rather than throwing "relation already exists") proves
     //    no SQL was replayed.
+    const realTags = await realJournalTags();
     const baseline = await migrate({ databaseUrl: SCRATCH_URL });
     expect(baseline.baselined).toBe(true);
     expect(baseline.applied).toEqual([]);
     await withScratch(async (pool) => {
-      expect(await trackedTags({ pool })).toEqual(['0000_empty_alice', '0001_dear_dragon_lord']);
+      expect(await trackedTags({ pool })).toEqual(sorted(realTags));
     });
 
-    // 3. A later migration ships. Use a temp drizzle fixture whose journal lists
-    //    0000, 0001 (already baselined) plus a throwaway 0002. Only 0002 is
-    //    pending, so only its SQL runs.
+    // 3. A later migration ships. Use a temp drizzle fixture that mirrors every
+    //    real (already-baselined) migration plus one throwaway probe that sorts
+    //    last. Only the probe is pending, so only its SQL runs.
+    const probeTag = 'zzzz_throwaway_probe';
     const fixtureDir = await mkdtemp(join(tmpdir(), 'orchid-migtest-'));
     try {
       await mkdir(join(fixtureDir, 'meta'), { recursive: true });
-      await copyFile(
-        join(REAL_DRIZZLE_DIR, '0000_empty_alice.sql'),
-        join(fixtureDir, '0000_empty_alice.sql'),
-      );
-      await copyFile(
-        join(REAL_DRIZZLE_DIR, '0001_dear_dragon_lord.sql'),
-        join(fixtureDir, '0001_dear_dragon_lord.sql'),
+      await Promise.all(
+        realTags.map((tag) =>
+          copyFile(join(REAL_DRIZZLE_DIR, `${tag}.sql`), join(fixtureDir, `${tag}.sql`)),
+        ),
       );
       await writeFile(
-        join(fixtureDir, '0002_throwaway_probe.sql'),
+        join(fixtureDir, `${probeTag}.sql`),
         'CREATE TABLE "migtest_probe" (\n\t"id" text PRIMARY KEY NOT NULL\n);',
         'utf8',
       );
@@ -142,9 +154,20 @@ describe('migrate (build-time runner)', () => {
           version: '7',
           dialect: 'postgresql',
           entries: [
-            { idx: 0, version: '7', when: 1, tag: '0000_empty_alice', breakpoints: true },
-            { idx: 1, version: '7', when: 2, tag: '0001_dear_dragon_lord', breakpoints: true },
-            { idx: 2, version: '7', when: 3, tag: '0002_throwaway_probe', breakpoints: true },
+            ...realTags.map((tag, idx) => ({
+              idx,
+              version: '7',
+              when: idx + 1,
+              tag,
+              breakpoints: true,
+            })),
+            {
+              idx: realTags.length,
+              version: '7',
+              when: realTags.length + 1,
+              tag: probeTag,
+              breakpoints: true,
+            },
           ],
         }),
         'utf8',
@@ -152,15 +175,11 @@ describe('migrate (build-time runner)', () => {
 
       const later = await migrate({ databaseUrl: SCRATCH_URL, drizzleDir: fixtureDir });
       expect(later.baselined).toBe(false);
-      expect(later.applied).toEqual(['0002_throwaway_probe']);
+      expect(later.applied).toEqual([probeTag]);
 
       await withScratch(async (pool) => {
         expect(await tableExists({ pool, table: 'migtest_probe' })).toBe(true);
-        expect(await trackedTags({ pool })).toEqual([
-          '0000_empty_alice',
-          '0001_dear_dragon_lord',
-          '0002_throwaway_probe',
-        ]);
+        expect(await trackedTags({ pool })).toEqual(sorted([...realTags, probeTag]));
       });
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
