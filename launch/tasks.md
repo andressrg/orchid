@@ -204,14 +204,16 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
       heavy/long-running orchestration (bulk imports, profile builds, the redaction pipeline).
       _Accept:_ heavy jobs run off the request path with durability + retries; choice documented
       per workload.
+- [x] **P8-3a · Close unneeded ports.** Firewall now allows **only 22 / 80 / 443 + ICMP**
+      (port 3000 removed). Applied via `infra/index.ts` + `pulumi up`. Only necessary ports open.
 - [ ] **P8-3 · Lock down the droplet (infra-only).** It must be reachable **only by the Vercel
-      app and the admin/agent — nobody else**. Today the firewall is open to `0.0.0.0/0`. Approach:
-      SSH (22) allowlisted to admin IP(s) only; **no public service ports**; the app reaches
-      droplet services over **authenticated TLS** (Caddy + a bearer token in Vercel env) and/or a
-      **Vercel dedicated-egress-IP allowlist** / private tunnel (Tailscale/Cloudflare). _Accept:_
-      an external port scan shows nothing usable without the secret; services respond only to the
-      Vercel app + admin; documented in `infra/`. (Update `infra/index.ts` firewall rules; keep
-      the admin's own access intact — don't lock ourselves out.)
+      app and the admin/agent — nobody else**. **For today, a shared bearer token is enough:**
+      every service sits behind **Caddy on 443 with TLS + a bearer token** (the token lives in
+      Vercel env), so the open 443 is useless without the secret. _Accept (today):_ services
+      reject any request lacking the token; only 22/80/443 open; token documented in
+      `stack-and-access.md`. _Hardening follow-ups:_ allowlist SSH (22) to admin IP(s); add a
+      Vercel dedicated-egress-IP allowlist or a private tunnel (Tailscale/Cloudflare). Keep the
+      admin's own access intact — don't lock ourselves out.
 
 ## Phase 9 — Landing page & first impression _(end of each run; depends: features exist to show)_
 

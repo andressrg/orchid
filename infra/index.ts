@@ -80,11 +80,8 @@ const inboundRules: digitalocean.types.input.FirewallInboundRule[] = [
   { protocol: 'tcp', portRange: '22', sourceAddresses: ['0.0.0.0/0', '::/0'] },
   { protocol: 'tcp', portRange: '80', sourceAddresses: ['0.0.0.0/0', '::/0'] },
   { protocol: 'tcp', portRange: '443', sourceAddresses: ['0.0.0.0/0', '::/0'] },
-  {
-    protocol: 'tcp',
-    portRange: '3000',
-    sourceAddresses: ['0.0.0.0/0', '::/0'],
-  },
+  // Only the ports we need: 22 (SSH/admin), 80 (ACME redirect), 443 (token-authed TLS via
+  // Caddy — how the Vercel app reaches services). Port 3000 closed — nothing serves on it.
   { protocol: 'icmp', sourceAddresses: ['0.0.0.0/0', '::/0'] },
 ];
 
