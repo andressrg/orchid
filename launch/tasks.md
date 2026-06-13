@@ -6,8 +6,12 @@
 > Reference `goals.md` for the why. `[ ]` = todo · `[~]` = in progress · `[x]` = done.
 
 **Definition of a shippable task:** typechecks (`bash check.sh`), tests pass, UI changes
-verified in a headed browser, functional style (no loops/mutation/`any`), table-qualified
-SQL. Each task lists **acceptance criteria** — meet all of them.
+verified in a headed browser, the affected CLI exercised end-to-end, functional style (no
+loops/mutation/`any`), table-qualified SQL — and it **survives the adversarial review gate**
+(2–3 reviewer agents for security / performance / quality+simplicity; iterate until only
+nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid context). See
+`orchestrator-harness.md`. Each task lists **acceptance criteria** — meet all of them.
+**Simplicity is a hard requirement: ship the simplest version that meets the criteria.**
 
 ---
 
@@ -52,10 +56,23 @@ SQL. Each task lists **acceptance criteria** — meet all of them.
 
 ## Phase 2 — The 80% feature: conversation-aware review  *(depends: P0, P1-3)*
 
-- [ ] **P2-1 · Harden commit↔session capture.** Make commit linking reliable: capture via a
-  git post-commit hook (CLI `orchid hooks install` adds it) that posts `{sha, session_id}`,
-  in addition to transcript regex. *Accept:* commits made during a session are linked
-  without relying on transcript parsing; backfill command exists.
+- [ ] **P2-1 · Harden commit↔session capture.** Today linking is **regex over transcript
+  text only** (lossy — a SHA not echoed in the transcript is never linked). Capture via a
+  git post-commit hook (CLI `orchid hooks install` adds it) that posts `{sha, session_id}`.
+  *Accept:* commits made during a session are linked without relying on transcript parsing.
+- [ ] **P2-1b · Backfill links commits & PRs from git/GitHub.** `orchid sync --discover` must
+  resolve a session's commits from **git** (by repo + author + time window + branch) and its
+  PRs from **GitHub**, not from transcript regex. *Accept:* backfilled sessions show their
+  real commits and PRs even when SHAs/PR numbers never appeared in the conversation text.
+- [ ] **P2-6 · PR ↔ session linking.** New `session_pr (session_id, repo, pr_number, url,
+  state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
+  `sessions-for`. *Accept:* a PR maps to all sessions that built it; a session lists its PRs.
+  (Prereq for review and the efficiency profile.)
+- [ ] **P2-7 · Claude GitHub app reviews PRs *with* Orchid.** Install the Claude GitHub app /
+  Action so `@claude` reviews PRs, and give it Orchid context (the orchid-context skill +
+  a PR comment from `/webhook/github` that resolves commits→sessions→intent). *Accept:*
+  opening a PR triggers a Claude review that cites the building sessions' intent; this is the
+  same gate the orchestrator's own PRs pass through.
 - [ ] **P2-2 · `orchid review` on Claude, commit-precise.** Rewrite `review` to resolve PR
   commits → sessions (`sessions-for`) and synthesize a Claude review-context brief (intent,
   decisions, risks, what to watch). *Accept:* given a branch/PR, returns grounded context
@@ -118,8 +135,11 @@ SQL. Each task lists **acceptance criteria** — meet all of them.
 
 - [ ] **P7-1 · Sign up with GitHub.** Add GitHub OAuth to Better Auth. *Accept:* GitHub
   signup/login works; stores GitHub identity + token scopes for repo/PR reads.
-- [ ] **P7-2 · Token accounting.** Parse token usage from transcripts; store per-session
-  input/output tokens. *Accept:* sessions carry token totals.
+- [ ] **P7-2 · Token accounting (persist).** Today the CLI computes `totalTokens` from
+  transcript `usage` only for the local TUI — **the server never stores tokens** (schema has
+  `message_count` only). Add token columns to `orchid_session`, send them on sync, and
+  backfill. *Accept:* sessions carry persisted input/output token totals queryable for the
+  PRs-÷-tokens metric.
 - [ ] **P7-3 · Sessions ↔ commits ↔ merged PRs.** Join GitHub PR/merge data to sessions via
   commits. *Accept:* a merged PR maps to its building sessions + tokens.
 - [ ] **P7-4 · Efficiency profile page.** Public `/u/<handle>`: PRs shipped ÷ tokens,
@@ -138,6 +158,20 @@ SQL. Each task lists **acceptance criteria** — meet all of them.
 - [ ] **P8-2 · Background job queue on droplet.** Stand up a durable queue (BullMQ on Redis)
   for summaries/imports/profile builds beyond `after()`. *Accept:* heavy jobs run off the
   request path with retries.
+
+## Phase 9 — Landing page & first impression  *(end of each run; depends: features exist to show)*
+
+- [ ] **P9-1 · Redesign the landing page.** Make it more beautiful and more *attractive to
+  both agents and humans*: lead with "the repository of agents' thoughts" + the review/
+  takeover demos; show a real efficiency-profile graph; Linear-grade polish. Before-state is
+  captured in `screenshots/before/`. *Accept:* side-by-side before/after screenshots in
+  `screenshots/`; faster, clearer, more striking than the current page; mobile-clean.
+- [ ] **P9-2 · Agent-facing quickstart.** A section/page that sells the CLI + skill to agents
+  (copy-paste setup, "your agent can shell out to orchid"). *Accept:* an agent could onboard
+  from this page alone.
+- [ ] **P9-3 · Capture after-screenshots of every improved surface.** *Accept:*
+  `screenshots/after/` mirrors `before/` for dashboard, session viewer, search, decisions,
+  landing — for the before/after story.
 
 ## Continuous — orchestrator self-improvement  *(always-on, lowest priority when others pending)*
 

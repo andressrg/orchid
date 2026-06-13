@@ -56,8 +56,9 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 ## 5. Code Review — THE 80% FEATURE
 | Feature | Status | Reality | Gap |
 |---|---|---|---|
-| Commit → session resolution | ✅ | `orchid data sessions-for <shas>`, `GET /commits/sessions` | precise, dedup'd |
-| Commit ↔ session capture | 🟡 | `extractCommitsFromTranscript` via regex in `after()`, only on `done` | regex-based, can miss; not git-hook-verified |
+| Commit → session resolution | ✅ | `orchid data sessions-for <shas>`, `GET /commits/sessions` | precise *for linked commits* |
+| Commit ↔ session capture | 🟡 | `extractCommitsFromTranscript` = **regex over transcript text**, in `after()`, only on `done` | **lossy** — a SHA not echoed in the transcript is never linked; not git-verified; backfill inherits this |
+| PR ↔ session link | ❌ | none stored; webhook only fuzzy-matches by branch/repo at PR-open | **no PR↔session relation exists** — needed for review + profile |
 | `orchid review <branch>` | 🟡 | finds related sessions, gpt-4o-mini summary | branch/keyword match, not commit-precise; OpenAI |
 | `orchid explain <sha>` | 🟡 | time/branch-correlated sessions + AI explain | correlation, not the linked session |
 | PR webhook (Orchid review bot) | 🟡 | `POST /webhook/github` comments related sessions on PR open | fuzzy repo/branch match; lists sessions, doesn't *review* |
@@ -100,7 +101,7 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 | Sessions ↔ commits ↔ merged PRs graph | ❌ | only session_commits exists | no PR/merge join |
 | Public efficiency profile (PRs ÷ tokens) | ❌ | — | **growth engine — missing** |
 | Share to X / LinkedIn + OG image | ❌ | — | no share surface |
-| Token accounting | ❌ | message_count only, no tokens | can't compute efficiency |
+| Token accounting | ❌ | CLI computes `totalTokens` for the TUI, but **server stores only `message_count`** — tokens never persisted | can't compute PRs ÷ tokens |
 
 ## 10. Auth · Teams · Billing
 | Feature | Status | Reality | Gap |

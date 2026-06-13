@@ -6,3 +6,6 @@ dist/
 
 .secrets
 
+
+# Playwright MCP scratch
+.playwright-mcp/

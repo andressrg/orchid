@@ -200,8 +200,9 @@
           ["miss","Aggregate-only team view","content leaks by default"],
         ]],
         ["5", "Code Review — the 80% feature", "", [
-          ["ok","Commit → session (sessions-for)","precise, dedup'd"],
-          ["part","Commit ↔ session capture","regex in after(), only on done"],
+          ["ok","Commit → session (sessions-for)","precise for linked commits"],
+          ["part","Commit ↔ session capture","regex over transcript — lossy, not git-verified"],
+          ["miss","PR ↔ session link","none stored; webhook only fuzzy-matches"],
           ["part","orchid review &lt;branch&gt;","keyword match, OpenAI"],
           ["part","orchid explain &lt;sha&gt;","time/branch correlation"],
           ["part","PR webhook bot","fuzzy match; lists, doesn't review"],
@@ -234,7 +235,7 @@
           ["miss","Sessions ↔ commits ↔ merged PRs","no PR/merge join"],
           ["miss","Efficiency profile (PRs ÷ tokens)","growth engine — missing"],
           ["miss","Share + OG image","no share surface"],
-          ["miss","Token accounting","message_count only"],
+          ["miss","Token accounting","CLI computes for TUI; server never persists tokens"],
         ]],
         ["10", "Auth · Teams · Billing", "", [
           ["ok","Better Auth (cookie + PAT)",""],

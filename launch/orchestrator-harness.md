@@ -22,18 +22,43 @@
 └────────────────────────────────────────────────────┼─────────┘
                                                        ▼
         ┌──────────────── PER-TASK WORKFLOW ─────────────────┐
-        │ Implement → Verify → Review → open PR              │
+        │ Implement → Verify → 2–3 ADVERSARIAL REVIEWERS →    │
+        │   iterate until reviews are only nice-to-haves →    │
+        │   open PR → Claude+Orchid reviews it on GitHub      │
+        │                                                     │
         │  • Implement: agent(s) build in a git worktree      │
-        │    (functional style, meet acceptance criteria)     │
+        │    (functional, SUPER SIMPLE, meet criteria)        │
         │  • Verify: bash check.sh + pnpm test + headed       │
-        │    browser check for UI; capture pass/fail          │
-        │  • Review: adversarial multi-lens (correctness,     │
-        │    perf, style-compliance, security) — and dogfood  │
-        │    Orchid's own review once P2 lands                │
-        │  • Output: PR into `orchestrator` + structured      │
-        │    verdict {green|red, summary, evidence}           │
+        │    browser + exercise the CLI end-to-end            │
+        │  • Review (parallel, adversarial — see below)       │
+        │  • Loop: fix every blocking finding, re-review,     │
+        │    repeat until only nice-to-haves remain           │
+        │  • PR into `orchestrator`; the Claude GitHub app    │
+        │    (with Orchid context) posts the final review     │
+        │  • Output: structured verdict {green|red, summary}  │
         └─────────────────────────────────────────────────────┘
 ```
+
+### Adversarial review gate (baked into EVERY task)
+
+No task is "done" until it survives this. Each task spawns **2–3 reviewer agents in
+parallel**, each with a distinct hostile lens, instructed to find reasons to reject:
+
+| Reviewer | Lens | Must actually do |
+|----------|------|------------------|
+| **Security** | injection, authz/ACL leaks (esp. private-by-default), secret exposure, unsafe SQL | read the diff; probe the running app/CLI |
+| **Performance** | extra DB round-trips, N+1, over-fetch, >200ms clicks, blocking AI calls | **spin up a browser**, click through, measure |
+| **Quality & simplicity** | functional-style compliance, dead code, **is this the SIMPLEST possible version?** | **exercise the CLI**, read for over-engineering |
+
+Rules:
+- Reviewers **run the feature**: open a headed browser and click it, and run the affected
+  `orchid` CLI commands — not just read the diff.
+- The implementer **iterates** on each round, fixing every *blocking* finding, until the
+  reviewers return **only nice-to-have** comments. Simplicity wins ties — always prefer the
+  smaller, plainer implementation.
+- Once green and merged-to-`orchestrator`, the PR is also reviewed **on GitHub by the Claude
+  GitHub app wired to Orchid** (so it reviews with full conversation context — this is us
+  dogfooding the 80% feature on our own PRs). Its findings feed the next iteration.
 
 **Why this shape:** the loop driver is native Claude Code (`/loop` + background session,
 which survives detach/sleep and shows live in `claude agents`). The *unit of work* is a
@@ -47,6 +72,40 @@ The **DO droplet** (`orchid-deploy`, 4 vCPU / 8 GB, Docker, Claude + Codex prein
 so it keeps running for 12h regardless of your laptop. The repo is cloned there on the
 `orchestrator` branch; the conductor runs under `tmux` (or as a background session) with
 `bypassPermissions` (accepted once interactively).
+
+## How `/loop` works & how we prevent overlap
+
+`/loop` is a bundled Claude Code skill that re-runs a prompt on a schedule. Two modes:
+**fixed interval** (`/loop 15m …` → a cron job) or **dynamic** (`/loop …` with no interval →
+Claude picks the next delay, 1–60 min, after each iteration, and can stop itself when done).
+Within an iteration, a normal turn runs — so **yes, an iteration can call the Workflow tool
+and spawn subagents** (that's exactly our per-task workflow). We use a custom default prompt
+via **`.claude/loop.md`** (the conductor prompt).
+
+**Can iterations run workflows?** Yes. Each `/loop` fire is a turn; the conductor calls
+`Workflow` inside it. We make the conductor **await the workflow** so the turn doesn't end
+until the task's workflow completes.
+
+**Preventing overlap — three layers:**
+1. **Turn-level (built-in):** the scheduler *"fires between your turns, not while Claude is
+   mid-response. If Claude is busy when a task comes due, the prompt waits until the current
+   turn ends."* And there is *no catch-up* for missed fires. So as long as the conductor
+   **awaits its workflow within the turn**, the next iteration cannot start until the current
+   one finishes. Iterations are serial by construction.
+2. **Dynamic schedule, single conductor:** we run **one** `/loop` in **dynamic** mode (not a
+   fixed cron), so the next wake is only scheduled *after* the current task is done + merged.
+   Never run two conductors.
+3. **Lock file (belt & suspenders):** each iteration acquires `launch/.orchestrator.lock`
+   (pid + timestamp) at the start and releases it at the end. If a fresh, non-stale lock
+   exists, the iteration exits immediately ("previous still running"). Guards against any
+   edge case (e.g., a backgrounded workflow, an accidental second loop).
+
+**Lifecycle caveats (from the docs):** `/loop` is **session-scoped** — it only fires while
+the Claude Code session is **running and idle**, so the conductor must stay alive (run it in
+`tmux` / a background session on the droplet). Recurring tasks **expire after 7 days** (fine
+for a 12h run) and are restored on `claude --resume`. For runs that must survive the machine
+being off, the durable alternatives are **Routines** (Anthropic cloud), **GitHub Actions**, or
+**Desktop scheduled tasks** — out of scope for the droplet setup but noted.
 
 ## Execution model: serial tasks, parallel *within* a task
 
