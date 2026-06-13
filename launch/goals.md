@@ -24,9 +24,9 @@ Agent View**. We already capture transcripts via hooks. The endgame:
 2. **A Claude orchestrator is the main brain** that can read every agent's thoughts and
    reason, review, and coordinate across all of them — which Agent View doesn't do today:
    it lives on one laptop, for one user.
-3. **Orchid is the authority ("the lawyer")** that governs *which* thoughts an
+3. **Orchid is the authority ("the lawyer")** that governs _which_ thoughts an
    orchestrator or teammate may read. Private by default; access is brokered, granted,
-   shared, and handed off through Orchid. The orchestrator's omniscience is *policy-gated*,
+   shared, and handed off through Orchid. The orchestrator's omniscience is _policy-gated_,
    not a free-for-all.
 
 ### The flywheel (this is the moat)
@@ -45,9 +45,9 @@ Agent View**. We already capture transcripts via hooks. The endgame:
                   └─────  more value  ──────┘
 ```
 
-Virality is **not a side feature** — it is the growth engine that makes Orchid *the*
+Virality is **not a side feature** — it is the growth engine that makes Orchid _the_
 canonical repository of agents' thoughts. The public **efficiency profile** (PRs shipped
-÷ tokens burned, traces.com-style but for *shipping*, not for burning tokens) is how we
+÷ tokens burned, traces.com-style but for _shipping_, not for burning tokens) is how we
 recruit thoughts at scale. Every shared graph is a billboard that pulls in more sessions.
 
 ---
@@ -57,7 +57,7 @@ recruit thoughts at scale. Every shared graph is a billboard that pulls in more 
 **Conversation-aware code review for agents.**
 
 A reviewing agent, before it writes a single review comment, asks Orchid:
-*who built this, across which sessions, and why?* — then reviews against intent, not just
+_who built this, across which sessions, and why?_ — then reviews against intent, not just
 the diff.
 
 ```
@@ -75,7 +75,7 @@ This single loop forces us to ship almost everything that matters:
 - **private-by-default + explicit share/handoff/takeover** (the ACL / "lawyer" layer)
 - **fast Claude summaries generated automatically when a session ends**
 - **a polished CLI + agent skill** (the agent-facing surface — primary user)
-- **the PR webhook** (Orchid's own review bot) *and* the skill your agents invoke
+- **the PR webhook** (Orchid's own review bot) _and_ the skill your agents invoke
 
 > **Primary user = agents. Humans are the secondary user.** The CLI and skill are the
 > product surface; the web UI is for humans to observe, share, and govern.
@@ -89,7 +89,7 @@ This single loop forces us to ship almost everything that matters:
 ### 2. Session takeover / handoff — "I'm blocked, take it from here"
 
 A teammate is stuck mid-session. They send a **one-line command**. You run it on **your**
-machine and continue *exactly* where they left off — full context, right branch, right
+machine and continue _exactly_ where they left off — full context, right branch, right
 state — because Orchid has the thoughts and brokers the access.
 
 ```
@@ -108,10 +108,11 @@ $ orchid takeover ab12cd
 
 What it does under the hood: Orchid grants you read+continue access, downloads the
 transcript, reconstructs the local Claude Code session (`~/.claude/projects/.../<id>.jsonl`
-+ `claude --resume`), fetches/checks out the exact branch and commit, and hands you a live
-session. The original is marked **handed-off** (chain tracked: who built it, who took over,
-when). This is **portability (bring a session to another machine) + takeover + the access
-layer**, all in one command. It's also how a reviewer can *rewind* and rebuild differently.
+
+- `claude --resume`), fetches/checks out the exact branch and commit, and hands you a live
+  session. The original is marked **handed-off** (chain tracked: who built it, who took over,
+  when). This is **portability (bring a session to another machine) + takeover + the access
+  layer**, all in one command. It's also how a reviewer can _rewind_ and rebuild differently.
 
 ### 3. Public efficiency profile — the shareable graph (the flywheel)
 
@@ -124,16 +125,16 @@ thoughts into Orchid.
 
 ## Strategic pillars (everything maps to one of these)
 
-| # | Pillar | Why it matters |
-|---|--------|----------------|
-| 1 | **Conversation-aware agent review** | The 80% feature. The reason Orchid exists. |
-| 2 | **Capture everything, every tool** | Finish Codex; add Cursor, opencode, Hermes. One normalized thought stream. |
-| 3 | **Private by default + the access layer** | Orchid is the authority over who reads which thoughts. Share / handoff / takeover. |
-| 4 | **Speed everywhere** | Every click < 200ms. Instant nav, empty states, no needless server round-trips. |
-| 5 | **Fast Claude intelligence** | Summaries/turnovers/Q&A on the best Claude model, auto-generated on session end. |
-| 6 | **Remote control + portability** | Drive a session from anywhere; bring a session to another machine. (Agent View is local — we make it global.) |
-| 7 | **Virality flywheel** | Public, beautiful, shareable efficiency profiles. PRs shipped ÷ tokens. Sign up with GitHub. |
-| 8 | **Performant storage** | Transcripts out of the hot path; fast search; Neon as index, object storage for bodies. |
+| #   | Pillar                                    | Why it matters                                                                                                |
+| --- | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 1   | **Conversation-aware agent review**       | The 80% feature. The reason Orchid exists.                                                                    |
+| 2   | **Capture everything, every tool**        | Finish Codex; add Cursor, opencode, Hermes. One normalized thought stream.                                    |
+| 3   | **Private by default + the access layer** | Orchid is the authority over who reads which thoughts. Share / handoff / takeover.                            |
+| 4   | **Speed everywhere**                      | Every click < 200ms. Instant nav, empty states, no needless server round-trips.                               |
+| 5   | **Fast Claude intelligence**              | Summaries/turnovers/Q&A on the best Claude model, auto-generated on session end.                              |
+| 6   | **Remote control + portability**          | Drive a session from anywhere; bring a session to another machine. (Agent View is local — we make it global.) |
+| 7   | **Virality flywheel**                     | Public, beautiful, shareable efficiency profiles. PRs shipped ÷ tokens. Sign up with GitHub.                  |
+| 8   | **Performant storage**                    | Transcripts out of the hot path; fast search; Neon as index, object storage for bodies.                       |
 
 ---
 
@@ -146,7 +147,7 @@ thoughts into Orchid.
 - **Code style:** functional, no mutation, no `useEffect`, no `any`/`unknown`, typed
   `readonly` interfaces, descriptive names, table-qualified SQL, object params for
   multi-arg domain functions. (Canonical rules in `AGENTS.md`.)
-- **Speed is a feature, not a metric.** If a click feels slow, it *is* slow — fix it.
+- **Speed is a feature, not a metric.** If a click feels slow, it _is_ slow — fix it.
   Prefer server components reading the DB directly, optimistic UI, and `after()` for
   background work. Batch DB writes (one multi-VALUES INSERT, never a loop).
 - **Writes are dumb-simple and instant; ALL processing is server-side.** The client (CLI)
@@ -160,7 +161,7 @@ thoughts into Orchid.
   Claude model. Stream where the user waits. Pre-compute (on session end) where they don't.
 - **Private by default.** No teammate or agent sees another's session unless it was
   shared, handed off, or taken over — all brokered through Orchid. Team dashboards show
-  *aggregate* stats, not content, unless shared.
+  _aggregate_ stats, not content, unless shared.
 - **Never store users' secrets.** Since the client is dumb, redaction runs **server-side at
   ingest, before anything is written to canonical storage.** Raw bytes land only in a
   secured, auto-purged staging buffer; only redacted, canonical transcripts are persisted,
@@ -169,7 +170,7 @@ thoughts into Orchid.
   pre-filter is an easy future upgrade for zero-transit.) Trust promise + what makes "capture
   everything" safe enough to feed the flywheel. (Phase T.)
 - **Design:** interfaces like **Linear** (calm, dense, fast). CLI like the **Claude Code
-  TUI**. The public profile must be something you're *proud* to post on X / LinkedIn.
+  TUI**. The public profile must be something you're _proud_ to post on X / LinkedIn.
 - **The CLI is the API for agents.** Every capability an agent needs is a shell command;
   no special integration required.
 
@@ -177,11 +178,14 @@ thoughts into Orchid.
 
 - **Harness = Claude workflows.** No bash loops. Bounded agents return; the workflow owns
   sequencing and persistence. (The ralph harness has been removed.)
-- **Branching:** the orchestrator works on the long-lived **`orchestrator`** branch and
-  may merge its own work there freely. It **never touches `main`** — humans promote.
-- **Hosting now:** Vercel (web + API) + Neon (Postgres). The DO droplet (`orchid-deploy`,
-  4 vCPU / 8 GB, Docker + Caddy) is available for Redis, background jobs, object storage,
-  and running the orchestrator persistently.
+- **Branching & deploy:** the orchestrator auto-merges green work into the long-lived
+  **`orchestrator`** branch, which **auto-deploys to its own live Vercel URL** (everything
+  stays deployed + dogfoodable). **Customer prod (`main`/orchidkeep.com) ships only when a
+  human merges `orchestrator` → `main`.** The agent never auto-merges `main`.
+- **Hosting:** Vercel (web + API) + Neon (Postgres). The DO droplet (`orchid-deploy`,
+  `137.184.108.61`, 4 vCPU / 8 GB, Docker + Caddy) is **infra-only** — a services sandbox for
+  Redis, Temporal OSS, object storage, background jobs. It must be **locked down: reachable
+  only by the Vercel app and the admin/agent — nobody else** (security task).
 - **Storage path:** optimize Neon first (stop selecting transcript, FTS index, paginate,
   cache) → then move transcript bodies to object storage with Neon as the search index.
 - **Don't break capture.** Hooks + sync are the lifeblood; changes must keep transcripts
@@ -196,7 +200,7 @@ thoughts into Orchid.
 - [ ] Sessions are **private by default**; sharing, handoff, and takeover work. (Pillar 3)
 - [ ] Session summaries are generated **automatically on session end**, fast, with Claude. (Pillar 5)
 - [ ] Every primary click in the web UI feels instant, with real empty states. (Pillar 4)
-- [ ] Codex capture is finished; at least one more tool (Cursor *or* opencode) works. (Pillar 2)
+- [ ] Codex capture is finished; at least one more tool (Cursor _or_ opencode) works. (Pillar 2)
 - [ ] **Sign up with GitHub** + a public, shareable efficiency profile with an auto-generated
       share image. (Pillar 7)
 - [ ] Search is fast (FTS, not `ilike` full-scan) and transcripts are off the hot read path. (Pillar 8)
