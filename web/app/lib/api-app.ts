@@ -13,6 +13,7 @@ import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
 import { tokenUsageFromTranscript } from './token-usage';
 import { askClaude, type ClaudeMessage } from './ai';
+import { transcriptMatches, transcriptRank } from './fts';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -268,14 +269,21 @@ app.get('/health', async (c) => {
 });
 
 // Sessions list/search
+//
+// With `q`: Postgres full-text search over the transcript via the GIN-indexed
+// `transcript_search` tsvector — matched with `websearch_to_tsquery` and ranked
+// by `ts_rank` DESC (then recency). `websearch_to_tsquery` tolerates arbitrary
+// input, so a malformed `q` returns zero rows instead of 500-ing. Without `q`:
+// plain recency-ordered listing.
 app.get('/sessions', async (c) => {
   const q = c.req.query('q');
   const scope = scopeConditions(c);
   try {
-    const conditions = [
-      ...(q ? [ilike(orchidSession.transcript, `%${escapeLike(q)}%`)] : []),
-      ...(scope ? [scope] : []),
-    ];
+    const conditions = [...(q ? [transcriptMatches(q)] : []), ...(scope ? [scope] : [])];
+
+    const ordering = q
+      ? [desc(transcriptRank(q)), desc(orchidSession.startedAt)]
+      : [desc(orchidSession.startedAt)];
 
     const rows = await db
       .select({
@@ -295,7 +303,7 @@ app.get('/sessions', async (c) => {
       })
       .from(orchidSession)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
-      .orderBy(desc(orchidSession.startedAt));
+      .orderBy(...ordering);
 
     return c.json(rows);
   } catch (err) {
