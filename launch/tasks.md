@@ -1,8 +1,8 @@
 # Orchid — Launch Task List
 
 > The orchestrator's backlog. Read top-to-bottom; pick the **highest-priority task whose
-> deps are met**, ship it as one PR **into the `orchestrator` branch**, update
-> `worklog.md`, then check the box here. One bounded task per agent. Never touch `main`.
+> deps are met**, ship it as one PR → **squash-merge to `main`** → deploy prod, update
+> `worklog.md`, then check the box here. One bounded task per agent.
 > Reference `goals.md` for the why. `[ ]` = todo · `[~]` = in progress · `[x]` = done.
 
 **Definition of a shippable task:** typechecks (`bash check.sh`), tests pass, UI changes

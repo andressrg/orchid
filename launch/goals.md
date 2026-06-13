@@ -178,10 +178,10 @@ thoughts into Orchid.
 
 - **Harness = Claude workflows.** No bash loops. Bounded agents return; the workflow owns
   sequencing and persistence. (The ralph harness has been removed.)
-- **Branching & deploy:** the orchestrator auto-merges green work into the long-lived
-  **`orchestrator`** branch, which **auto-deploys to its own live Vercel URL** (everything
-  stays deployed + dogfoodable). **Customer prod (`main`/orchidkeep.com) ships only when a
-  human merges `orchestrator` → `main`.** The agent never auto-merges `main`.
+- **Branching & deploy:** each task → a branch off `main` → PR → **squash-merge to `main`**
+  on green → Vercel **auto-deploys prod** (orchidkeep.com). The orchestrator has the user's
+  explicit permission to merge + deploy; the human monitors and reverts fast if a deploy
+  breaks prod. **Always squash-merge** (never a merge commit).
 - **Hosting:** Vercel (web + API) + Neon (Postgres). The DO droplet (`orchid-deploy`,
   `137.184.108.61`, 4 vCPU / 8 GB, Docker + Caddy) is **infra-only** — a services sandbox for
   Redis, Temporal OSS, object storage, background jobs. It must be **locked down: reachable

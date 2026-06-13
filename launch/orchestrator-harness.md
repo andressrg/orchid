@@ -10,13 +10,15 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ CONDUCTOR  (one Claude Code session, /loop, on the droplet)   │
+│ CONDUCTOR  (one Claude Code session, /loop, local Mac)        │
 │  each iteration:                                              │
-│   1. git fetch; checkout orchestrator; pull                  │
+│   0. rebuild orchid CLI (dogfood latest)                     │
+│   1. git fetch; checkout main; pull; branch task/<slug>      │
 │   2. read goals.md + tasks.md + tail worklog.md (Patterns)   │
 │   3. pick highest-priority task whose deps are met           │
-│   4. run a WORKFLOW for that task  ───────────────┐          │
-│   5. if verdict=green → merge PR into orchestrator │          │
+│   4. build it; fan out workflow / subagents ──────┐          │
+│   5. full-gate green → squash-merge PR → main      │          │
+│      → Vercel deploys prod; confirm health         │          │
 │   6. append worklog.md; tick tasks.md; commit      │          │
 │   7. loop (when tasks dry → run C-* audit tasks)   │          │
 └────────────────────────────────────────────────────┼─────────┘
@@ -33,8 +35,8 @@
         │  • Review (parallel, adversarial — see below)       │
         │  • Loop: fix every blocking finding, re-review,     │
         │    repeat until only nice-to-haves remain           │
-        │  • PR into `orchestrator`; the Claude GitHub app    │
-        │    (with Orchid context) posts the final review     │
+        │  • PR → squash-merge to `main` → deploy prod; the   │
+        │    Claude GitHub app reviews with Orchid context    │
         │  • Output: structured verdict {green|red, summary}  │
         └─────────────────────────────────────────────────────┘
 ```
@@ -44,17 +46,18 @@
 No task is "done" until it survives this. Each task spawns **2–3 reviewer agents in
 parallel**, each with a distinct hostile lens, instructed to find reasons to reject:
 
-| Reviewer | Lens | Must actually do |
-|----------|------|------------------|
-| **Security** | injection, authz/ACL leaks (esp. private-by-default), secret exposure, unsafe SQL | read the diff; probe the running app/CLI |
-| **Performance** | extra DB round-trips, N+1, over-fetch, >200ms clicks, blocking AI calls | **spin up a browser**, click through, measure |
+| Reviewer                 | Lens                                                                               | Must actually do                                |
+| ------------------------ | ---------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Security**             | injection, authz/ACL leaks (esp. private-by-default), secret exposure, unsafe SQL  | read the diff; probe the running app/CLI        |
+| **Performance**          | extra DB round-trips, N+1, over-fetch, >200ms clicks, blocking AI calls            | **spin up a browser**, click through, measure   |
 | **Quality & simplicity** | functional-style compliance, dead code, **is this the SIMPLEST possible version?** | **exercise the CLI**, read for over-engineering |
 
 Rules:
+
 - Reviewers **run the feature against the Vercel preview deployment**: open a headed browser
   and click it on the preview URL, and run the affected `orchid` CLI commands — not just read
   the diff.
-- The implementer **iterates** on each round, fixing every *blocking* finding, until the
+- The implementer **iterates** on each round, fixing every _blocking_ finding, until the
   reviewers return **only nice-to-have** comments. Simplicity wins ties — always prefer the
   smaller, plainer implementation.
 - Once green and merged-to-`orchestrator`, the PR is also reviewed **on GitHub by the Claude
@@ -62,7 +65,7 @@ Rules:
   dogfooding the 80% feature on our own PRs). Its findings feed the next iteration.
 
 **Why this shape:** the loop driver is native Claude Code (`/loop` + background session,
-which survives detach/sleep and shows live in `claude agents`). The *unit of work* is a
+which survives detach/sleep and shows live in `claude agents`). The _unit of work_ is a
 **Workflow** — that's the harness you asked for: deterministic fan-out, parallel verify,
 adversarial review, structured verdicts. The conductor stays small and never holds large
 context — it delegates each task to a fresh workflow.
@@ -95,13 +98,14 @@ via **`.claude/loop.md`** (the conductor prompt).
 until the task's workflow completes.
 
 **Preventing overlap — three layers:**
-1. **Turn-level (built-in):** the scheduler *"fires between your turns, not while Claude is
+
+1. **Turn-level (built-in):** the scheduler _"fires between your turns, not while Claude is
    mid-response. If Claude is busy when a task comes due, the prompt waits until the current
-   turn ends."* And there is *no catch-up* for missed fires. So as long as the conductor
+   turn ends."_ And there is _no catch-up_ for missed fires. So as long as the conductor
    **awaits its workflow within the turn**, the next iteration only starts after the current
    one finishes. Iterations are serial by construction.
 2. **Dynamic schedule, single conductor:** we run **one** `/loop` in **dynamic** mode (not a
-   fixed cron), so the next wake is only scheduled *after* the current task is done + merged.
+   fixed cron), so the next wake is only scheduled _after_ the current task is done + merged.
    Never run two conductors.
 3. **Lock file (belt & suspenders):** each iteration acquires `launch/.orchestrator.lock`
    (pid + timestamp) at the start and releases it at the end. If a fresh, non-stale lock
@@ -115,7 +119,7 @@ the Claude Code session is **running and idle**, so the conductor must stay aliv
 survive the machine being off, the durable alternatives are **Routines** (Anthropic cloud),
 **GitHub Actions**, or **Desktop scheduled tasks**.
 
-## Execution model: serial tasks, parallel *within* a task
+## Execution model: serial tasks, parallel _within_ a task
 
 - **Serial across tasks** (recommended): one feature at a time → clean, conflict-free merges
   into `orchestrator`. The 12h throughput comes from each task's workflow fanning out
@@ -126,24 +130,24 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 
 ## Guardrails (what makes 12h unattended safe)
 
-| Risk | Guard |
-|------|-------|
-| Touching `main` | Prompt forbids it **+** a `pre-push` hook that rejects pushes to `main`. Only `orchestrator` and feature branches. |
-| Merging broken code | No merge unless the **full gate** passes **on the Vercel preview**: `check.sh` + tests + headed browser + CLI + 2–3 adversarial reviewers. |
-| One task resisting | Keep trying fresh approaches; if it isn't cracking now, **park it** (log approaches tried + next idea), pick another task, revisit later. Never declare it undoable. |
-| Runaway cost | **Budget is not a constraint** (decision) — use Opus/best models freely. |
-| Stopping it | **Kill switch:** loop checks for `launch/STOP` each iteration and exits if present. Also `claude stop <id>` / `claude daemon stop`. |
-| Corrupting the tree | Each task builds in its own `.claude/worktrees/` worktree. |
-| Leaking secrets | `.env*`/`.secrets` gitignored; never committed; transcript redaction is server-side at ingest (Phase T). |
-| Flying blind | `worklog.md` is the human trace; Orchid captures the orchestrator's **own** sessions (dogfood — watch it in Orchid); `claude agents` shows live status + PR colors. |
-| Process dies | Tasks are independent PRs; on restart the conductor re-reads `tasks.md` and continues. Stateless except git + docs. |
+| Risk                       | Guard                                                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shipping broken prod       | No squash-merge to `main` unless the **full gate** is green: `check.sh` + tests + **CI green** + headed browser + CLI + 2–3 adversarial reviewers. **Babysit the PR** — wait for CI, fix failures, run bg review/test agents — until green. |
+| A bad deploy reaching prod | After merge, **curl `/api/health`** on prod; if it breaks, `git revert` + redeploy fast. The human is monitoring.                                                                                                                           |
+| One task resisting         | Keep trying fresh approaches; if it isn't cracking now, **park it** (log approaches tried + next idea), pick another task, revisit later. Never declare it undoable.                                                                        |
+| Runaway cost               | **Budget is not a constraint** (decision) — use Opus/best models freely.                                                                                                                                                                    |
+| Stopping it                | **Kill switch:** loop checks for `launch/STOP` each iteration and exits if present. Also `claude stop <id>` / `claude daemon stop`.                                                                                                         |
+| Corrupting the tree        | Each task builds in its own `.claude/worktrees/` worktree.                                                                                                                                                                                  |
+| Leaking secrets            | `.env*`/`.secrets` gitignored; never committed; transcript redaction is server-side at ingest (Phase T).                                                                                                                                    |
+| Flying blind               | `worklog.md` is the human trace; Orchid captures the orchestrator's **own** sessions (dogfood — watch it in Orchid); `claude agents` shows live status + PR colors.                                                                         |
+| Process dies               | Tasks are independent PRs; on restart the conductor re-reads `tasks.md` and continues. Stateless except git + docs.                                                                                                                         |
 
 ## Pre-launch checklist
 
 - [x] `ANTHROPIC_API_KEY` + `DIGITALOCEAN_TOKEN` in `.env.orchestrator` (gitignored). `vercel`/
       `neonctl`/`gh` already authed locally.
 - [x] Local dev DB up (`docker compose up`, schema applied); `bash check.sh` green.
-- [x] `pre-push` hook blocking `main` installed; kill switch (`launch/STOP`) + lock file ready.
+- [x] Kill switch (`launch/STOP`) + lock file ready. (Loop squash-merges to `main` via `gh`.)
 - [x] Browser ready for headed UI tests (Playwright working here).
 - [ ] Droplet recreated via `pulumi up` (DO token present); reachable as the services sandbox.
 - [ ] `bypassPermissions` accepted once locally (sleep already disabled, so it stays alive).
@@ -156,10 +160,11 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 2. **Parallelism:** **serial tasks + in-task fan-out** (clean merges).
 3. **Model & budget:** **Opus for everything** (Fable not available on the account); best
    models freely. **No budget cap** — budget is not a constraint.
-4. **Merge bar:** **full gate** — `check.sh` + tests + headed browser + CLI exercised + 2–3
-   adversarial reviewers pass (only nice-to-haves remain) → **auto-merge into the long-lived
-   `orchestrator` branch**. Verification runs **against the Vercel preview deployment**, not
-   just local (see below). No human gate on orchestrator merges; humans gate `main`.
+4. **Merge bar:** **full gate** — `check.sh` + tests + **CI green** + headed browser + CLI +
+   2–3 adversarial reviewers (only nice-to-haves remain) → **squash-merge the PR into `main`**
+   → Vercel deploys prod. **Babysit the PR** until CI is green (fix failures, run bg
+   review/test agents). The user gave explicit permission to merge + deploy; the human
+   monitors and reverts fast. **Always squash-merge.**
 5. **Browser:** headed, runs **locally** (conductor is local), pointed at the preview URL.
 6. **Check-ins:** **ping on a decision/blocker, wait ~2 min; if no reply, proceed with the
    best assumption and log it** to `worklog.md`. Otherwise hands-off.
@@ -170,11 +175,12 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 Every task's verify + adversarial review runs against the **Vercel preview deployment** of
 the branch — the real deployed app, not localhost. Flow: build locally → **push the task
 branch to GitHub** → that push **auto-builds a Vercel preview + a Neon branch DB** → headed
-browser + CLI tests + reviewers hit the **preview URL** → on full-gate green, **auto-merge
-into `orchestrator`** (which has its own integration preview). Nothing to provision — the
-repo↔Vercel↔Neon wiring already updates on push. Prod stays promotion-only.
+browser + CLI tests + reviewers hit the **preview URL**; **babysit the PR** (wait for CI, fix
+failures, run bg review/test agents) → on full-gate green, **squash-merge into `main`** →
+Vercel deploys prod. Nothing to provision — the repo↔Vercel↔Neon wiring updates on push.
 
 ## Remaining to unblock the first run
+
 - [x] `ANTHROPIC_API_KEY` + `DIGITALOCEAN_TOKEN` provided (in `.env.orchestrator`).
 - [ ] **Recreate the droplet:** `pulumi up` (one open item — which Pulumi org: the existing
       `snappr/orchid-infra/dev` stack, or a personal org?).
