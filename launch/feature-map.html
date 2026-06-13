@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Orchid — Feature Map</title>
+    <style>
+      :root {
+        --bg: #0a0a0c;
+        --bg-2: #121216;
+        --panel: #16161c;
+        --panel-2: #1c1c24;
+        --border: #26262f;
+        --text: #e8e8ec;
+        --dim: #9a9aa6;
+        --faint: #6b6b78;
+        --pink: #e879b9;
+        --pink-soft: rgba(232, 121, 185, 0.12);
+        --green: #4ec9a8;
+        --yellow: #e2c08d;
+        --red: #e06c75;
+        --blue: #7aa2f7;
+        --radius: 12px;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; background: var(--bg); color: var(--text);
+        font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+      a { color: var(--pink); text-decoration: none; }
+      .wrap { max-width: 1180px; margin: 0 auto; padding: 48px 28px 96px; }
+
+      /* Header */
+      .top { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+      .logo { width: 26px; height: 26px; border-radius: 50%;
+        background: radial-gradient(circle at 50% 35%, var(--pink), transparent 70%);
+        border: 1.5px solid var(--pink); }
+      h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+      .tagline { color: var(--dim); font-size: 13px; margin: 0 0 28px; }
+      .lede { font-size: 15px; color: var(--dim); max-width: 760px; margin: 0 0 24px; }
+      .lede b { color: var(--text); font-weight: 600; }
+
+      /* Hero — the 80% feature */
+      .hero { background: linear-gradient(160deg, var(--pink-soft), transparent 60%), var(--panel);
+        border: 1px solid var(--border); border-radius: 16px; padding: 24px 26px; margin: 0 0 18px; }
+      .hero .kicker { color: var(--pink); font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+        text-transform: uppercase; }
+      .hero h2 { font-size: 22px; margin: 6px 0 10px; letter-spacing: -0.02em; }
+      .hero p { color: var(--dim); margin: 0 0 16px; max-width: 720px; }
+      .flow { display: flex; flex-wrap: wrap; gap: 8px; }
+      .flow span { background: var(--bg-2); border: 1px solid var(--border); border-radius: 999px;
+        padding: 6px 12px; font-size: 12px; color: var(--text); }
+      .flow span.arrow { border: none; background: none; color: var(--faint); padding: 6px 0; }
+
+      /* Missing-magic callout */
+      .magic { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 0 0 36px; }
+      .magic .m { background: var(--panel); border: 1px solid var(--border);
+        border-left: 3px solid var(--red); border-radius: 10px; padding: 14px 16px; }
+      .magic .m .n { color: var(--faint); font-size: 11px; font-weight: 700; }
+      .magic .m .t { font-weight: 600; margin: 4px 0 2px; }
+      .magic .m .d { color: var(--dim); font-size: 12px; }
+
+      /* Legend */
+      .legend { display: flex; gap: 18px; flex-wrap: wrap; margin: 0 0 24px; color: var(--dim); font-size: 12.5px; }
+      .legend b { color: var(--text); }
+
+      /* Sections */
+      .sec { margin: 0 0 26px; }
+      .sec > h3 { font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--text);
+        margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+      .sec > h3 .num { color: var(--faint); font-variant-numeric: tabular-nums; }
+      .sec > h3 .note { color: var(--faint); font-weight: 400; font-size: 12px; }
+      .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+        padding: 12px 14px; display: flex; gap: 12px; align-items: flex-start; }
+      .card .pill { flex: none; margin-top: 1px; }
+      .card .body .f { font-weight: 600; font-size: 13px; }
+      .card .body .g { color: var(--dim); font-size: 12px; margin-top: 2px; }
+
+      .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700;
+        padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+      .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+      .s-ok { color: var(--green); background: rgba(78,201,168,0.1); }
+      .s-part { color: var(--yellow); background: rgba(226,192,141,0.1); }
+      .s-miss { color: var(--red); background: rgba(224,108,117,0.1); }
+      .s-rfc { color: var(--blue); background: rgba(122,162,247,0.1); }
+
+      /* Pillars + footer */
+      .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; }
+      .panel h4 { margin: 0 0 12px; font-size: 13px; }
+      .panel ul { margin: 0; padding-left: 18px; color: var(--dim); }
+      .panel li { margin: 5px 0; }
+      .panel li b { color: var(--text); }
+      footer { color: var(--faint); font-size: 12px; margin-top: 40px; border-top: 1px solid var(--border); padding-top: 16px; }
+      @media (max-width: 820px) { .grid, .magic, .twocol { grid-template-columns: 1fr; } }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top"><div class="logo"></div><h1>Orchid</h1></div>
+      <p class="tagline">Code tells you what · Git tells you when · Orchid tells you why</p>
+
+      <p class="lede">
+        Orchid captures AI coding conversations and makes the reasoning behind every change
+        queryable by reviewers, teammates, and agents. This map shows <b>what's real in the
+        code today</b> versus the gaps between here and launch.
+      </p>
+
+      <div class="hero">
+        <div class="kicker">The one feature = 80% of the value</div>
+        <h2>Conversation-aware code review for agents</h2>
+        <p>
+          Every commit knows its session(s). A reviewing agent pulls the sessions that built
+          a PR, reads <i>why</i> each change was made, asks Orchid fast Claude-powered
+          follow-ups, and posts a review grounded in intent — not just the diff. The pieces
+          exist in fragments; <b>the loop does not yet.</b>
+        </p>
+        <div class="flow">
+          <span>agent reviews PR</span><span class="arrow">→</span>
+          <span>orchid sessions-for &lt;commits&gt;</span><span class="arrow">→</span>
+          <span>read intent</span><span class="arrow">→</span>
+          <span>ask Orchid (Claude, &lt;2s)</span><span class="arrow">→</span>
+          <span>grounded review</span>
+        </div>
+      </div>
+
+      <div class="magic">
+        <div class="m"><div class="n">MISSING #1</div><div class="t">Review loop, wired</div><div class="d">Fragments exist; not end-to-end.</div></div>
+        <div class="m"><div class="n">MISSING #2</div><div class="t">Private by default</div><div class="d">Today every teammate sees every session.</div></div>
+        <div class="m"><div class="n">MISSING #3</div><div class="t">Fast Claude, auto</div><div class="d">On gpt-4o-mini, on-demand, blocking.</div></div>
+        <div class="m"><div class="n">MISSING #4</div><div class="t">Viral profile</div><div class="d">PRs ÷ tokens. The growth engine.</div></div>
+      </div>
+
+      <div class="legend">
+        <span><b style="color:var(--green)">●</b> shipped &amp; working</span>
+        <span><b style="color:var(--yellow)">●</b> partial / fragile</span>
+        <span><b style="color:var(--red)">●</b> missing</span>
+        <span><b style="color:var(--blue)">●</b> designed only (RFC/copy)</span>
+      </div>
+
+      <!-- Sections rendered from the same data as feature-map.md -->
+      <div id="board"></div>
+
+      <div class="twocol">
+        <div class="panel">
+          <h4>The flywheel (the moat)</h4>
+          <ul>
+            <li>people <b>share their efficiency graphs</b></li>
+            <li>→ more people sign up &amp; <b>import sessions</b></li>
+            <li>→ more <b>agents' thoughts</b> land in Orchid</li>
+            <li>→ the <b>orchestrator has richer context</b></li>
+            <li>→ reviews, handoffs &amp; answers get better → more value → repeat</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Flagship demos</h4>
+          <ul>
+            <li><b>Conversation-aware review</b> — the 80% feature.</li>
+            <li><b>Session takeover</b> — “I'm blocked, take it from here”: one command rehydrates a teammate's session on your machine (<i>RFC #17, not built</i>).</li>
+            <li><b>Public efficiency profile</b> — PRs shipped ÷ tokens, shareable to X/LinkedIn.</li>
+          </ul>
+        </div>
+      </div>
+
+      <footer>
+        Orchid is the <b>repository of agents' thoughts</b> — and the access layer that lets a
+        Claude orchestrator read every one of them. Status grounded in the repo on
+        2026-06-13 · pairs with <a href="feature-map.md">feature-map.md</a> ·
+        <a href="goals.md">goals.md</a> · <a href="tasks.md">tasks.md</a>.
+      </footer>
+    </div>
+
+    <script>
+      const S = { ok: ["s-ok","Shipped"], part: ["s-part","Partial"], miss: ["s-miss","Missing"], rfc: ["s-rfc","RFC"] };
+      const sections = [
+        ["1", "Capture &amp; Sync", "", [
+          ["ok","Claude Code hooks capture","auto/prompt modes"],
+          ["ok","Transcript sync (gzip)","re-uploads full JSONL every 5s — wasteful"],
+          ["ok","Backfill (sync --discover)",""],
+          ["rfc","Background auto-capture daemon","PR #15, not merged"],
+        ]],
+        ["2", "Storage &amp; Search", "the speed problem", [
+          ["part","Transcript storage","entire JSONL in one Neon TEXT column"],
+          ["part","Full-text search","ilike '%q%' full scan — no FTS index"],
+          ["part","List/detail reads","SELECT * pulls transcript needlessly"],
+          ["miss","Object storage for bodies","transcripts never leave Postgres"],
+          ["miss","Caching / Redis","every poll hits Neon"],
+        ]],
+        ["3", "AI / Intelligence", "all on the wrong model", [
+          ["part","Session summary","gpt-4o-mini, on-demand, blocking, truncated"],
+          ["part","Session chat / ask","gpt-4o-mini, no streaming"],
+          ["part","Decision log","gpt-4o-mini, mock data without key"],
+          ["miss","Auto-summary on session end","core goal — missing"],
+          ["miss","Claude as the model","no Anthropic integration at all"],
+        ]],
+        ["4", "Privacy &amp; Access", "the “lawyer” layer", [
+          ["part","Team scoping","scopes by teamId — all teammates see all"],
+          ["miss","Per-session ACL","#1 launch goal — missing"],
+          ["miss","Explicit share",""],
+          ["miss","Handoff / takeover grant",""],
+          ["miss","Aggregate-only team view","content leaks by default"],
+        ]],
+        ["5", "Code Review — the 80% feature", "", [
+          ["ok","Commit → session (sessions-for)","precise for linked commits"],
+          ["part","Commit ↔ session capture","regex over transcript — lossy, not git-verified"],
+          ["miss","PR ↔ session link","none stored; webhook only fuzzy-matches"],
+          ["part","orchid review &lt;branch&gt;","keyword match, OpenAI"],
+          ["part","orchid explain &lt;sha&gt;","time/branch correlation"],
+          ["part","PR webhook bot","fuzzy match; lists, doesn't review"],
+          ["miss","Ask Orchid before reviewing","the spine — not wired"],
+        ]],
+        ["6", "Takeover · Handoff · Remote · Portability", "", [
+          ["rfc","orchid takeover &lt;id&gt;","RFC #17 only — command doesn't exist"],
+          ["rfc","Rehydrate + claude --resume","specified, not built"],
+          ["rfc","Remote control live session","approach: intercept stdio via PTY"],
+          ["miss","Bring session to another machine","manual read only"],
+          ["part","Soft handoff (read &amp; continue)","lossy; no real state transfer"],
+        ]],
+        ["7", "Multi-tool support", "", [
+          ["ok","tool field on sessions",""],
+          ["ok","Claude Code","full hooks"],
+          ["part","Codex","PR #47 merged; #36/#44 in-flight — verify"],
+          ["miss","Cursor / opencode / Hermes","no adapters"],
+          ["miss","Normalized thought format","ad hoc parsers"],
+        ]],
+        ["8", "Web UI &amp; Speed", "", [
+          ["ok","Sessions dashboard","live status (polls Neon)"],
+          ["ok","Session viewer","turns, timeline, highlighter"],
+          ["ok","Commits tab",""],
+          ["part","Search page","slow, weak ranking"],
+          ["miss","Empty states everywhere","goal — missing"],
+          ["miss","Optimistic / instant nav","refetch on click"],
+        ]],
+        ["9", "Public profile / Virality", "the flywheel", [
+          ["miss","Sign up with GitHub","email/invite only"],
+          ["miss","Sessions ↔ commits ↔ merged PRs","no PR/merge join"],
+          ["miss","Efficiency profile (PRs ÷ tokens)","growth engine — missing"],
+          ["miss","Share + OG image","no share surface"],
+          ["miss","Token accounting","CLI computes for TUI; server never persists tokens"],
+        ]],
+        ["10", "Auth · Teams · Billing", "", [
+          ["ok","Better Auth (cookie + PAT)",""],
+          ["ok","Orgs / members / invites","roles unused for ACL"],
+          ["ok","Personal access tokens","hashed orc_*"],
+          ["miss","GitHub OAuth provider","needed for profile"],
+          ["rfc","Stripe billing","PR #33 plan"],
+          ["rfc","Secret redaction","PR #40 research"],
+        ]],
+        ["11", "Infra · Jobs · Realtime", "", [
+          ["ok","Vercel web + API",""],
+          ["ok","Neon Postgres","transcript bloat"],
+          ["ok","DO droplet (Pulumi)","idle — repurpose for Redis/jobs/orchestrator"],
+          ["part","Background jobs","Next after() only"],
+          ["miss","Redis / Temporal","cache, jobs, presence"],
+          ["miss","Realtime transport","polling only"],
+        ]],
+        ["12", "Agent interface", "primary user", [
+          ["ok","orchid-context skill","search/show/ask/review/explain"],
+          ["ok","CLI data commands",""],
+          ["miss","MCP server","skill shells out (ok for now)"],
+          ["miss","Enforced ask-before-review","guidance only"],
+        ]],
+      ];
+      const board = document.getElementById("board");
+      board.innerHTML = sections.map(([num,title,note,rows]) => `
+        <div class="sec">
+          <h3><span class="num">${num}</span> ${title} ${note ? `<span class="note">— ${note}</span>` : ""}</h3>
+          <div class="grid">
+            ${rows.map(([st,f,g]) => `
+              <div class="card">
+                <span class="pill ${S[st][0]}">${S[st][1]}</span>
+                <div class="body"><div class="f">${f}</div>${g ? `<div class="g">${g}</div>` : ""}</div>
+              </div>`).join("")}
+          </div>
+        </div>`).join("");
+    </script>
+  </body>
+</html>

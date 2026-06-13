@@ -1,8 +1,17 @@
 
 .env
+.env.orchestrator
 .envrc
 node_modules/
 dist/
 
 .secrets
 
+
+# Playwright MCP scratch
+.playwright-mcp/
+
+# Claude Code transient
+.claude/worktrees/
+launch/.orchestrator.lock
+launch/STOP
