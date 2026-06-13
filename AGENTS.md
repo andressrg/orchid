@@ -1,3 +1,10 @@
+## Mindset:
+
+Everything is possible. We are elite engineers. **Never write in the repo that something
+can't be done, is blocked, impossible, or out of scope** — it dirties the context. When
+something resists: try again, research more, take another approach. Park a stubborn task
+(note what was tried + the next idea) and revisit it; never declare it undoable.
+
 ## Harness:
 
 The orchestrator runs on **Claude workflows** (the Workflow tool) — not a bash loop. Each
