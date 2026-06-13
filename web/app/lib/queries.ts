@@ -1,6 +1,7 @@
-import { eq, and, or, desc, sql, ilike } from 'drizzle-orm';
+import { eq, and, or, desc, sql, type SQL } from 'drizzle-orm';
 import { db } from './db';
 import { orchidSession, organization, member, user, sessionCommit } from './schema';
+import { transcriptMatches, transcriptRank } from './fts';
 
 // Resolve team ID from slug + user membership
 export async function resolveTeamId(teamSlug: string, userId: string): Promise<string | null> {
@@ -143,9 +144,16 @@ export async function getSessionTranscriptById(
   return row.transcript || '';
 }
 
-// Search sessions
+// Search sessions — Postgres full-text search over the transcript.
+//
+// Matches with `websearch_to_tsquery('english', …)` against the STORED
+// `transcript_search` tsvector (GIN-indexed), ranks by `ts_rank` DESC, and
+// breaks ties by most-recent. `websearch_to_tsquery` tolerates arbitrary input
+// (quotes, `or`, `-`, stray operators) without throwing, so malformed queries
+// degrade to "no matches" rather than a 500. The result shape is unchanged from
+// the previous `ilike` implementation.
 export async function searchSessions(teamId: string, query: string) {
-  const escaped = query.replace(/%/g, '\\%').replace(/_/g, '\\_');
+  const rank: SQL<number> = transcriptRank(query);
   return db
     .select({
       id: orchidSession.id,
@@ -159,8 +167,8 @@ export async function searchSessions(teamId: string, query: string) {
       message_count: orchidSession.messageCount,
     })
     .from(orchidSession)
-    .where(and(eq(orchidSession.teamId, teamId), ilike(orchidSession.transcript, `%${escaped}%`)))
-    .orderBy(desc(orchidSession.startedAt));
+    .where(and(eq(orchidSession.teamId, teamId), transcriptMatches(query)))
+    .orderBy(desc(rank), desc(orchidSession.startedAt));
 }
 
 // ── Public efficiency profile (P7-4) ──

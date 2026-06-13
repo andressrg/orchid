@@ -1,0 +1,2 @@
+ALTER TABLE "orchid_session" ADD COLUMN "transcript_search" "tsvector" GENERATED ALWAYS AS (to_tsvector('english', coalesce("transcript", ''))) STORED;--> statement-breakpoint
+CREATE INDEX "idx_orchid_session_transcript_fts" ON "orchid_session" USING gin ("transcript_search");

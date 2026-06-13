@@ -38,7 +38,7 @@ describe('GET /api/sessions', () => {
     expect(data[0].transcript).toBeUndefined();
   });
 
-  it('searches sessions by transcript content', async () => {
+  it('searches sessions by transcript content (FTS, english stemming)', async () => {
     await insertTestSession({ id: 'session-1', transcript: 'discussing websockets' });
     await insertTestSession({ id: 'session-2', transcript: 'talking about databases' });
 
@@ -48,5 +48,40 @@ describe('GET /api/sessions', () => {
     expect(res.status).toBe(200);
     expect(data).toHaveLength(1);
     expect(data[0].id).toBe('session-1');
+  });
+
+  it('searches with a multi-word query (all terms required)', async () => {
+    await insertTestSession({ id: 'both', transcript: 'the database migration finished' });
+    await insertTestSession({ id: 'one', transcript: 'the database is online' });
+
+    const res = await app.request('/api/sessions?q=database+migration', { headers });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toHaveLength(1);
+    expect(data[0].id).toBe('both');
+  });
+
+  it('orders matches by relevance (ts_rank) before recency', async () => {
+    await insertTestSession({ id: 'dense', transcript: 'cache cache cache invalidation cache' });
+    await insertTestSession({ id: 'sparse', transcript: 'a passing mention of cache here' });
+
+    const res = await app.request('/api/sessions?q=cache', { headers });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.map((r: { id: string }) => r.id)).toEqual(['dense', 'sparse']);
+  });
+
+  it('does not 500 on malformed query input', async () => {
+    await insertTestSession({ id: 'session-1', transcript: 'ordinary content' });
+
+    const res = await app.request('/api/sessions?q=' + encodeURIComponent('!@#$%^&* "oops'), {
+      headers,
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data).toEqual([]);
   });
 });
