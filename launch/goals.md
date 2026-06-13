@@ -145,6 +145,11 @@ thoughts into Orchid.
 - **Speed is a feature, not a metric.** If a click feels slow, it *is* slow — fix it.
   Prefer server components reading the DB directly, optimistic UI, and `after()` for
   background work. Batch DB writes (one multi-VALUES INSERT, never a loop).
+- **Writes are dumb-simple and instant.** Capture/sync must be the simplest, fastest path
+  possible — **no re-uploading the whole transcript every 5s**. Append/stream deltas,
+  minimal server work on write, redaction inline but cheap. The exact mechanism is the
+  **orchestrator's to design**; the bar is: writing never feels slow and never blocks the
+  user's agent.
 - **Claude is the brain.** Replace OpenAI `gpt-4o-mini` everywhere with the best available
   Claude model. Stream where the user waits. Pre-compute (on session end) where they don't.
 - **Private by default.** No teammate or agent sees another's session unless it was

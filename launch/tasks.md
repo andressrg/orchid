@@ -34,6 +34,12 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 - [ ] **P0-5 · Wire secrets.** Land `ANTHROPIC_API_KEY` (+ GitHub OAuth, DO token) into
   Vercel + droplet + local `.env`; document in `stack-and-access.md`. *Accept:* AI works
   in prod on Claude.
+- [ ] **P0-6 · Dumb-simple, blazing-fast write path.** Today the CLI re-uploads the **entire**
+  gzipped transcript every 5s. Redesign capture to be **append/delta-based** with minimal
+  server work — *the agent chooses the mechanism* (append-only log, direct-to-object-storage,
+  edge ingest, etc.). Redaction (Phase T) runs inline without perceptible latency. *Accept:*
+  sync sends only new turns/bytes, p50 server write time small, no full re-upload, crash-safe,
+  and writing never blocks the user's agent. Spike + decision doc, then implement.
 
 ## Phase 1 — Privacy & the access layer  *(#1 goal — depends: none)*
 
