@@ -83,9 +83,25 @@ export async function getTeamStats(teamId: string) {
 }
 
 // Get a single session (scoped to team)
+// Session metadata only — deliberately does NOT select the (potentially huge)
+// transcript TEXT column, so the detail page's metadata paint stays off the
+// JSONL read path. The conversation body is fetched separately via
+// `getSessionTranscriptById` (streamed in after the metadata renders).
 export async function getSessionById(sessionId: string, teamId: string) {
   const [row] = await db
-    .select()
+    .select({
+      id: orchidSession.id,
+      userName: orchidSession.userName,
+      userEmail: orchidSession.userEmail,
+      workingDir: orchidSession.workingDir,
+      gitRemotes: orchidSession.gitRemotes,
+      branch: orchidSession.branch,
+      tool: orchidSession.tool,
+      startedAt: orchidSession.startedAt,
+      updatedAt: orchidSession.updatedAt,
+      status: orchidSession.status,
+      messageCount: orchidSession.messageCount,
+    })
     .from(orchidSession)
     .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
   if (!row) return null;
@@ -100,9 +116,23 @@ export async function getSessionById(sessionId: string, teamId: string) {
     started_at: row.startedAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
     status: row.status,
-    transcript: row.transcript || '',
     message_count: row.messageCount || 0,
   };
+}
+
+// Dedicated transcript fetch — selects ONLY the transcript body for one scoped
+// session. Kept separate from `getSessionById` so metadata reads never pull the
+// JSONL. Returns null when the session doesn't exist / isn't in the team.
+export async function getSessionTranscriptById(
+  sessionId: string,
+  teamId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ transcript: orchidSession.transcript })
+    .from(orchidSession)
+    .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
+  if (!row) return null;
+  return row.transcript || '';
 }
 
 // Search sessions
