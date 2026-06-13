@@ -28,8 +28,8 @@
         │                                                     │
         │  • Implement: agent(s) build in a git worktree      │
         │    (functional, SUPER SIMPLE, meet criteria)        │
-        │  • Verify: bash check.sh + pnpm test + headed       │
-        │    browser + exercise the CLI end-to-end            │
+        │  • Verify on the VERCEL PREVIEW (always): check.sh  │
+        │    + tests + headed browser + CLI vs the preview URL│
         │  • Review (parallel, adversarial — see below)       │
         │  • Loop: fix every blocking finding, re-review,     │
         │    repeat until only nice-to-haves remain           │
@@ -51,8 +51,9 @@ parallel**, each with a distinct hostile lens, instructed to find reasons to rej
 | **Quality & simplicity** | functional-style compliance, dead code, **is this the SIMPLEST possible version?** | **exercise the CLI**, read for over-engineering |
 
 Rules:
-- Reviewers **run the feature**: open a headed browser and click it, and run the affected
-  `orchid` CLI commands — not just read the diff.
+- Reviewers **run the feature against the Vercel preview deployment**: open a headed browser
+  and click it on the preview URL, and run the affected `orchid` CLI commands — not just read
+  the diff.
 - The implementer **iterates** on each round, fixing every *blocking* finding, until the
   reviewers return **only nice-to-have** comments. Simplicity wins ties — always prefer the
   smaller, plainer implementation.
@@ -110,11 +111,11 @@ until the task's workflow completes.
    edge case (e.g., a backgrounded workflow, an accidental second loop).
 
 **Lifecycle caveats (from the docs):** `/loop` is **session-scoped** — it only fires while
-the Claude Code session is **running and idle**, so the conductor must stay alive (run it in
-`tmux` / a background session on the droplet). Recurring tasks **expire after 7 days** (fine
-for a 12h run) and are restored on `claude --resume`. For runs that must survive the machine
-being off, the durable alternatives are **Routines** (Anthropic cloud), **GitHub Actions**, or
-**Desktop scheduled tasks** — out of scope for the droplet setup but noted.
+the Claude Code session is **running and idle**, so the conductor must stay alive (run it
+**locally in `tmux`**; sleep is already disabled on this Mac). Recurring tasks **expire after
+7 days** (fine for a 12h run) and are restored on `claude --resume`. If we ever need it to
+survive the machine being off, the durable alternatives are **Routines** (Anthropic cloud),
+**GitHub Actions**, or **Desktop scheduled tasks**.
 
 ## Execution model: serial tasks, parallel *within* a task
 
@@ -130,9 +131,9 @@ being off, the durable alternatives are **Routines** (Anthropic cloud), **GitHub
 | Risk | Guard |
 |------|-------|
 | Touching `main` | Prompt forbids it **+** a `pre-push` hook that rejects pushes to `main`. Only `orchestrator` and feature branches. |
-| Merging broken code | No merge unless `check.sh` + tests + browser + self-review are green. |
+| Merging broken code | No merge unless the **full gate** passes **on the Vercel preview**: `check.sh` + tests + headed browser + CLI + 2–3 adversarial reviewers. |
 | Looping forever on one task | Max 2–3 attempts; then mark task `blocked` in `tasks.md`, log why, move on. |
-| Runaway cost | Token/$ budget cap per run; model tier per task (build vs. mechanical vs. summary); stop when budget hit. |
+| Runaway cost | **Budget is not a constraint** (decision) — use Opus/best models freely; still avoid pathological retry loops via the attempt cap. |
 | Can't stop it | **Kill switch:** loop checks for `launch/STOP` each iteration and exits if present. Also `claude stop <id>` / `claude daemon stop`. |
 | Corrupting the tree | Each task builds in its own `.claude/worktrees/` worktree. |
 | Leaking secrets | `.env`/`.secrets` gitignored; never committed; transcripts' secret-redaction tracked separately (PR #40). |
@@ -150,19 +151,35 @@ being off, the durable alternatives are **Routines** (Anthropic cloud), **GitHub
 - [ ] `pre-push` hook blocking `main` installed; kill switch (`launch/STOP`) + budget cap set.
 - [ ] First dry-run of ONE task end-to-end (build → verify → PR → merge) watched live.
 
-## Open decisions (let's settle these together)
+## Settled decisions (2026-06-13)
 
-1. **Conductor location:** **local (this Mac) + `caffeinate`** (recommended — all tooling is
-   here, builds locally, never touches prod). Move to the droplet only if you want to close
-   the laptop and walk away. The droplet stays the **services sandbox** either way. Confirm local?
-2. **Parallelism:** serial-with-in-task-fanout (recommended) vs. 2 parallel lanes?
-3. **Model tier & budget:** which Claude model for building (Opus?) vs. mechanical edits vs.
-   summaries (Haiku); and the $/token cap for the 12h run?
-4. **Merge bar into `orchestrator`:** auto-merge on green = check.sh + tests + browser +
-   self-review. Agree on that exact bar?
-5. **Headed vs. headless browser on the server:** install `xvfb` to honor "always headed", or
-   allow headless on the droplet (headed locally when you're watching)?
-6. **Check-ins:** want a worklog summary / notification every N hours, or fully hands-off
-   until you look?
-7. **First-night scope:** restrict the first 12h run to Phase 0 + Phase 1 (foundation +
-   privacy) so we validate the harness on lower-risk work before it touches the review loop?
+1. **Conductor location:** **local** (this Mac; sleep already disabled). Builds locally,
+   tests on Vercel preview (below). Droplet = services sandbox.
+2. **Parallelism:** **serial tasks + in-task fan-out** (clean merges).
+3. **Model & budget:** **Opus for everything** (Fable not available on the account); best
+   models freely. **No budget cap** — budget is not a constraint.
+4. **Merge bar:** **full gate** — `check.sh` + tests + headed browser + CLI exercised + 2–3
+   adversarial reviewers pass (only nice-to-haves remain) → **auto-merge into the long-lived
+   `orchestrator` branch**. Verification runs **against the Vercel preview deployment**, not
+   just local (see below). No human gate on orchestrator merges; humans gate `main`.
+5. **Browser:** headed, runs **locally** (conductor is local), pointed at the preview URL.
+6. **Check-ins:** **ping on a decision/blocker, wait ~2 min; if no reply, proceed with the
+   best assumption and log it** to `worklog.md`. Otherwise hands-off.
+7. **Scope:** **full send** — run the whole `tasks.md` top-to-bottom (highest priority first).
+
+### Always test the Vercel preview (decision 4 detail)
+
+Every task's verify + adversarial review runs against the **Vercel preview deployment** of
+the branch — the real deployed app, not localhost. Flow: build locally → push the task
+branch → Vercel builds a preview → headed browser + CLI tests + reviewers hit the **preview
+URL** → on full-gate green, **auto-merge into `orchestrator`** (which has its own integration
+preview). This needs a **Vercel project + preview env + a preview database**. Cleanest path
+that avoids depending on Andres's prod: a **Julian-owned Vercel "orchid-staging" project**
+linked to the repo's `orchestrator`/task branches, with `ANTHROPIC_API_KEY` + a **Neon
+preview DB** (Neon branch per preview is ideal). Prod (Andres's) stays promotion-only.
+
+## Remaining to unblock the first run
+- `ANTHROPIC_API_KEY` (app's Claude calls + Vercel preview env).
+- Droplet IP (key present) to confirm the services sandbox.
+- Go-ahead to create the **Julian-owned `orchid-staging` Vercel project** + Neon preview DB
+  for preview testing (uses your already-authed `vercel`/`neonctl`).
