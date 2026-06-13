@@ -91,8 +91,8 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
   flagged for re-scan.
 - [ ] **T-4 · AI prompt-boundary hardening.** Put transcript in an explicitly-untrusted data
   section, never in the system prompt; run AI features only after redaction passes; use
-  structured outputs for extraction. *Accept:* chat/summary/decisions can't be hijacked by
-  transcript content; verified with an injection probe. (Pairs with P0-2.)
+  structured outputs for extraction. *Accept:* chat/summary/decisions stay safe from
+  transcript-borne injection; verified with an injection probe. (Pairs with P0-2.)
 - [ ] **T-5 · (optional) Preventive hook + MCP scan.** Optional Claude Code `PreToolUse` hook
   that warns/blocks secret-printing commands (`cat .env`, `env`, `kubectl get secret -o yaml`);
   scan `.mcp.json`/`.claude/settings.json` when they enter transcript context. *Accept:* opt-in;
@@ -135,8 +135,8 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 ## Phase 3 — Fast Claude intelligence  *(depends: P0)*
 
 - [ ] **P3-1 · Auto-summary on session end.** When a session flips to `done`, enqueue a
-  background job (Vercel `after()`/cron now; droplet queue later) that generates a Claude
-  summary + key moments and stores them on the row. *Accept:* finished sessions have a
+  background job (**Vercel Workflows**, or **Temporal OSS** on the droplet) that generates a
+  Claude summary + key moments and stores them on the row. *Accept:* finished sessions have a
   summary without a click; generated in `< 2s` typical.
 - [ ] **P3-2 · Key moments / turnover extraction.** Store structured "important moments"
   (decisions, blockers, file/area touched) per session at end. *Accept:* viewer shows them
@@ -199,9 +199,11 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 - [ ] **P8-1 · Transcripts → object storage.** Move JSONL bodies to R2/Spaces; Neon keeps
   metadata + FTS index + a pointer. Stream/sign reads. *Accept:* new transcripts stored in
   object storage; reads work; Neon rows shrink; migration for existing.
-- [ ] **P8-2 · Background job queue on droplet.** Stand up a durable queue (BullMQ on Redis)
-  for summaries/imports/profile builds beyond `after()`. *Accept:* heavy jobs run off the
-  request path with retries.
+- [ ] **P8-2 · Background job orchestration.** Use **Vercel Workflows** (app's already on
+  Vercel, zero infra) for most async work; stand up **Temporal OSS** on the droplet for
+  heavy/long-running orchestration (bulk imports, profile builds, the redaction pipeline).
+  *Accept:* heavy jobs run off the request path with durability + retries; choice documented
+  per workload.
 
 ## Phase 9 — Landing page & first impression  *(end of each run; depends: features exist to show)*
 

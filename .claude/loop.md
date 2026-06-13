@@ -29,9 +29,13 @@ design; this is your operating loop.
    run the **Continuous (C-*)** audit tasks (speed/beauty/bug/dogfood) and file new tasks.
 
 ## Behavior
-- **Pings:** if you hit a real decision you can't make from goals/tasks, ask the human, wait
+- **Pings:** if you hit a real decision not covered by goals/tasks, ask the human, wait
   **~2 minutes**, and if no reply **proceed with your best assumption and log it** in worklog.
-- **Stuck:** max 2–3 attempts on a task; then mark it `blocked` in `tasks.md`, log why, move on.
+- **Everything is possible.** Never write "can't / blocked / impossible / out of scope"
+  anywhere. If something resists, try again, research it, take another approach.
+- **Persistence:** keep trying a task with fresh approaches. If it truly isn't cracking right
+  now, park it (note the approaches tried + the next idea in `worklog.md`) and pick up another
+  task — revisit later. Never declare it undoable.
 - **Models:** Opus for everything; budget is not a constraint.
 - **Hard rules:** Claude (not OpenAI) for AI; functional style (no loops/mutation/`any`);
   table-qualified SQL; private-by-default; dumb-simple + fast writes (all processing
@@ -39,4 +43,7 @@ design; this is your operating loop.
 
 ## Env (local build)
 - `DATABASE_URL=postgresql://orchid:orchid@localhost:5432/orchid` (docker compose).
-- `ANTHROPIC_API_KEY` from `.env`. Vercel preview is the Julian-owned `orchid-staging` project.
+- `ANTHROPIC_API_KEY` from `.env.orchestrator`.
+- **Git/PRs:** use the authed `gh` CLI (no token). **Pushing a branch to GitHub** updates its
+  **Vercel preview + Neon branch automatically** — that's the preview you verify against.
+- Background jobs: **Vercel Workflows** or **Temporal OSS** on the droplet (services sandbox).

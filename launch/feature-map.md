@@ -69,7 +69,7 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 |---|---|---|---|
 | `orchid takeover <id>` | 📄 | **RFC #17 only** (open, unmerged) | command does not exist |
 | Session rehydration + `--resume` | 📄 | RFC specifies it | not built |
-| Remote control (drive live session) | 📄 | RFC; blocked by `stdio: 'inherit'` (no I/O interception) | not built |
+| Remote control (drive live session) | 📄 | RFC; approach = intercept `stdio` via a PTY | to build |
 | Bring session to another machine | ❌ | manual read of transcript only | no portability path |
 | Soft handoff (read & continue) | 🟡 | skill workflow + `data show --turns` | lossy; no real session state transfer |
 
@@ -101,7 +101,7 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 | Sessions ↔ commits ↔ merged PRs graph | ❌ | only session_commits exists | no PR/merge join |
 | Public efficiency profile (PRs ÷ tokens) | ❌ | — | **growth engine — missing** |
 | Share to X / LinkedIn + OG image | ❌ | — | no share surface |
-| Token accounting | ❌ | CLI computes `totalTokens` for the TUI, but **server stores only `message_count`** — tokens never persisted | can't compute PRs ÷ tokens |
+| Token accounting | ❌ | CLI computes `totalTokens` for the TUI; **server stores only `message_count`** today | persist tokens → enables PRs ÷ tokens |
 
 ## 10. Auth · Teams · Billing
 | Feature | Status | Reality | Gap |
@@ -119,7 +119,7 @@ posts a grounded review. The pieces exist in fragments; the loop does not.
 | Vercel web + API | ✅ | auto-deploy from main | — |
 | Neon Postgres | ✅ | Drizzle, one migration | transcript bloat |
 | DO droplet (Pulumi) | ✅ | `orchid-deploy` 4vCPU/8GB, Docker+Caddy+Claude+Codex | **idle** — repurpose for Redis/jobs/orchestrator |
-| Background jobs | 🟡 | Next.js `after()` only (commit extraction) | no queue/cron; can't do heavy async |
+| Background jobs | 🟡 | Next.js `after()` only (commit extraction) | add Vercel Workflows / Temporal OSS for heavy async |
 | Redis / Temporal | ❌ | — | for cache, jobs, presence |
 | Realtime transport | ❌ | polling only | needed for live/remote |
 

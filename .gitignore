@@ -1,5 +1,6 @@
 
 .env
+.env.orchestrator
 .envrc
 node_modules/
 dist/

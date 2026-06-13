@@ -7,38 +7,32 @@
 
 ## Reality check (verified 2026-06-13)
 
-Most CLIs are **already authed locally as Julian** — so the orchestrator runs **local-first**
-and we need far less than first thought:
+Almost everything is already authed locally as Julian, so the orchestrator runs **local-first**:
 
 | Need | Why | Status |
 |------|-----|--------|
-| `vercel` CLI | deploys / env / preview URLs | ✅ authed (julian) |
-| `neonctl` CLI | migrations, FTS index, DB admin | ✅ authed (julian) |
-| `gh` CLI | git ops, PRs, webhooks | ✅ authed (julian) |
+| `gh` CLI | git push / PRs / comments | ✅ authed — no token needed |
+| `vercel` CLI | deploys / preview URLs | ✅ authed |
+| `neonctl` CLI | migrations, FTS index, DB admin | ✅ authed |
 | `claude`, `pulumi` | conductor + droplet IaC | ✅ present |
-| Droplet SSH key | services sandbox access | ✅ `~/.ssh/orchid-agent` present (need IP) |
-| **Anthropic API key** | the app's Claude calls (summaries/review/Q&A) — the one true must-have | 🔑 **provide** → `ANTHROPIC_API_KEY` |
-| Droplet IP / reachability | confirm `ssh -i ~/.ssh/orchid-agent root@<ip>` works | 🔑 confirm |
-| **Prod DB + Vercel ownership** | Orchid's Vercel project + Neon DB appear to be under **Andres**, not Julian (no `orchid` Vercel project here; only Neon project visible is `el-topo-diamantina`). Needed only at **promotion**, not for build work | ⚙️ confirm with Andres |
-| GitHub OAuth app | "Sign up with GitHub" + public profile | 🆕 later (Phase 7) |
-| Claude GitHub app + `GITHUB_TOKEN` | PR-review gate / webhook bot | ⚙️ later (Phase 2) |
-| ~~Resend~~ | invite/verification email only — **not a blocker** | skip |
+| Droplet SSH key | services-sandbox access | ✅ `~/.ssh/orchid-agent` + derived `.pub` |
+| `ANTHROPIC_API_KEY` | app's Claude calls (summaries/review/Q&A) | ✅ provided (`.env.orchestrator`) |
+| `DIGITALOCEAN_TOKEN` | `pulumi up` the droplet | ✅ provided (`.env.orchestrator`) |
+| GitHub OAuth app (client id/secret) | "Sign in with GitHub" | ⚙️ register at Phase 7 |
+| Claude GitHub App | PR-review gate | ⚙️ install at Phase 2 |
 
-**Build env = local:** the conductor uses a **local dev DB** (`docker compose up` +
-`pnpm db:migrate`) and never needs prod creds. Prod deploy/migrations happen at promotion,
-gated by you + Andres.
+**How previews work:** pushing a branch to GitHub auto-updates its **Vercel preview + Neon
+branch DB** — the orchestrator just pushes; nothing to provision. **Build env** = the local
+dev DB (`docker compose up`, schema applied). Prod updates at **promotion** (humans merge
+`orchestrator` → `main`).
 
-### GitHub OAuth app setup (Phase 7)
-- Create at github.com → Settings → Developer settings → OAuth Apps → New.
-- Homepage: `https://www.orchidkeep.com` · Callback: `https://www.orchidkeep.com/api/auth/callback/github`
-  (and `http://localhost:3000/api/auth/callback/github` for dev).
-- `GITHUB_TOKEN` for the webhook bot: fine-grained PAT, **Contents: read**, **Pull requests: write**, **Issues: write**.
+**Background jobs:** **Vercel Workflows** (zero infra, app's on Vercel) for most async work;
+**Temporal OSS** on the droplet for heavy/long-running orchestration.
 
-### Exact GitHub OAuth app setup
-- Create at github.com → Settings → Developer settings → OAuth Apps → New.
-- Homepage: `https://www.orchidkeep.com` · Callback: `https://www.orchidkeep.com/api/auth/callback/github`
-  (and `http://localhost:3000/api/auth/callback/github` for dev).
-- `GITHUB_TOKEN` for the webhook bot: fine-grained PAT, **Contents: read**, **Pull requests: write**, **Issues: write** (PR comments are issue comments).
+### GitHub OAuth app (Phase 7 — end-user sign-in, not a PAT)
+- github.com → Settings → Developer settings → OAuth Apps → New.
+- Homepage `https://www.orchidkeep.com` · Callback `https://www.orchidkeep.com/api/auth/callback/github`
+  (+ `http://localhost:3000/api/auth/callback/github` for dev).
 
 ---
 
@@ -61,7 +55,7 @@ gated by you + Andres.
 |------|------------------|----------|
 | **Object storage** (Cloudflare R2 / DO Spaces / S3) | 8 — transcripts off the hot path | R2 cheapest egress; Spaces simplest if staying in DO. *Phase 2.* |
 | **Redis on droplet** | 4/6 — cache, live session status, presence | `docker run redis` on droplet behind firewall |
-| **Background jobs** | 5 — auto-summary on session end, profile builds, imports | Start with Vercel `after()` + cron; graduate heavy/long jobs to the droplet (BullMQ on Redis, or Temporal if needed) |
+| **Background jobs** | 5 — auto-summary on session end, profile builds, imports | **Vercel Workflows** for most async work; **Temporal OSS** on the droplet for heavy/long-running |
 | **OG image generation** | 7 — shareable profile graph | `@vercel/og` (edge) renders the efficiency graph as a PNG at share time |
 | **`claude agents --json` ingestion** | 1/6 — live cross-machine Agent View | a daemon/hook reads local Agent View state + streams to Orchid |
 | **Domain/DNS** | already `orchidkeep.com` | confirm Vercel + any droplet subdomain (e.g. `rt.orchidkeep.com` for realtime) |

@@ -71,17 +71,15 @@ context — it delegates each task to a fresh workflow.
 
 - **Conductor → local (this Mac), local-first.** All the tooling is already here and authed:
   `claude`, `gh`, `vercel`, `neonctl`, `pulumi`, Docker (`docker-compose.yml`), the browser.
-  The conductor builds + validates against a **local dev DB** and never touches prod. Runs
-  under `tmux` with `bypassPermissions` (accepted once). Caveat: the Mac must stay **awake**
-  (`caffeinate -dimsu`); `/loop` is session-scoped and stops on shutdown. If we want
-  laptop-closed hands-off, move the conductor to the droplet (or Claude cloud **Routines**).
-- **Droplet (`orchid-deploy`) → the agent's services sandbox**, not the conductor's home.
-  It's where the agent freely installs/runs services it needs so it's never blocked: Redis
-  (cache/presence), a job queue (BullMQ/Temporal), object storage (MinIO), scratch DBs, etc.
-  SSH via `~/.ssh/orchid-agent` (key present locally). Docker + Caddy preinstalled.
-- **Prod (Vercel + Neon)** is touched only at **promotion** (human-gated), and appears to
-  live under **Andres's** accounts — so deploys/migrations there need his access. The
-  orchestrator does not need it to do its build work.
+  The conductor builds against a **local dev DB**, runs under `tmux` with `bypassPermissions`
+  (accepted once), and stays alive for the full run (sleep is already disabled on this Mac).
+- **GitHub drives previews.** The orchestrator commits with `gh` (no token) and **pushes
+  branches to GitHub**; each push **auto-updates that branch's Vercel preview + a Neon branch
+  DB**. That preview is what every task is verified against. Nothing to set up — just push.
+- **Droplet (`orchid-deploy`) → the agent's services sandbox.** Where the agent freely
+  installs/runs whatever it needs: Redis (cache/presence), **Temporal OSS** / a job queue,
+  object storage (MinIO), scratch DBs. SSH via `~/.ssh/orchid-agent`. Docker + Caddy ready.
+- **Prod** is updated at **promotion** — humans merge `orchestrator` → `main`, Vercel deploys.
 
 ## How `/loop` works & how we prevent overlap
 
@@ -100,7 +98,7 @@ until the task's workflow completes.
 1. **Turn-level (built-in):** the scheduler *"fires between your turns, not while Claude is
    mid-response. If Claude is busy when a task comes due, the prompt waits until the current
    turn ends."* And there is *no catch-up* for missed fires. So as long as the conductor
-   **awaits its workflow within the turn**, the next iteration cannot start until the current
+   **awaits its workflow within the turn**, the next iteration only starts after the current
    one finishes. Iterations are serial by construction.
 2. **Dynamic schedule, single conductor:** we run **one** `/loop` in **dynamic** mode (not a
    fixed cron), so the next wake is only scheduled *after* the current task is done + merged.
@@ -110,7 +108,7 @@ until the task's workflow completes.
    exists, the iteration exits immediately ("previous still running"). Guards against any
    edge case (e.g., a backgrounded workflow, an accidental second loop).
 
-**Lifecycle caveats (from the docs):** `/loop` is **session-scoped** — it only fires while
+**Lifecycle notes (from the docs):** `/loop` is **session-scoped** — it only fires while
 the Claude Code session is **running and idle**, so the conductor must stay alive (run it
 **locally in `tmux`**; sleep is already disabled on this Mac). Recurring tasks **expire after
 7 days** (fine for a 12h run) and are restored on `claude --resume`. If we ever need it to
@@ -132,24 +130,24 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 |------|-------|
 | Touching `main` | Prompt forbids it **+** a `pre-push` hook that rejects pushes to `main`. Only `orchestrator` and feature branches. |
 | Merging broken code | No merge unless the **full gate** passes **on the Vercel preview**: `check.sh` + tests + headed browser + CLI + 2–3 adversarial reviewers. |
-| Looping forever on one task | Max 2–3 attempts; then mark task `blocked` in `tasks.md`, log why, move on. |
-| Runaway cost | **Budget is not a constraint** (decision) — use Opus/best models freely; still avoid pathological retry loops via the attempt cap. |
-| Can't stop it | **Kill switch:** loop checks for `launch/STOP` each iteration and exits if present. Also `claude stop <id>` / `claude daemon stop`. |
+| One task resisting | Keep trying fresh approaches; if it isn't cracking now, **park it** (log approaches tried + next idea), pick another task, revisit later. Never declare it undoable. |
+| Runaway cost | **Budget is not a constraint** (decision) — use Opus/best models freely. |
+| Stopping it | **Kill switch:** loop checks for `launch/STOP` each iteration and exits if present. Also `claude stop <id>` / `claude daemon stop`. |
 | Corrupting the tree | Each task builds in its own `.claude/worktrees/` worktree. |
-| Leaking secrets | `.env`/`.secrets` gitignored; never committed; transcripts' secret-redaction tracked separately (PR #40). |
+| Leaking secrets | `.env*`/`.secrets` gitignored; never committed; transcript redaction is server-side at ingest (Phase T). |
 | Flying blind | `worklog.md` is the human trace; Orchid captures the orchestrator's **own** sessions (dogfood — watch it in Orchid); `claude agents` shows live status + PR colors. |
 | Process dies | Tasks are independent PRs; on restart the conductor re-reads `tasks.md` and continues. Stateless except git + docs. |
 
 ## Pre-launch checklist
 
-- [ ] `ANTHROPIC_API_KEY` in local `.env` (the app's Claude calls need it). `vercel`/`neon`/
-      `gh` already authed locally — no tokens needed for build work.
-- [ ] Local dev DB up (`docker compose up` + `pnpm db:migrate`); `bash check.sh` green.
-- [ ] `bypassPermissions` accepted once locally; `caffeinate -dimsu` keeps the Mac awake.
-- [ ] Browser ready for headed UI tests (Playwright already working here).
-- [ ] Droplet reachable as the services sandbox (`ssh -i ~/.ssh/orchid-agent root@<ip>`).
-- [ ] `pre-push` hook blocking `main` installed; kill switch (`launch/STOP`) + budget cap set.
-- [ ] First dry-run of ONE task end-to-end (build → verify → PR → merge) watched live.
+- [x] `ANTHROPIC_API_KEY` + `DIGITALOCEAN_TOKEN` in `.env.orchestrator` (gitignored). `vercel`/
+      `neonctl`/`gh` already authed locally.
+- [x] Local dev DB up (`docker compose up`, schema applied); `bash check.sh` green.
+- [x] `pre-push` hook blocking `main` installed; kill switch (`launch/STOP`) + lock file ready.
+- [x] Browser ready for headed UI tests (Playwright working here).
+- [ ] Droplet recreated via `pulumi up` (DO token present); reachable as the services sandbox.
+- [ ] `bypassPermissions` accepted once locally (sleep already disabled, so it stays alive).
+- [ ] First dry-run of ONE task end-to-end (build → push → preview → review → merge) watched live.
 
 ## Settled decisions (2026-06-13)
 
@@ -170,16 +168,14 @@ survive the machine being off, the durable alternatives are **Routines** (Anthro
 ### Always test the Vercel preview (decision 4 detail)
 
 Every task's verify + adversarial review runs against the **Vercel preview deployment** of
-the branch — the real deployed app, not localhost. Flow: build locally → push the task
-branch → Vercel builds a preview → headed browser + CLI tests + reviewers hit the **preview
-URL** → on full-gate green, **auto-merge into `orchestrator`** (which has its own integration
-preview). This needs a **Vercel project + preview env + a preview database**. Cleanest path
-that avoids depending on Andres's prod: a **Julian-owned Vercel "orchid-staging" project**
-linked to the repo's `orchestrator`/task branches, with `ANTHROPIC_API_KEY` + a **Neon
-preview DB** (Neon branch per preview is ideal). Prod (Andres's) stays promotion-only.
+the branch — the real deployed app, not localhost. Flow: build locally → **push the task
+branch to GitHub** → that push **auto-builds a Vercel preview + a Neon branch DB** → headed
+browser + CLI tests + reviewers hit the **preview URL** → on full-gate green, **auto-merge
+into `orchestrator`** (which has its own integration preview). Nothing to provision — the
+repo↔Vercel↔Neon wiring already updates on push. Prod stays promotion-only.
 
 ## Remaining to unblock the first run
-- `ANTHROPIC_API_KEY` (app's Claude calls + Vercel preview env).
-- Droplet IP (key present) to confirm the services sandbox.
-- Go-ahead to create the **Julian-owned `orchid-staging` Vercel project** + Neon preview DB
-  for preview testing (uses your already-authed `vercel`/`neonctl`).
+- [x] `ANTHROPIC_API_KEY` + `DIGITALOCEAN_TOKEN` provided (in `.env.orchestrator`).
+- [ ] **Recreate the droplet:** `pulumi up` (one open item — which Pulumi org: the existing
+      `snappr/orchid-infra/dev` stack, or a personal org?).
+- [ ] Confirm `bypassPermissions` accepted, then run the supervised dry-run task.

@@ -22,8 +22,8 @@ Agent View**. We already capture transcripts via hooks. The endgame:
 1. **Capture every agent's thoughts** — Claude Code, Codex, Cursor, opencode, Hermes —
    normalized into one session/thought stream, across every machine and teammate.
 2. **A Claude orchestrator is the main brain** that can read every agent's thoughts and
-   reason, review, and coordinate across all of them — the thing Agent View can't do
-   because it's stuck on one laptop.
+   reason, review, and coordinate across all of them — which Agent View doesn't do today:
+   it lives on one laptop, for one user.
 3. **Orchid is the authority ("the lawyer")** that governs *which* thoughts an
    orchestrator or teammate may read. Private by default; access is brokered, granted,
    shared, and handed off through Orchid. The orchestrator's omniscience is *policy-gated*,
@@ -139,6 +139,10 @@ thoughts into Orchid.
 
 ## Guidelines
 
+- **Everything is possible.** We are elite engineers. We never write "can't", "blocked",
+  "impossible", or "out of scope" anywhere in the repo — that only dirties our context. When
+  something resists, we try again, research more, and take another approach until it works.
+  Every obstacle is the next thing to crack, never a wall.
 - **Code style:** functional, no mutation, no `useEffect`, no `any`/`unknown`, typed
   `readonly` interfaces, descriptive names, table-qualified SQL, object params for
   multi-arg domain functions. (Canonical rules in `AGENTS.md`.)
@@ -160,10 +164,10 @@ thoughts into Orchid.
 - **Never store users' secrets.** Since the client is dumb, redaction runs **server-side at
   ingest, before anything is written to canonical storage.** Raw bytes land only in a
   secured, auto-purged staging buffer; only redacted, canonical transcripts are persisted,
-  searched, or sent to AI. Raw secrets never become canonical. *(Tradeoff: raw transits to
-  the server transiently — acceptable since it's never persisted; a thin client pre-filter
-  can be added later for zero-transit.)* Trust promise + what makes "capture everything"
-  safe enough to feed the flywheel. (Phase T.)
+  searched, or sent to AI. Raw secrets never become canonical — raw bytes live only in
+  secured, auto-purged staging during ingest, then they're gone. (A thin client-side
+  pre-filter is an easy future upgrade for zero-transit.) Trust promise + what makes "capture
+  everything" safe enough to feed the flywheel. (Phase T.)
 - **Design:** interfaces like **Linear** (calm, dense, fast). CLI like the **Claude Code
   TUI**. The public profile must be something you're *proud* to post on X / LinkedIn.
 - **The CLI is the API for agents.** Every capability an agent needs is a shell command;
