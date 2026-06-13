@@ -34,12 +34,15 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 - [ ] **P0-5 · Wire secrets.** Land `ANTHROPIC_API_KEY` (+ GitHub OAuth, DO token) into
   Vercel + droplet + local `.env`; document in `stack-and-access.md`. *Accept:* AI works
   in prod on Claude.
-- [ ] **P0-6 · Dumb-simple, blazing-fast write path.** Today the CLI re-uploads the **entire**
-  gzipped transcript every 5s. Redesign capture to be **append/delta-based** with minimal
-  server work — *the agent chooses the mechanism* (append-only log, direct-to-object-storage,
-  edge ingest, etc.). Redaction (Phase T) runs inline without perceptible latency. *Accept:*
-  sync sends only new turns/bytes, p50 server write time small, no full re-upload, crash-safe,
-  and writing never blocks the user's agent. Spike + decision doc, then implement.
+- [ ] **P0-6 · Dumb-simple, blazing-fast write path (all processing server-side).** Today the
+  CLI re-uploads the **entire** gzipped transcript every 5s. Redesign so the **client is
+  dumb**: append/stream **deltas**, the server durably stashes them and **acks immediately**.
+  ALL processing (parse, redact, index, link commits/PRs, summarize) runs **async on the
+  server**, off the write path — *the agent chooses the mechanism* (append-only log,
+  direct-to-object-storage staging, edge ingest + queue, etc.). *Accept:* client sends only
+  new turns/bytes; ingest ack is fast (small p50); no full re-upload; crash-safe; writing
+  never blocks the user's agent; processing happens entirely server-side. Spike + decision
+  doc, then implement.
 
 ## Phase 1 — Privacy & the access layer  *(#1 goal — depends: none)*
 
@@ -64,25 +67,28 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 
 > "We never store your secrets." Users *will* paste API keys into prompts. Today the CLI
 > uploads the raw JSONL and the server stores it verbatim — every downstream feature (search,
-> AI, webhook) then handles secrets. Fix at the source. Based on PR #40's research:
-> **local-first, deterministic, redacted-canonical-storage.** This is also a selling point
-> that makes "capture everything" safe → feeds the flywheel.
+> AI, webhook) then handles secrets. Per the **dumb-client / all-processing-server-side**
+> decision, redaction runs **server-side at ingest, before canonicalization** (PR #40's
+> deterministic, redacted-canonical-storage approach, minus the client-side step). Raw lands
+> only in secured, auto-purged staging. Selling point that makes "capture everything" safe →
+> feeds the flywheel.
 
-- [ ] **T-1 · Transcript-aware parsing.** In the CLI, parse JSONL into typed fragments
-  (model text, tool input/output, command output, diffs, env dumps, MCP config) before
-  scanning. *Accept:* a fragment model the scanner runs over; tests on real transcripts.
-- [ ] **T-2 · Deterministic redaction before upload (CLI, default-on).** Scan fragments for
-  provider tokens (`sk-…`, `ghp_…`, AWS `AKIA…`, GCP, Slack), private keys, JWTs, connection
-  strings with passwords, and `KEY=secret` env lines; context-bound entropy for the rest.
-  Replace with typed placeholders (`[REDACTED:aws_key]`). Upload **only redacted** transcript
-  + a **manifest** (span coords, detector, rule version, HMAC fingerprint — **never the raw
-  secret**). *Accept:* known secrets never leave the machine in raw form; opt-out flag exists;
-  fast (no perceptible sync delay).
+- [ ] **T-1 · Transcript-aware parsing (server).** On ingest, parse incoming delta JSONL into
+  typed fragments (model text, tool input/output, command output, diffs, env dumps, MCP
+  config) before scanning. *Accept:* a fragment model the scanner runs over; tests on real
+  transcripts.
+- [ ] **T-2 · Deterministic redaction on ingest (server, before canonicalization).** Scan
+  fragments for provider tokens (`sk-…`, `ghp_…`, AWS `AKIA…`, GCP, Slack), private keys,
+  JWTs, connection strings with passwords, `KEY=secret` env lines; context-bound entropy for
+  the rest. Replace with typed placeholders (`[REDACTED:aws_key]`). Persist **only redacted**
+  canonical text + a **manifest** (span coords, detector, rule version, HMAC fingerprint —
+  **never the raw secret**); **auto-purge** raw staging after redaction. *Accept:* known
+  secrets never reach canonical storage; raw staging is access-controlled + purged; fast.
 - [ ] **T-3 · Server ingestion gate + schema.** Add `redaction_status`, `scanner_version`,
-  and a findings table. **Re-scan on ingest**; do not persist/expose transcript until
+  and a findings table. Do not persist to canonical / expose transcript until
   `redaction_status = passed`. Search/AI/webhook read only redacted canonical text.
-  *Accept:* an unredacted upload is quarantined, not stored raw; existing rows flagged for
-  re-scan.
+  *Accept:* unredacted content is quarantined in staging, never canonical; existing rows
+  flagged for re-scan.
 - [ ] **T-4 · AI prompt-boundary hardening.** Put transcript in an explicitly-untrusted data
   section, never in the system prompt; run AI features only after redaction passes; use
   structured outputs for extraction. *Accept:* chat/summary/decisions can't be hijacked by
