@@ -41,8 +41,15 @@ async function generateAiText(params: {
 
   if (ANTHROPIC_API_KEY) {
     // Opus-tier models reject sampling params, so temperature is intentionally
-    // not forwarded to Claude.
-    return askClaude({ system: systemPrompt, messages, maxTokens });
+    // not forwarded to Claude. A Claude failure is wrapped in AiServiceError so
+    // both providers map uniformly to HTTP 502 (never leaking the key/status to
+    // the client). `return await` so the catch actually fires.
+    try {
+      return await askClaude({ system: systemPrompt, messages, maxTokens });
+    } catch (err) {
+      console.error('Claude API error:', err);
+      throw new AiServiceError();
+    }
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
