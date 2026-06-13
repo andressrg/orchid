@@ -16,7 +16,9 @@ behind the full gate into the live `orchestrator` branch, log it. Read
 5. **Read.** `launch/goals.md` (the why + guidelines + constraints), `launch/tasks.md`,
    and the tail of `launch/worklog.md` (read the **Patterns** block first).
 6. **Pick** the highest-priority task that is `[ ]` and whose deps are met. Mark it `[~]`.
-7. **Build it via a Workflow** (await it — don't end the turn until it finishes). The workflow:
+7. **Build it** (await it — don't end the turn until it finishes). Fan out with the **Workflow
+   tool if your session has it, otherwise parallel review subagents via the Agent/Task tool**
+   (both work — don't stall if Workflow isn't present). The flow:
    - Implements in a fresh git **worktree**, functional style, **the simplest version that
      meets the acceptance criteria**.
    - Pushes the task branch + opens a **PR**; the push auto-builds a **Vercel preview + Neon

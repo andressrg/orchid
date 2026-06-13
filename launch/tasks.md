@@ -15,6 +15,27 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 
 ---
 
+## Phase S — Hardening from the adversarial review _(do alongside Phase 0; iterate live)_
+
+> Captured from the plan's adversarial review so we don't lose them. Hackathon mode: the loop
+> fixes these as it ships. **Phase T decision (written):** land T-2 deterministic redaction
+> early/high-priority; don't run real external/customer sessions through the loop until it's
+> in — our own repo's sessions are accepted short-term while T-2 lands fast.
+
+- [ ] **S-0 · Make the verify gate real.** Previews must boot a **migrated** DB or "green" is
+      fake: add automatic migration on Vercel build (a `db:migrate` build/postinstall step, or
+      boot-time migrate-with-lock) and confirm `ANTHROPIC_API_KEY` is in Vercel **preview** env
+      (`vercel env add`). Until then, also verify locally against the migrated docker DB.
+- [ ] **S-1 · Authenticate the GitHub webhook.** Verify `X-Hub-Signature-256` HMAC on
+      `/webhook/github` (unauthenticated today — api-app.ts:63 skips it) and `escapeLike` the
+      repo name (api-app.ts:783).
+- [ ] **S-2 · Rate-limit + validate inputs.** Rate-limit the AI endpoints; add size/type
+      validation on `PUT /sessions/:id` (reject oversized transcripts; sanitize `user_name`);
+      drop the silent OpenAI fallback (return 503 if Claude unconfigured).
+- [ ] **S-3 · Accuracy fixes for P0-3/P0-4.** `/sessions` LIST already selects explicit columns
+      (leave it). Real over-fetch is `GET /sessions/:id` `select()` (api-app.ts:201). FTS has
+      **two** `ilike` sites to switch: api-app.ts:168 **and** queries.ts:124.
+
 ## Phase 0 — Foundation & quick speed wins _(unblocks everything; do first)_
 
 - [ ] **P0-1 · Claude provider abstraction.** Create `web/app/lib/ai.ts` with a typed
