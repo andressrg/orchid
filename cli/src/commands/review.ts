@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { getConfig, getAuthHeaders } from '../config';
 
 // Conversation-aware code review for agents — the flagship Orchid flow.
@@ -76,9 +76,13 @@ export function splitShaLines(stdout: string): readonly string[] {
     .filter(Boolean);
 }
 
-function runShell(command: string): string {
+// Run a command WITHOUT a shell (argv form) so attacker-controlled args — e.g. a
+// branch name from an untrusted fork that a reviewing agent passes to
+// `orchid review <branch>` — can never inject shell commands. Returns '' on any
+// failure (e.g. a bogus revspec just makes git error out).
+function runCommand(file: string, args: readonly string[]): string {
   try {
-    return execSync(command, {
+    return execFileSync(file, [...args], {
       encoding: 'utf-8',
       stdio: ['pipe', 'pipe', 'pipe'],
     }).trim();
@@ -88,16 +92,18 @@ function runShell(command: string): string {
 }
 
 // Resolve a branch's commits as the range default-base..branch. Tries
-// origin/main first, then main; returns [] if neither base exists.
+// origin/main first, then main; returns [] if neither base exists. The branch is
+// passed as a single argv element, never interpolated into a shell string.
 function resolveBranchShas(branch: string): readonly string[] {
   const base =
-    runShell('git rev-parse --verify --quiet origin/main') !== ''
+    runCommand('git', ['rev-parse', '--verify', '--quiet', 'origin/main']) !==
+    ''
       ? 'origin/main'
-      : runShell('git rev-parse --verify --quiet main') !== ''
+      : runCommand('git', ['rev-parse', '--verify', '--quiet', 'main']) !== ''
         ? 'main'
         : null;
   if (!base) return [];
-  return splitShaLines(runShell(`git rev-list ${base}..${branch}`));
+  return splitShaLines(runCommand('git', ['rev-list', `${base}..${branch}`]));
 }
 
 // Resolve the target (PR number/URL or branch) to its commit SHAs, locally.
@@ -106,7 +112,15 @@ function resolveTargetShas(target: string): readonly string[] {
   if (prNumber !== null) {
     return dedupShas(
       splitShaLines(
-        runShell(`gh pr view ${prNumber} --json commits --jq '.commits[].oid'`),
+        runCommand('gh', [
+          'pr',
+          'view',
+          String(prNumber),
+          '--json',
+          'commits',
+          '--jq',
+          '.commits[].oid',
+        ]),
       ),
     );
   }
@@ -146,7 +160,9 @@ function printBrief(params: {
 }): void {
   const { mode, target, data, webUrl } = params;
   const title =
-    mode === 'review' ? '🌸 Orchid Review — grounded in intent' : '🌸 Orchid Review Context';
+    mode === 'review'
+      ? '🌸 Orchid Review — grounded in intent'
+      : '🌸 Orchid Review Context';
 
   console.log(`${MAGENTA}${title}${RESET}`);
   console.log(
