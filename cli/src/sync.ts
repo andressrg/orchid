@@ -3,6 +3,7 @@ import * as path from 'path';
 import { gzipSync } from 'zlib';
 import { getConfig, getAuthHeaders } from './config';
 import { GitMetadata } from './commands/claude';
+import { tokenUsageFromTranscriptText } from './sync-utils';
 
 /**
  * Derive a session ID from a transcript file path.
@@ -31,6 +32,9 @@ async function syncToServer(
     return;
   }
 
+  const { inputTokens, outputTokens } =
+    tokenUsageFromTranscriptText(transcript);
+
   const json = JSON.stringify({
     user_name: metadata.user_name,
     user_email: metadata.user_email,
@@ -40,6 +44,8 @@ async function syncToServer(
     tool: 'claude-code',
     transcript,
     status,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
   });
 
   const compressed = gzipSync(Buffer.from(json, 'utf-8'));

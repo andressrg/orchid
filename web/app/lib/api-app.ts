@@ -11,6 +11,7 @@ import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
+import { tokenUsageFromTranscript } from './token-usage';
 import { askClaude, type ClaudeMessage } from './ai';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -289,6 +290,8 @@ app.get('/sessions', async (c) => {
         updated_at: orchidSession.updatedAt,
         status: orchidSession.status,
         message_count: orchidSession.messageCount,
+        input_tokens: orchidSession.inputTokens,
+        output_tokens: orchidSession.outputTokens,
       })
       .from(orchidSession)
       .where(conditions.length > 0 ? and(...conditions) : undefined)
@@ -317,8 +320,18 @@ app.get('/sessions/:id', async (c) => {
 // Create/update session (upsert via raw SQL — Drizzle's onConflict is limited)
 app.put('/sessions/:id', async (c) => {
   const id = c.req.param('id');
-  const { user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status } =
-    await c.req.json();
+  const {
+    user_name,
+    user_email,
+    working_dir,
+    git_remotes,
+    branch,
+    tool,
+    transcript,
+    status,
+    input_tokens,
+    output_tokens,
+  } = await c.req.json();
 
   const userId = c.get('userId');
   const teamId = c.get('teamId');
@@ -328,16 +341,31 @@ app.put('/sessions/:id', async (c) => {
     messageCount = (transcript as string).split('\n').filter((l: string) => l.trim()).length;
   }
 
+  // Persist token totals. Prefer the values the CLI computed from the full
+  // transcript; fall back to recomputing here so older CLIs (and a per-request
+  // backfill) still store accurate totals. Cache tokens fold into inputTokens.
+  const tokenUsage =
+    typeof input_tokens === 'number' || typeof output_tokens === 'number'
+      ? {
+          inputTokens: typeof input_tokens === 'number' ? input_tokens : 0,
+          outputTokens: typeof output_tokens === 'number' ? output_tokens : 0,
+        }
+      : transcript
+        ? tokenUsageFromTranscript(transcript as string)
+        : { inputTokens: 0, outputTokens: 0 };
+
   try {
     const result = await pool.query(
-      `INSERT INTO orchid_session (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, user_id, team_id, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+      `INSERT INTO orchid_session (id, user_name, user_email, working_dir, git_remotes, branch, tool, transcript, status, message_count, user_id, team_id, input_tokens, output_tokens, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW())
        ON CONFLICT (id) DO UPDATE SET
          user_name = EXCLUDED.user_name, user_email = EXCLUDED.user_email,
          working_dir = EXCLUDED.working_dir, git_remotes = EXCLUDED.git_remotes,
          branch = EXCLUDED.branch, tool = EXCLUDED.tool,
          transcript = EXCLUDED.transcript, status = EXCLUDED.status,
          message_count = EXCLUDED.message_count,
+         input_tokens = EXCLUDED.input_tokens,
+         output_tokens = EXCLUDED.output_tokens,
          user_id = COALESCE(EXCLUDED.user_id, orchid_session.user_id),
          team_id = COALESCE(EXCLUDED.team_id, orchid_session.team_id),
          updated_at = NOW()
@@ -356,6 +384,8 @@ app.put('/sessions/:id', async (c) => {
         messageCount,
         userId,
         teamId,
+        tokenUsage.inputTokens,
+        tokenUsage.outputTokens,
       ],
     );
 

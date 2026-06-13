@@ -17,6 +17,7 @@ import {
   tryParseJson,
   extractMessageText,
   sumTokensFromUsage,
+  tokenUsageFromTranscriptText,
   groupSessionsByProject,
   markSessionsSynced,
   markGroupSessionsSynced,
@@ -343,6 +344,11 @@ const syncSessionToServer = async (
   })();
   const gitMeta = collectGitMetadataForDir(session.cwd);
   const url = `${apiUrl.replace(/\/$/, '')}/sessions/${session.sessionId}`;
+  // Parse the full transcript for exact token totals here (the TUI's
+  // session.totalTokens is extrapolated from a 32KB sample, so it isn't
+  // accurate enough to persist).
+  const { inputTokens, outputTokens } =
+    tokenUsageFromTranscriptText(transcript);
   const json = JSON.stringify({
     user_name: gitMeta.user_name,
     user_email: gitMeta.user_email,
@@ -352,6 +358,8 @@ const syncSessionToServer = async (
     tool: 'claude-code',
     transcript,
     status: 'done',
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
   });
   const compressed = gzipSync(Buffer.from(json, 'utf-8'));
   const res = await fetch(url, {
