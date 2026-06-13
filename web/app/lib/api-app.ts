@@ -11,10 +11,92 @@ import { orchidSession, apiKey, organization, member } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
+import { askClaude, type ClaudeMessage } from './ai';
 
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
 const WEB_UI_URL = process.env.NEXT_PUBLIC_URL || process.env.VERCEL_URL || 'http://localhost:3000';
+
+// AI is available when either provider is configured. Claude is preferred; the
+// existing OpenAI gpt-4o-mini path is kept as a fallback.
+const AI_AVAILABLE = Boolean(ANTHROPIC_API_KEY || OPENAI_API_KEY);
+const AI_UNAVAILABLE_MESSAGE =
+  'AI features require ANTHROPIC_API_KEY (or OPENAI_API_KEY as a fallback)';
+
+// One AI request: a system prompt plus an ordered list of conversation messages.
+// Routes to Claude when ANTHROPIC_API_KEY is set, otherwise to the existing
+// OpenAI gpt-4o-mini behavior. Returns the assembled assistant text.
+//
+// Prompt-injection boundary: the (trusted) systemPrompt goes to Claude's
+// top-level `system` field; untrusted transcript/user content rides only in
+// `messages`, never in `system`.
+async function generateAiText(params: {
+  systemPrompt: string;
+  messages: readonly ClaudeMessage[];
+  maxTokens: number;
+  temperature: number;
+}): Promise<string> {
+  const { systemPrompt, messages, maxTokens, temperature } = params;
+
+  if (ANTHROPIC_API_KEY) {
+    // Opus-tier models reject sampling params, so temperature is intentionally
+    // not forwarded to Claude.
+    return askClaude({ system: systemPrompt, messages, maxTokens });
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      max_tokens: maxTokens,
+      temperature,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('OpenAI API error:', response.status, errorBody);
+    throw new AiServiceError();
+  }
+
+  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+// Sentinel error used to map a downstream AI-provider failure to an HTTP 502.
+class AiServiceError extends Error {
+  constructor() {
+    super('AI service error');
+    this.name = 'AiServiceError';
+  }
+}
+
+interface Decision {
+  readonly title: string;
+  readonly decision: string;
+  readonly alternatives: readonly string[];
+  readonly reason: string;
+  readonly session_id: string;
+  readonly turn_index: number;
+}
+
+// Parse the model's JSON-array decisions output, tolerating a markdown code
+// fence. Returns [] on any malformed output.
+function parseDecisions(raw: string): readonly Decision[] {
+  try {
+    const cleaned = raw
+      .replace(/^```[a-z]*\n?/i, '')
+      .replace(/```$/i, '')
+      .trim();
+    const parsed = JSON.parse(cleaned) as unknown;
+    return Array.isArray(parsed) ? (parsed as readonly Decision[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 const scheduleAfterResponse = (task: () => Promise<void>): void => {
   try {
@@ -411,8 +493,8 @@ app.get('/tokens/validate', async (c) => {
 
 // AI Summary
 app.get('/sessions/:id/summary', async (c) => {
-  if (!OPENAI_API_KEY) {
-    return c.json({ error: 'AI summaries not available (OPENAI_API_KEY not configured)' }, 503);
+  if (!AI_AVAILABLE) {
+    return c.json({ error: AI_UNAVAILABLE_MESSAGE }, 503);
   }
 
   const id = c.req.param('id');
@@ -443,31 +525,17 @@ app.get('/sessions/:id/summary', async (c) => {
 
     const conversationText = turns.map((t) => `[${t.role}]: ${t.text}`).join('\n\n');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.',
-          },
-          { role: 'user', content: conversationText },
-        ],
-        max_tokens: 200,
-        temperature: 0.3,
-      }),
+    const summary = await generateAiText({
+      systemPrompt:
+        'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.',
+      messages: [{ role: 'user', content: conversationText }],
+      maxTokens: 200,
+      temperature: 0.3,
     });
 
-    if (!response.ok) return c.json({ error: 'AI service error' }, 502);
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return c.json({
-      summary: data.choices?.[0]?.message?.content || 'Unable to generate summary.',
-    });
+    return c.json({ summary: summary || 'Unable to generate summary.' });
   } catch (err) {
+    if (err instanceof AiServiceError) return c.json({ error: 'AI service error' }, 502);
     console.error('GET /api/sessions/:id/summary error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
@@ -475,8 +543,8 @@ app.get('/sessions/:id/summary', async (c) => {
 
 // Chat
 app.post('/sessions/:id/chat', async (c) => {
-  if (!OPENAI_API_KEY) {
-    return c.json({ error: 'Chat not available (OPENAI_API_KEY not configured)' }, 503);
+  if (!AI_AVAILABLE) {
+    return c.json({ error: AI_UNAVAILABLE_MESSAGE }, 503);
   }
 
   const id = c.req.param('id');
@@ -530,10 +598,7 @@ app.post('/sessions/:id/chat', async (c) => {
       .map((t, i) => `[Turn ${i + 1}][${t.role}]: ${t.text}`)
       .join('\n\n');
 
-    const messages: Array<{ role: string; content: string }> = [
-      {
-        role: 'system',
-        content: `You are Orchid, an assistant that answers questions about AI coding sessions.
+    const systemPrompt = `You are Orchid, an assistant that answers questions about AI coding sessions.
 
 Session info:
 - User: ${session.userName} <${session.userEmail}>
@@ -547,35 +612,24 @@ Session info:
 Transcript:
 ${conversationText}
 
-Answer based on this conversation. Cite turn numbers when possible. Be concise but thorough.`,
-      },
-    ];
+Answer based on this conversation. Cite turn numbers when possible. Be concise but thorough.`;
 
-    if (Array.isArray(history)) {
-      for (const msg of history) {
-        if (msg.role === 'user' || msg.role === 'assistant') {
-          messages.push({ role: msg.role, content: msg.content });
-        }
-      }
-    }
-    messages.push({ role: 'user', content: question });
+    const historyMessages: ClaudeMessage[] = Array.isArray(history)
+      ? history
+          .filter((msg) => msg.role === 'user' || msg.role === 'assistant')
+          .map((msg) => ({ role: msg.role as ClaudeMessage['role'], content: msg.content }))
+      : [];
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'gpt-4o-mini', messages, max_tokens: 2000, temperature: 0.3 }),
+    const answer = await generateAiText({
+      systemPrompt,
+      messages: [...historyMessages, { role: 'user', content: question }],
+      maxTokens: 2000,
+      temperature: 0.3,
     });
 
-    if (!response.ok) {
-      console.error('OpenAI API error:', response.status, await response.text());
-      return c.json({ error: 'AI service error' }, 502);
-    }
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    return c.json({
-      answer: data.choices?.[0]?.message?.content || 'Unable to generate an answer.',
-    });
+    return c.json({ answer: answer || 'Unable to generate an answer.' });
   } catch (err) {
+    if (err instanceof AiServiceError) return c.json({ error: 'AI service error' }, 502);
     console.error('POST /api/sessions/:id/chat error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
@@ -624,7 +678,7 @@ app.get('/decisions', async (c) => {
 
     if (rows.length === 0) return c.json({ decisions: [], sessions_analyzed: 0 });
 
-    if (!OPENAI_API_KEY) {
+    if (!AI_AVAILABLE) {
       return c.json({
         decisions: [
           {
@@ -679,41 +733,18 @@ app.get('/decisions', async (c) => {
       return `=== Session ${s.id} (by ${s.user_name}) ===\n${turns.join('\n')}`;
     });
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are analyzing AI coding conversation transcripts to extract architectural decisions.\n\nFor each significant decision, extract:\n- title, decision, alternatives (array), reason, session_id, turn_index\n\nReturn ONLY a valid JSON array. No markdown.`,
-          },
-          { role: 'user', content: transcriptBlocks.join('\n\n').slice(0, 12000) },
-        ],
-        max_tokens: 1500,
-        temperature: 0.2,
-      }),
+    const raw = await generateAiText({
+      systemPrompt: `You are analyzing AI coding conversation transcripts to extract architectural decisions.\n\nFor each significant decision, extract:\n- title, decision, alternatives (array), reason, session_id, turn_index\n\nReturn ONLY a valid JSON array. No markdown.`,
+      messages: [{ role: 'user', content: transcriptBlocks.join('\n\n').slice(0, 12000) }],
+      maxTokens: 1500,
+      temperature: 0.2,
     });
 
-    if (!response.ok) return c.json({ error: 'AI service error' }, 502);
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content || '[]';
-    let decisions = [];
-    try {
-      decisions = JSON.parse(
-        raw
-          .replace(/^```[a-z]*\n?/i, '')
-          .replace(/```$/i, '')
-          .trim(),
-      );
-    } catch {
-      decisions = [];
-    }
+    const decisions = parseDecisions(raw || '[]');
 
     return c.json({ decisions, sessions_analyzed: rows.length });
   } catch (err) {
+    if (err instanceof AiServiceError) return c.json({ error: 'AI service error' }, 502);
     console.error('GET /api/decisions error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
