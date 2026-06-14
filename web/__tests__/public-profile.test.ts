@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { inArray } from 'drizzle-orm';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { eq, inArray } from 'drizzle-orm';
 import { testDb, cleanTestDb } from './setup';
-import { user, orchidSession, sessionCommit } from '@/app/lib/schema';
+import { user, orchidSession, sessionCommit, account } from '@/app/lib/schema';
 import {
   slugifyHandle,
   resolveProfileUser,
@@ -175,9 +175,132 @@ describe('public efficiency profile', () => {
     expect(profile.totalSessions).toBe(0);
     expect(profile.activeDays).toBe(0);
     expect(profile.prsMerged).toBe(0);
+    expect(profile.prsFromGithub).toBe(false);
     expect(profile.tokensSpent).toBe(0);
     expect(profile.score).toBe(0);
     expect(profile.headlineMode).toBe('empty');
     expect(profile.days).toHaveLength(0);
+  });
+
+  it('falls back to the commit proxy when no GitHub account is linked', async () => {
+    // The seeded Ada has a githubLogin of null and no `account` row, so
+    // prsMerged stays the commit count (4) and prsFromGithub is false.
+    const identity = await resolveProfileUser('ada-lovelace');
+    expect(identity?.githubLogin).toBeNull();
+    const profile = await getPublicEfficiencyProfile(identity!);
+    expect(profile.prsMerged).toBe(4);
+    expect(profile.prsFromGithub).toBe(false);
+  });
+});
+
+// P7-3: when a profile user signed in with GitHub (githubLogin + a stored
+// access token in the `account` table), prsMerged is the REAL merged-PR count
+// from the GitHub search API — not the commit-count proxy. The GitHub login is
+// also the primary public handle. Falls back to the proxy on any failure.
+describe('public efficiency profile — GitHub-linked PRs', () => {
+  const GH_USER_ID = 'u-gh';
+  const GH_EMAIL = 'octo@example.com';
+  const GH_LOGIN = 'octodev';
+  const GH_TOKEN = 'gho_test_token';
+
+  beforeEach(async () => {
+    await cleanTestDb();
+    await testDb.delete(account).where(eq(account.userId, GH_USER_ID));
+    await testDb.delete(user).where(eq(user.id, GH_USER_ID));
+
+    await testDb.insert(user).values({
+      id: GH_USER_ID,
+      name: 'Octo Dev',
+      email: GH_EMAIL,
+      emailVerified: true,
+      githubLogin: GH_LOGIN,
+      githubId: '99887766',
+    });
+
+    // Better Auth-shaped GitHub account row carrying the access token.
+    await testDb.insert(account).values({
+      id: 'acc-gh',
+      accountId: '99887766',
+      providerId: 'github',
+      userId: GH_USER_ID,
+      accessToken: GH_TOKEN,
+    });
+
+    // One session with 4 messages so there are real tokens for the score, and
+    // a single commit so the proxy (1) is clearly different from the GitHub
+    // count (17) in the assertions below.
+    await testDb.insert(orchidSession).values({
+      id: 'gh-s1',
+      userName: 'Octo Dev',
+      userEmail: GH_EMAIL,
+      status: 'done',
+      messageCount: 4,
+      startedAt: dayUtc('2026-02-01'),
+      updatedAt: dayUtc('2026-02-01'),
+      userId: GH_USER_ID,
+    });
+    await testDb
+      .insert(sessionCommit)
+      .values({
+        id: 'gh-c1',
+        sessionId: 'gh-s1',
+        commitSha: 'sha1',
+        committedAt: dayUtc('2026-02-01'),
+      });
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    // Sessions reference the user (FK), so clear them before deleting the user.
+    await cleanTestDb();
+    await testDb.delete(account).where(eq(account.userId, GH_USER_ID));
+    await testDb.delete(user).where(eq(user.id, GH_USER_ID));
+  });
+
+  it('resolves the GitHub login as the primary handle', async () => {
+    const identity = await resolveProfileUser(GH_LOGIN);
+    expect(identity?.userId).toBe(GH_USER_ID);
+    expect(identity?.handle).toBe(GH_LOGIN);
+    expect(identity?.githubLogin).toBe(GH_LOGIN);
+  });
+
+  it('uses the real GitHub merged-PR count over the commit proxy', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) => {
+        calls.push(String(input));
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: async () => ({ total_count: 17 }),
+        } as unknown as Response);
+      }),
+    );
+
+    const identity = await resolveProfileUser(GH_LOGIN);
+    const profile = await getPublicEfficiencyProfile(identity!);
+
+    // The single commit would yield prsMerged 1 via the proxy; GitHub says 17.
+    expect(profile.totalCommits).toBe(1);
+    expect(profile.prsMerged).toBe(17);
+    expect(profile.prsFromGithub).toBe(true);
+    expect(calls.some((url) => url.includes('api.github.com/search/issues'))).toBe(true);
+    expect(decodeURIComponent(calls[0])).toContain(`author:${GH_LOGIN}`);
+  });
+
+  it('falls back to the commit proxy when the GitHub call fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: false, status: 403, json: async () => ({}) } as unknown as Response),
+      ),
+    );
+
+    const identity = await resolveProfileUser(GH_LOGIN);
+    const profile = await getPublicEfficiencyProfile(identity!);
+
+    expect(profile.prsMerged).toBe(1); // the commit proxy
+    expect(profile.prsFromGithub).toBe(false);
   });
 });

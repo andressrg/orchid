@@ -7,6 +7,13 @@ export const user = pgTable('user', {
   email: text('email').notNull().unique(),
   emailVerified: boolean('email_verified').default(false).notNull(),
   image: text('image'),
+  // GitHub identity, captured on "Continue with GitHub" sign-in via Better
+  // Auth's `mapProfileToUser` (declared as `user.additionalFields` in auth.ts).
+  // Nullable: email/password users never have these. `githubLogin` is the
+  // queryable handle that drives `/u/<github-login>` and the real merged-PR
+  // count; `githubId` is the stable numeric id for future re-linking.
+  githubLogin: text('github_login'),
+  githubId: text('github_id'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
     .defaultNow()

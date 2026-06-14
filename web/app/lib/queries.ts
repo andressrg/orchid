@@ -1,7 +1,8 @@
 import { eq, and, or, desc, sql, type SQL } from 'drizzle-orm';
 import { db } from './db';
-import { orchidSession, organization, member, user, sessionCommit } from './schema';
+import { orchidSession, organization, member, user, sessionCommit, account } from './schema';
 import { transcriptMatches, transcriptRank } from './fts';
+import { fetchMergedPrCount } from './github';
 
 // Resolve team ID from slug + user membership
 export async function resolveTeamId(teamSlug: string, userId: string): Promise<string | null> {
@@ -176,12 +177,12 @@ export async function searchSessions(teamId: string, query: string) {
 // A PUBLIC, shareable `/u/<handle>` profile. Renders ONLY aggregate, public-safe
 // stats — never transcript bodies or any private session content.
 //
-// Handle resolution: users do not have a public-handle column yet (that arrives
-// with GitHub handles in P7-1). Until then a handle is resolved against existing
-// `user` data, trying in order: the slugified display name (`julian-mazo`), the
-// email local-part (`julian`), then the raw user id. Structured so a real
-// `user.handle` column can become the primary lookup later without touching the
-// page.
+// Handle resolution: a GitHub login (`user.githubLogin`, captured on
+// "Continue with GitHub" sign-in) is the PRIMARY public handle when present, so
+// `/u/<github-login>` resolves and matches the profile's real merged-PR data.
+// Falling back, a handle is resolved against existing `user` data, trying in
+// order: the slugified display name (`julian-mazo`), the email local-part
+// (`julian`), then the raw user id.
 //
 // Headline metric — the Orchid Efficiency Score: PRs merged ÷ tokens spent,
 // expressed as "PRs shipped per million tokens" (PR/MTok) so the raw ratio
@@ -189,15 +190,13 @@ export async function searchSessions(teamId: string, query: string) {
 // Higher = more shipped per token burned. The score carries a tier label
 // (Warming up → Lean → Efficient → Elite → Legendary) for the brag.
 //
-// Two columns the score wants — merged-PR count and tokens spent — are not in
-// `schema.ts` yet (they arrive with P7-1 GitHub linking and P7-2 token capture).
-// So the profile NEVER references non-existent columns: it computes both from
-// data that exists today via two single swap points —
-//   • `prsMerged`   ← commit count (a shipped commit ≈ a shipped PR for now).
-//   • `tokensSpent` ← estimated from `message_count` (`TOKENS_PER_MESSAGE`),
-//                     flagged `tokensEstimated: true`.
-// Replace those two derivations with the real columns when they land and the
-// whole score, tiers, and graceful-degradation UI keep working unchanged.
+// `prsMerged` is REAL for GitHub-linked users (P7-3): when the resolved user
+// has a `githubLogin` + a GitHub `account.accessToken`, the count comes from
+// the GitHub search API (`is:pr is:merged author:<login>`). When no GitHub
+// account is linked — or the call times out / fails — it falls back to the
+// commit-count proxy (a shipped commit ≈ a shipped PR). `tokensSpent` is still
+// estimated from `message_count` (`TOKENS_PER_MESSAGE`), flagged
+// `tokensEstimated: true`, until P7-2 captures real per-session token totals.
 //
 // Graceful degradation: when tokens are unknown the headline falls back to a
 // PRs-only view; when PRs are zero it shows the tokens-burned view. The mode is
@@ -216,6 +215,9 @@ export interface PublicProfileIdentity {
   readonly userId: string;
   readonly userEmail: string | null;
   readonly avatarInitial: string;
+  // GitHub login when the user signed in with GitHub; drives the real merged-PR
+  // count. null for email/password users (the profile uses the commit proxy).
+  readonly githubLogin: string | null;
 }
 
 export interface ProfileDayActivity {
@@ -233,7 +235,8 @@ export interface PublicEfficiencyProfile {
   readonly identity: PublicProfileIdentity;
   readonly totalSessions: number;
   readonly totalCommits: number;
-  readonly prsMerged: number; // shipped PRs (commit count proxy until P7-1).
+  readonly prsMerged: number; // real merged PRs (GitHub) or commit-count proxy.
+  readonly prsFromGithub: boolean; // true when prsMerged is the real GitHub count.
   readonly tokensSpent: number; // tokens burned (estimated until P7-2).
   readonly tokensEstimated: boolean;
   readonly activeDays: number;
@@ -280,10 +283,20 @@ const emailLocalPart = (email: string): string => email.split('@')[0] ?? '';
 // for the aggregate session lookup, never rendered.
 export async function resolveProfileUser(handle: string): Promise<PublicProfileIdentity | null> {
   const wanted = slugifyHandle(handle);
-  const rows = await db.select({ id: user.id, name: user.name, email: user.email }).from(user);
+  const rows = await db
+    .select({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      githubLogin: user.githubLogin,
+    })
+    .from(user);
 
+  // GitHub login wins as the primary handle (so `/u/<github-login>` resolves),
+  // then slugified name, then email local-part, then raw id.
   const match = rows.find(
     (row) =>
+      slugifyHandle(row.githubLogin ?? '') === wanted ||
       slugifyHandle(row.name) === wanted ||
       slugifyHandle(emailLocalPart(row.email)) === wanted ||
       row.id === handle,
@@ -292,11 +305,16 @@ export async function resolveProfileUser(handle: string): Promise<PublicProfileI
 
   const displayName = match.name?.trim() || emailLocalPart(match.email) || match.id;
   return {
-    handle: slugifyHandle(match.name) || slugifyHandle(emailLocalPart(match.email)) || match.id,
+    handle:
+      slugifyHandle(match.githubLogin ?? '') ||
+      slugifyHandle(match.name) ||
+      slugifyHandle(emailLocalPart(match.email)) ||
+      match.id,
     displayName,
     userId: match.id,
     userEmail: match.email,
     avatarInitial: (displayName[0] ?? '?').toUpperCase(),
+    githubLogin: match.githubLogin ?? null,
   };
 }
 
@@ -334,12 +352,36 @@ const headlineModeFor = ({
   return 'efficiency';
 };
 
+// Stored GitHub access token for a user, from the Better Auth `account` table
+// (providerId 'github'). Returns null when the user has no linked GitHub
+// account — the profile then uses the commit-count proxy for PRs. Public-safe:
+// the token is only used server-side for the merged-PR count, never rendered.
+const githubAccessTokenForUser = async (userId: string): Promise<string | null> => {
+  const [row] = await db
+    .select({ accessToken: account.accessToken })
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, 'github')))
+    .limit(1);
+  return row?.accessToken ?? null;
+};
+
+// Real merged-PR count for a GitHub-linked identity, or null to fall back to
+// the commit proxy. Requires both a githubLogin and a stored access token; the
+// GitHub call itself is timeout-bounded and never throws (see ./github).
+const realMergedPrCount = async (identity: PublicProfileIdentity): Promise<number | null> => {
+  if (!identity.githubLogin) return null;
+  const accessToken = await githubAccessTokenForUser(identity.userId);
+  if (!accessToken) return null;
+  return fetchMergedPrCount({ login: identity.githubLogin, accessToken });
+};
+
 // Compute the public, aggregate efficiency profile for a resolved identity.
-// Batches into two parallel queries: a per-day activity roll-up (for the
-// contribution graph) and a deduplicated profile-wide summary (commits +
-// message count for the token estimate, kept off the commit-join fan-out).
-// Sessions are matched on `user_id` OR `user_email` so legacy rows captured
-// before accounts existed (email only, no user_id) still count.
+// Batches into parallel queries: a per-day activity roll-up (for the
+// contribution graph), a deduplicated profile-wide summary (commits + message
+// count for the token estimate, kept off the commit-join fan-out), and — for
+// GitHub-linked users — the real merged-PR count. Sessions are matched on
+// `user_id` OR `user_email` so legacy rows captured before accounts existed
+// (email only, no user_id) still count.
 export async function getPublicEfficiencyProfile(
   identity: PublicProfileIdentity,
 ): Promise<PublicEfficiencyProfile> {
@@ -347,7 +389,7 @@ export async function getPublicEfficiencyProfile(
     ? or(eq(orchidSession.userId, identity.userId), eq(orchidSession.userEmail, identity.userEmail))
     : eq(orchidSession.userId, identity.userId);
 
-  const [dayRows, [summary]] = await Promise.all([
+  const [dayRows, [summary], githubPrCount] = await Promise.all([
     // Per-day series: one row per active day with that day's session + commit
     // counts. Sessions bucketed by started_at in UTC for a stable heatmap.
     db
@@ -371,6 +413,10 @@ export async function getPublicEfficiencyProfile(
       })
       .from(orchidSession)
       .where(ownsSession),
+    // Real merged-PR count for GitHub-linked users; null otherwise (or on a
+    // timeout/failure). Runs in parallel with the aggregate queries so it never
+    // serializes the public page.
+    realMergedPrCount(identity),
   ]);
 
   const days: readonly ProfileDayActivity[] = dayRows.map((row) => ({
@@ -383,8 +429,10 @@ export async function getPublicEfficiencyProfile(
   const totalCommits = Number(summary?.commits ?? 0);
   const totalMessages = Number(summary?.messages ?? 0);
 
-  // PRs merged ≈ commits shipped (swaps to real merged-PR count in P7-1).
-  const prsMerged = totalCommits;
+  // PRs merged: the REAL GitHub count when the user is linked and the call
+  // succeeded; otherwise the commit-count proxy (a shipped commit ≈ a PR).
+  const prsFromGithub = githubPrCount !== null;
+  const prsMerged = prsFromGithub ? githubPrCount : totalCommits;
   // Tokens spent ≈ estimated from messages (swaps to real tokens in P7-2).
   const tokensSpent = sessionTokenEstimate(totalMessages);
   const score = efficiencyScore({ prsMerged, tokensSpent });
@@ -394,6 +442,7 @@ export async function getPublicEfficiencyProfile(
     totalSessions,
     totalCommits,
     prsMerged,
+    prsFromGithub,
     tokensSpent,
     tokensEstimated: true,
     activeDays: days.length,
