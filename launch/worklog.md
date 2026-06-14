@@ -29,6 +29,23 @@
 
 ---
 
+## 2026-06-14 — Full-year GitHub contribution heatmap (#65) + handoff
+
+- **#65 shipped + verified live:** the profile heatmap now reflects the user's REAL GitHub
+  contribution calendar (GraphQL `viewer.contributionsCollection.contributionCalendar`, via the
+  linked token), not just Orchid sessions. `/u/juliankmazo` → **256 active days** filling the full
+  year (was 47), 215 PRs / 0.8 PR-MTok LEAN. Fails safe to Orchid sessions when unlinked.
+- **Next-tick / open items (not blocking):**
+  1. **Range-label cosmetic:** the heatmap header shows "Jun 12 – Jun 13" — the formatter
+     (`monthDay` in `web/app/u/[handle]/page.tsx`) drops the year, so a Jun-2025→Jun-2026 span
+     reads like one day. Show the year (or relabel "Last year") when first/last span different years.
+  2. **Recover #63 (Settings → Account → "Link GitHub" + accountLinking config).** A bad
+     rebase/force-push collapsed the branch to main's HEAD and auto-CLOSED PR #63; the work is
+     preserved at commit **c12c9b6** on branch **`recover/github-link-settings`**. Re-create a
+     branch off current main from it (resolve any queries.ts/auth.ts overlap with #62/#65) + new PR.
+  3. Backlog still open: P2-1/P2-1b commit↔session linking (unlocks the review brief + real
+     per-session commits), P1 privacy, P0-6 write path, P3 auto-summary, P9 landing.
+
 ## 2026-06-14 — NEXT TICK PICK UP HERE (handoff)
 
 **Shipped + live on prod this session:** #59 flagship conversation-aware review, #60 GitHub
