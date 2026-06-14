@@ -3,6 +3,7 @@
 import { use, useState } from 'react';
 import Link from 'next/link';
 import { type Session, timeAgo } from '@/app/lib/api';
+import { friendlyUserName } from '@/app/lib/display';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
@@ -25,14 +26,17 @@ export default function SearchPage({ params }: { params: Promise<{ teamSlug: str
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  async function handleSearch(e: React.FormEvent) {
-    e.preventDefault();
-    if (!query.trim()) return;
+  // Single source of truth for running a search. Both the form submit and the
+  // quick-search suggestion buttons call this so they behave identically.
+  async function runSearch(term: string) {
+    const trimmed = term.trim();
+    if (!trimmed) return;
 
+    setQuery(trimmed);
     setLoading(true);
     try {
       const res = await fetch(
-        `${API_URL}/api/sessions?q=${encodeURIComponent(query)}&team=${encodeURIComponent(teamSlug)}`,
+        `${API_URL}/api/sessions?q=${encodeURIComponent(trimmed)}&team=${encodeURIComponent(teamSlug)}`,
         { credentials: 'include' },
       );
       const data = await res.json();
@@ -44,6 +48,11 @@ export default function SearchPage({ params }: { params: Promise<{ teamSlug: str
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    runSearch(query);
   }
 
   return (
@@ -133,8 +142,8 @@ export default function SearchPage({ params }: { params: Promise<{ teamSlug: str
                         {extractTitle(session)}
                       </div>
                       <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-                        {session.user_name} &middot; {session.branch} &middot;{' '}
-                        {timeAgo(session.updated_at)}
+                        {friendlyUserName(session.user_name, session.user_email)} &middot;{' '}
+                        {session.branch} &middot; {timeAgo(session.updated_at)}
                       </div>
                     </div>
                     <span
@@ -164,32 +173,14 @@ export default function SearchPage({ params }: { params: Promise<{ teamSlug: str
                   (term) => (
                     <button
                       key={term}
+                      type="button"
+                      disabled={loading}
                       className="text-[11px] px-2.5 py-1 rounded-full border transition-colors"
                       style={{
                         borderColor: 'var(--border)',
                         color: 'var(--text-secondary)',
                       }}
-                      onClick={() => {
-                        setQuery(term);
-                        // Auto-search after setting query
-                        (async () => {
-                          setLoading(true);
-                          try {
-                            const res = await fetch(
-                              `${API_URL}/api/sessions?q=${encodeURIComponent(term)}&team=${encodeURIComponent(teamSlug)}`,
-                              { credentials: 'include' },
-                            );
-                            const data = await res.json();
-                            setResults(data);
-                            setSearched(true);
-                          } catch {
-                            setResults([]);
-                            setSearched(true);
-                          } finally {
-                            setLoading(false);
-                          }
-                        })();
-                      }}
+                      onClick={() => runSearch(term)}
                     >
                       {term}
                     </button>

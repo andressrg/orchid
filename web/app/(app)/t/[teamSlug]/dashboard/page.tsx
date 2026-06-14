@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { timeAgo } from '@/app/lib/api';
+import { friendlyUserName } from '@/app/lib/display';
 import { getServerAuth } from '@/app/lib/server-auth';
 import { listSessions, getTeamStats } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
@@ -74,7 +75,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
     stats = {
       total_sessions: String(sessions.length),
       active_sessions: String(sessions.filter((s) => s.status === 'active').length),
-      unique_users: String(new Set(sessions.map((s) => s.user_name)).size),
+      unique_users: String(new Set(sessions.map((s) => s.user_email)).size),
       first_session: '',
       last_activity: '',
     };
@@ -199,6 +200,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
               const prevSession = i > 0 ? sortedSessions[i - 1] : null;
               const showRecentSeparator =
                 prevSession?.status === 'active' && session.status !== 'active';
+              const displayName = friendlyUserName(session.user_name, session.user_email);
 
               return (
                 <div key={session.id}>
@@ -221,7 +223,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
                         i < sessions.length - 1 ? '1px solid var(--border-subtle)' : undefined,
                     }}
                   >
-                    <UserAvatar name={session.user_name} />
+                    <UserAvatar name={displayName} />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -237,7 +239,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
                         className="flex items-center gap-2 text-[11px]"
                         style={{ color: 'var(--text-tertiary)' }}
                       >
-                        <span>{session.user_name}</span>
+                        <span>{displayName}</span>
                         <span>&middot;</span>
                         <span className="font-mono">{session.branch}</span>
                         {session.message_count != null && session.message_count > 0 && (

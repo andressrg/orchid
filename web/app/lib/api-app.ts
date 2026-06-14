@@ -492,7 +492,9 @@ app.get('/stats', async (c) => {
       .select({
         total_sessions: sql<string>`count(*)`,
         active_sessions: sql<string>`count(*) filter (where ${orchidSession.status} = 'active')`,
-        unique_users: sql<string>`count(distinct ${orchidSession.userName})`,
+        // Count distinct people by email, not by display name — one person whose
+        // user_name varies across rows must not inflate the user count.
+        unique_users: sql<string>`count(distinct ${orchidSession.userEmail})`,
         first_session: sql<string>`min(${orchidSession.startedAt})`,
         last_activity: sql<string>`max(${orchidSession.updatedAt})`,
       })
@@ -825,11 +827,30 @@ app.post('/sessions/:id/commits', async (c) => {
   }
 });
 
-// Commits for a session (from transcript parsing)
+// Derive the `owner/repo` slug from a git remote URL (https or ssh form), or
+// null when it isn't a recognizable GitHub remote.
+const repoFromRemote = (remote: string | null): string | null => {
+  if (!remote) return null;
+  const m = remote.match(/github\.com[:/]([^/]+\/[^/.]+)(?:\.git)?/);
+  return m ? m[1] : null;
+};
+
+interface SessionCommitRow {
+  readonly commit_sha: string;
+  readonly branch: string | null;
+  readonly remote: string | null;
+  readonly message: string | null;
+  readonly committed_at: string;
+}
+
+// Commits linked to a session. Maps the raw `session_commits` rows into the
+// shape the Commits tab (`session-commits.tsx`) renders: a `sha`, a GitHub
+// `repo`/`url` derived from the remote, and zeroed diff stats (we don't store
+// per-file diffs).
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
-    const result = await pool.query(
+    const result = await pool.query<SessionCommitRow>(
       `SELECT session_commits.commit_sha, session_commits.branch, session_commits.remote, session_commits.message, session_commits.committed_at
        FROM session_commits
        WHERE session_commits.session_id = $1
@@ -837,7 +858,22 @@ app.get('/sessions/:id/commits', async (c) => {
       [id],
     );
 
-    return c.json({ commits: result.rows });
+    const commits = result.rows.map((row) => {
+      const repo = repoFromRemote(row.remote);
+      return {
+        sha: row.commit_sha,
+        message: row.message ?? '',
+        author: '',
+        date: row.committed_at,
+        repo: repo ?? '',
+        url: repo ? `https://github.com/${repo}/commit/${row.commit_sha}` : '',
+        additions: 0,
+        deletions: 0,
+        files: [],
+      };
+    });
+
+    return c.json({ commits });
   } catch (err) {
     console.error('GET /api/sessions/:id/commits error:', err);
     return c.json({ error: 'Internal server error' }, 500);

@@ -28,10 +28,25 @@ describe('GET /api/stats', () => {
     expect(data.unique_users).toBe('0');
   });
 
-  it('returns correct stats', async () => {
-    await insertTestSession({ id: 's1', user_name: 'alice', status: 'active' });
-    await insertTestSession({ id: 's2', user_name: 'bob', status: 'done' });
-    await insertTestSession({ id: 's3', user_name: 'alice', status: 'active' });
+  it('returns correct stats (unique_users counts distinct email)', async () => {
+    await insertTestSession({
+      id: 's1',
+      user_name: 'alice',
+      user_email: 'alice@example.com',
+      status: 'active',
+    });
+    await insertTestSession({
+      id: 's2',
+      user_name: 'bob',
+      user_email: 'bob@example.com',
+      status: 'done',
+    });
+    await insertTestSession({
+      id: 's3',
+      user_name: 'alice',
+      user_email: 'alice@example.com',
+      status: 'active',
+    });
 
     const res = await app.request('/api/stats', { headers });
     const data = await res.json();
@@ -40,5 +55,19 @@ describe('GET /api/stats', () => {
     expect(data.total_sessions).toBe('3');
     expect(data.active_sessions).toBe('2');
     expect(data.unique_users).toBe('2');
+  });
+
+  it('does not inflate unique_users when one person uses varying names', async () => {
+    // Same email, three different display names — this is the bug Fix 4 closes:
+    // counting distinct name would report 3 "members" for one person.
+    await insertTestSession({ id: 'v1', user_name: 'unconfigured', user_email: 'pat@example.com' });
+    await insertTestSession({ id: 'v2', user_name: 'user.email', user_email: 'pat@example.com' });
+    await insertTestSession({ id: 'v3', user_name: 'Pat Smith', user_email: 'pat@example.com' });
+
+    const res = await app.request('/api/stats', { headers });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.unique_users).toBe('1');
   });
 });

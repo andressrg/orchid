@@ -79,7 +79,9 @@ export async function getTeamStats(teamId: string) {
     .select({
       total_sessions: sql<string>`count(*)`,
       active_sessions: sql<string>`count(*) filter (where ${orchidSession.status} = 'active')`,
-      unique_users: sql<string>`count(distinct ${orchidSession.userName})`,
+      // Count distinct people by email, not by display name — one person whose
+      // user_name varies across rows must not inflate the member count.
+      unique_users: sql<string>`count(distinct ${orchidSession.userEmail})`,
       first_session: sql<string>`min(${orchidSession.startedAt})`,
       last_activity: sql<string>`max(${orchidSession.updatedAt})`,
     })

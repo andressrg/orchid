@@ -1,6 +1,12 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { eq } from 'drizzle-orm';
-import { cleanTestDb, getTestAuth, insertTestSession, testDb } from '../setup';
+import {
+  cleanTestDb,
+  getTestAuth,
+  insertTestSession,
+  insertTestSessionCommit,
+  testDb,
+} from '../setup';
 import * as schema from '@/app/lib/schema';
 import app from '@/app/lib/api-app';
 
@@ -176,5 +182,70 @@ describe('POST /api/sessions/:id/commits', () => {
     expect((await res.json()).linked).toBe(1);
     const shas = await commitShasFor('s-clean');
     expect(shas).toEqual([FULL_SHA_A]);
+  });
+});
+
+// GET /api/sessions/:id/commits — the read path the Commits tab
+// (`session-commits.tsx`) consumes. Asserts the rows are mapped into the UI
+// Commit shape (sha/message/date + GitHub repo/url derived from the remote,
+// zeroed diff stats) rather than leaking raw DB columns (which crashed the tab).
+describe('GET /api/sessions/:id/commits', () => {
+  let headers: Record<string, string>;
+
+  beforeAll(async () => {
+    headers = (await getTestAuth()).headers;
+  });
+
+  beforeEach(async () => {
+    await cleanTestDb();
+  });
+
+  it('maps rows into the UI Commit shape with derived repo/url', async () => {
+    await insertTestSession({ id: 's-get' });
+    await insertTestSessionCommit({
+      sessionId: 's-get',
+      commitSha: FULL_SHA_A,
+      branch: 'main',
+      message: 'feat: ship it',
+      remote: 'git@github.com:acme/widgets.git',
+      committedAt: new Date('2026-06-13T10:00:00Z'),
+    });
+
+    const res = await app.request('/api/sessions/s-get/commits', { headers });
+    expect(res.status).toBe(200);
+    const { commits } = await res.json();
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toMatchObject({
+      sha: FULL_SHA_A,
+      message: 'feat: ship it',
+      author: '',
+      repo: 'acme/widgets',
+      url: `https://github.com/acme/widgets/commit/${FULL_SHA_A}`,
+      additions: 0,
+      deletions: 0,
+      files: [],
+    });
+    expect(typeof commits[0].date).toBe('string');
+  });
+
+  it('degrades repo/url to empty strings for a non-GitHub or missing remote', async () => {
+    await insertTestSession({ id: 's-norem' });
+    await insertTestSessionCommit({
+      sessionId: 's-norem',
+      commitSha: FULL_SHA_B,
+      remote: null,
+    });
+
+    const res = await app.request('/api/sessions/s-norem/commits', { headers });
+    expect(res.status).toBe(200);
+    const { commits } = await res.json();
+    expect(commits[0]).toMatchObject({ sha: FULL_SHA_B, repo: '', url: '' });
+  });
+
+  it('returns an empty array for a session with no commits', async () => {
+    await insertTestSession({ id: 's-empty' });
+    const res = await app.request('/api/sessions/s-empty/commits', { headers });
+    expect(res.status).toBe(200);
+    expect((await res.json()).commits).toEqual([]);
   });
 });

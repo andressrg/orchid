@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { timeAgo, formatDuration } from '@/app/lib/api';
+import { friendlyUserName } from '@/app/lib/display';
 import { getServerAuth } from '@/app/lib/server-auth';
 import { getSessionById } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
@@ -73,7 +74,7 @@ export default async function SessionPage({
   }
 
   const isActive = session.status === 'active';
-  const userName = session.user_name || 'unknown';
+  const userName = friendlyUserName(session.user_name, session.user_email);
   const messageCount = session.message_count;
 
   return (
