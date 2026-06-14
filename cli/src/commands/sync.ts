@@ -1,9 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { gzipSync } from 'zlib';
 import { getConfig, getAuthHeaders, tryGetConfig } from '../config';
+import {
+  parseGitLog,
+  GIT_LOG_PRETTY_FORMAT,
+  type ResolvedCommit,
+} from '../git-commits';
 import {
   type LocalSession,
   type ProjectGroup,
@@ -787,6 +792,165 @@ const runDiscover = async (): Promise<void> => {
   await runDiscoverLoop(groups);
 };
 
+// ── Deterministic commit backfill (orchid sync --discover) ───────────────────
+//
+// Transcript-regex linking is lossy: a commit only links if its SHA was echoed
+// in the conversation. This resolves a session's REAL commits straight from
+// local git (the session's working_dir), then POSTs them to
+// `POST /sessions/:id/commits`. Idempotent on the server, so re-running links 0.
+
+// argv-form git (no shell string) — same safety posture as hooks.ts/review.ts:
+// every arg is a discrete element, so a working_dir / author / branch can never
+// inject a shell command. Returns null on any failure (non-git dir, missing
+// git, bad revspec) so the caller can skip gracefully.
+const execGitArgs = (args: readonly string[]): string | null => {
+  try {
+    return execFileSync('git', [...args], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      maxBuffer: 64 * 1024 * 1024,
+    });
+  } catch {
+    return null;
+  }
+};
+
+const isGitRepo = (dir: string): boolean =>
+  fs.existsSync(dir) &&
+  execGitArgs(['-C', dir, 'rev-parse', '--git-dir']) !== null;
+
+// A small buffer past the session's last activity so a commit made moments after
+// the final transcript line is still captured by --until.
+const UNTIL_BUFFER_MS = 5 * 60 * 1000;
+
+// Resolve a session's commits from its working_dir using the NUL-delimited
+// pretty format. Bounded to the session's lifespan (--since/--until) and the
+// session author (--author matches name OR email substring), so we attribute
+// only the commits this session plausibly produced. No-merges keeps merge
+// commits out. Returns [] for a non-repo / no matches.
+const resolveSessionCommits = (params: {
+  readonly workingDir: string;
+  readonly since: string;
+  readonly until: string;
+  readonly author: string;
+}): readonly ResolvedCommit[] => {
+  if (!isGitRepo(params.workingDir)) return [];
+
+  const stdout = execGitArgs([
+    '-C',
+    params.workingDir,
+    'log',
+    '--no-merges',
+    `--pretty=${GIT_LOG_PRETTY_FORMAT}`,
+    `--since=${params.since}`,
+    `--until=${params.until}`,
+    `--author=${params.author}`,
+  ]);
+  if (stdout === null) return [];
+  return parseGitLog(stdout);
+};
+
+// The git author identity to filter on: prefer the repo's configured email,
+// fall back to user.name. Empty when git can't tell us (then we don't filter by
+// author — better to over-link within the time window than miss everything).
+const gitAuthorForDir = (dir: string): string => {
+  const email = execGitArgs(['-C', dir, 'config', 'user.email'])?.trim() ?? '';
+  if (email !== '') return email;
+  return execGitArgs(['-C', dir, 'config', 'user.name'])?.trim() ?? '';
+};
+
+// POST one session's resolved commits to the ingest endpoint; returns the number
+// the server actually linked (idempotent: a re-post returns 0).
+const postSessionCommits = async (params: {
+  readonly sessionId: string;
+  readonly commits: readonly ResolvedCommit[];
+}): Promise<number> => {
+  const { apiUrl } = getConfig();
+  const url = `${apiUrl.replace(/\/$/, '')}/sessions/${encodeURIComponent(params.sessionId)}/commits`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify({ commits: params.commits }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`POST ${url} returned ${res.status}: ${text}`);
+  }
+  const data = (await res.json()) as { linked?: number };
+  return typeof data.linked === 'number' ? data.linked : 0;
+};
+
+interface BackfillTotals {
+  readonly linked: number;
+  readonly sessions: number;
+}
+
+// Backfill commits for every discovered session whose working_dir is a local git
+// repo. Sequential awaited reduce (functional; no for/forEach, no mutation) so
+// the output stays readable and we don't hammer the server. Skips non-repo / no-
+// match sessions silently; never throws on a per-session failure.
+const backfillSessionCommits = async (
+  sessions: readonly LocalSession[],
+): Promise<BackfillTotals> =>
+  sessions.reduce<Promise<BackfillTotals>>(
+    async (accPromise, session) => {
+      const acc = await accPromise;
+      if (!isGitRepo(session.cwd)) return acc;
+
+      const commits = resolveSessionCommits({
+        workingDir: session.cwd,
+        since: session.firstTimestamp,
+        until: new Date(
+          new Date(session.lastTimestamp).getTime() + UNTIL_BUFFER_MS,
+        ).toISOString(),
+        author: gitAuthorForDir(session.cwd),
+      });
+      if (commits.length === 0) return acc;
+
+      const label = session.summary
+        ? truncate(session.summary, 30)
+        : session.sessionId.slice(0, 12);
+      try {
+        const linked = await postSessionCommits({
+          sessionId: session.sessionId,
+          commits,
+        });
+        console.log(
+          `  ${green('✓')} ${label} ${dim(`— linked ${linked}/${commits.length} commit${commits.length === 1 ? '' : 's'}`)}`,
+        );
+        return { linked: acc.linked + linked, sessions: acc.sessions + 1 };
+      } catch (err) {
+        console.log(`  ${red('✗')} ${label} ${dim((err as Error).message)}`);
+        return acc;
+      }
+    },
+    Promise.resolve({ linked: 0, sessions: 0 }),
+  );
+
+const runCommitBackfill = async (): Promise<void> => {
+  console.log();
+  console.log(
+    `  ${magenta('orchid sync --discover')} ${dim('— backfill commit↔session links from local git')}`,
+  );
+  console.log();
+
+  const allSessions = discoverLocalSessions(new Set());
+  console.log(`  ${dim(`Found ${allSessions.length} local sessions.`)}`);
+
+  if (allSessions.length === 0) {
+    console.log(
+      `\n  ${dim('No Claude Code sessions found in ~/.claude/projects/')}`,
+    );
+    return;
+  }
+
+  const totals = await backfillSessionCommits(allSessions);
+
+  console.log(
+    `\n  ${green('Done!')} linked ${bold(String(totals.linked))} commit${totals.linked === 1 ? '' : 's'} across ${bold(String(totals.sessions))} session${totals.sessions === 1 ? '' : 's'}.\n`,
+  );
+};
+
 // ── Single file sync ───────────────────────────────────────────────────────
 
 const syncFile = async (filePath: string): Promise<void> => {
@@ -845,16 +1009,27 @@ export const runSync = (args: string[]): void => {
     console.log(`orchid sync - sync past Claude Code conversations
 
 Usage:
-  orchid sync --discover          Discover and sync unsynced local sessions
+  orchid sync                     Discover and sync unsynced local sessions (interactive)
+  orchid sync --discover          Backfill commit↔session links from local git
   orchid sync <file.jsonl>        Sync a single transcript file
 
 Options:
-  --discover    Scan ~/.claude/projects/ for unsynced sessions
+  --discover    Resolve each session's real git commits and link them on the server
   --help        Show this help message`);
     return;
   }
 
-  if (flag === '--discover' || !flag) {
+  // Deterministic commit backfill: resolve each session's commits from local git
+  // and POST them to the server. Non-interactive (safe to run in a script/loop).
+  if (flag === '--discover') {
+    runCommitBackfill().catch((err) => {
+      console.error(`\n${red('Error:')} ${err.message}`);
+      process.exit(1);
+    });
+    return;
+  }
+
+  if (!flag) {
     runDiscover().catch((err) => {
       process.stdout.write(SHOW_CURSOR);
       console.error(`\n${red('Error:')} ${err.message}`);

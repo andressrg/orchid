@@ -19,7 +19,7 @@ Commands:
   login     Authenticate with a Personal Access Token
   logout    Remove stored credentials
   claude    Launch Claude Code and sync the conversation
-  sync      Sync past conversations (--discover to scan all)
+  sync      Sync past conversations (--discover to backfill commit↔session links)
   hooks     Manage Claude Code hooks (install, uninstall, status)
   config    Set up CLI configuration (~/.orchid/config.json)
   data         Query stored sessions (list, show, search, summary)
