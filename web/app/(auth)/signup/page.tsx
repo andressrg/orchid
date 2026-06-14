@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { authClient } from '@/app/lib/auth-client';
+import { GithubSignInButton, AuthDivider } from '../github-button';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -55,6 +56,9 @@ function SignupForm() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-white">Create your account</h1>
+
+      <GithubSignInButton callbackURL={redirectTo || '/dashboard'} />
+      <AuthDivider />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

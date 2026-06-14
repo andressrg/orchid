@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { authClient } from '@/app/lib/auth-client';
+import { GithubSignInButton, AuthDivider } from '../github-button';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -36,6 +37,9 @@ function LoginForm() {
   return (
     <div>
       <h1 className="mb-6 text-2xl font-semibold text-white">Sign in to Orchid</h1>
+
+      <GithubSignInButton callbackURL={redirectTo} />
+      <AuthDivider />
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>

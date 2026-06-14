@@ -22,6 +22,33 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  // "Continue with GitHub". Better Auth stores the GitHub access token in the
+  // `account` table (providerId 'github', accessToken) and links it to the
+  // `user`. We request `repo` so private merged PRs also count in the public
+  // efficiency profile's real PR total; `read:user` + `user:email` are added
+  // by the provider's default scope. The user's GitHub login + numeric id are
+  // mapped onto the `user` row (see `user.additionalFields`) so the handle is
+  // queryable and `/u/<github-login>` resolves.
+  socialProviders: {
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID ?? '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+      scope: ['repo'],
+      mapProfileToUser: (profile: { login: string; id: string | number }) => ({
+        githubLogin: profile.login,
+        githubId: String(profile.id),
+      }),
+    },
+  },
+  // Persist the GitHub login + id onto the `user` row. `input: false` keeps
+  // them server-controlled (only the OAuth profile mapping can set them, never
+  // a client sign-up payload); columns already exist in `auth-schema.ts`.
+  user: {
+    additionalFields: {
+      githubLogin: { type: 'string', required: false, input: false },
+      githubId: { type: 'string', required: false, input: false },
+    },
+  },
   plugins: [
     organization({
       allowUserToCreateOrganization: true,
