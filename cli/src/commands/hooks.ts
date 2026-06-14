@@ -4,6 +4,7 @@ import * as os from 'os';
 import { execFileSync } from 'child_process';
 import { gzipSync } from 'zlib';
 import { tryGetConfig } from '../config';
+import { resolveUserName } from '../git-identity';
 
 // -- ANSI helpers -----------------------------------------------------------
 
@@ -525,9 +526,12 @@ const collectGitMetadata = (cwd: string): GitMetadata => {
     ? execGit(['rev-parse', '--abbrev-ref', 'HEAD'], cwd)
     : '';
 
+  const gitName = execGit(['config', 'user.name'], cwd);
+  const gitEmail = execGit(['config', 'user.email'], cwd);
+
   return {
-    user_name: execGit(['config', 'user.name']) || 'unconfigured',
-    user_email: execGit(['config', 'user.email']) || 'unconfigured',
+    user_name: resolveUserName({ gitName, gitEmail }),
+    user_email: gitEmail || 'unconfigured',
     branch: branch !== '' && branch !== 'HEAD' ? branch : 'detached',
     git_remotes: collectRemotes(cwd),
     working_dir: cwd,
