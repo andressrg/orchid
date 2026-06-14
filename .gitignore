@@ -7,6 +7,9 @@ dist/
 
 .secrets
 
+# macOS
+.DS_Store
+
 
 # Playwright MCP scratch
 .playwright-mcp/
