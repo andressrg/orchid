@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const tabs = [
   { label: 'Team', segment: 'team' },
   { label: 'Tokens', segment: 'tokens' },
+  { label: 'Account', segment: 'account' },
 ];
 
 export default function SettingsLayout({ children }: { children: React.ReactNode }) {
