@@ -71,11 +71,19 @@ orchid data decisions
 orchid data decisions <repo-name>
 ```
 
-Review or explain code changes:
+Get conversation-aware review context (resolves the PR/branch's commits to the
+sessions that BUILT them, then returns a Claude brief: intent, decisions, risks,
+and what the diff alone won't reveal):
 
 ```bash
-orchid review <branch-or-topic>
-orchid review <branch-or-topic> --no-ai
+orchid ask-context <branch | pr# | pr-url>
+orchid review <branch | pr# | pr-url>
+orchid ask-context 42 --json        # raw { sessions, brief } for agents
+```
+
+Explain a single commit:
+
+```bash
 orchid explain <commit-sha>
 orchid explain HEAD~1
 ```
@@ -95,11 +103,19 @@ When the user asks why code exists or how a decision was made:
 2. Read the most relevant session with `orchid data show <session-id> --turns`.
 3. Use `orchid data ask <session-id> "<question>"` when a direct answer is faster than reading the full transcript.
 
-When reviewing a PR:
+When reviewing a PR (REQUIRED pre-review step):
 
-1. Run `orchid review <branch-name>` first.
-2. Open specific sessions only if the review needs deeper evidence.
-3. Combine conversation context with the actual code diff before giving findings.
+1. **Before writing a single review comment**, run `orchid ask-context <pr#|pr-url|branch>`
+   (or `orchid review <pr>`). This resolves the PR's commits to the sessions that
+   built them and returns a Claude brief of the authors' intent, decisions, risks,
+   and what the diff alone won't reveal.
+2. **Review against that intent — not just the diff.** Anchor every finding to the
+   stated intent: flag where the code diverges from it, where a risk the brief
+   names isn't handled, and where a decision lacks justification.
+3. Open specific sessions (`orchid data show <session-id> --turns`) only if the
+   review needs deeper evidence than the brief.
+4. If the brief reports the commits aren't linked to any Orchid session yet,
+   review the diff directly and note that conversation context was unavailable.
 
 When continuing previous work:
 

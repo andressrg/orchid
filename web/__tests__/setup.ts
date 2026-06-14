@@ -73,3 +73,20 @@ export async function insertTestSession(overrides: Record<string, unknown> = {})
     userId: (overrides.user_id ?? overrides.userId ?? userId) as string,
   });
 }
+
+// Link a commit SHA to a session (the `session_commits` row that powers
+// commit→session resolution). Cascades away with the session on cleanTestDb.
+export async function insertTestSessionCommit(params: {
+  sessionId: string;
+  commitSha: string;
+  branch?: string;
+  message?: string;
+}) {
+  await testDb.insert(schema.sessionCommit).values({
+    sessionId: params.sessionId,
+    commitSha: params.commitSha,
+    branch: params.branch ?? 'main',
+    message: params.message ?? 'test commit',
+    committedAt: new Date(),
+  });
+}
