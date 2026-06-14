@@ -138,7 +138,7 @@ capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
       text only** (lossy — a SHA not echoed in the transcript is never linked). Capture via a
       git post-commit hook (CLI `orchid hooks install` adds it) that posts `{sha, session_id}`.
       _Accept:_ commits made during a session are linked without relying on transcript parsing.
-- [ ] **P2-1b · Backfill links commits & PRs from git/GitHub.** `orchid sync --discover` must
+- [x] **P2-1b · Backfill links commits & PRs from git/GitHub.** `orchid sync --discover` must
       resolve a session's commits from **git** (by repo + author + time window + branch) and its
       PRs from **GitHub**, not from transcript regex. _Accept:_ backfilled sessions show their
       real commits and PRs even when SHAs/PR numbers never appeared in the conversation text.

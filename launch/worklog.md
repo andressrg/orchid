@@ -29,6 +29,24 @@
 
 ---
 
+## 2026-06-14 — Commit↔session linking shipped (#67) → FLAGSHIP REVIEW WORKS ON PROD
+
+- **#67 (P2-1b):** deterministic commit↔session linking — scoped/idempotent `POST
+/api/sessions/:id/commits`, unique index migration `0006`, and `orchid sync --discover`
+  (git-log backfill by author+branch+time-window, argv-form). Also fixed a latent bug:
+  `session_commits.id` is NOT NULL with only an app-side default, so even the old transcript
+  extraction silently failed to insert — a real reason prod links were empty.
+- **Backfill run against prod:** `orchid sync --discover` → **linked 213 commits across 59
+  sessions** (404s = local sessions not in the prod account; idempotent).
+- **Flagship verified live:** `POST /api/review-context` with recent Orchid commit SHAs →
+  **sessions_analyzed: 2**, resolved to the building sessions (`task/github-account-linking`,
+  `main`) + a Claude-grounded intent brief. The conversation-aware code review (the 80% feature)
+  now resolves a PR's commits → the sessions that built them → why. P2-1b ticked.
+- **Follow-ups:** (a) the review-context sessions list shows `user_name` as the literal
+  "user.email" — a select-alias nit in the endpoint's session query; (b) P2-1 live git
+  post-commit hook (future commits auto-link without `--discover`); (c) P2-4 webhook posts the
+  review brief as a PR comment (now that linking works, the brief is non-empty).
+
 ## 2026-06-14 — Profile polish shipped (#66): year-aware range + #63 recovered
 
 - **#66 live + verified on prod:** (1) heatmap range label now shows the year on multi-year
