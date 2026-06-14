@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, integer, index, jsonb, customType } from 'drizzle-orm/pg-core';
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  index,
+  uniqueIndex,
+  jsonb,
+  customType,
+} from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // Postgres `tsvector` — Drizzle has no first-class type for it, so we declare a
@@ -87,6 +96,11 @@ export const sessionCommit = pgTable(
   (t) => [
     index('idx_session_commits_sha').on(t.commitSha),
     index('idx_session_commits_session').on(t.sessionId),
+    // Idempotent commit↔session linking: dedup on (session_id, commit_sha) so a
+    // re-post / re-backfill of the same commit is a no-op. Both the transcript
+    // extractor and the deterministic ingest endpoint rely on this for their
+    // `ON CONFLICT (session_id, commit_sha) DO NOTHING` upserts.
+    uniqueIndex('uq_session_commits_session_sha').on(t.sessionId, t.commitSha),
   ],
 );
 

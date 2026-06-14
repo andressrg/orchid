@@ -441,8 +441,9 @@ app.put('/sessions/:id', async (c) => {
           const commits = extractCommitsFromTranscript(transcript as string);
           if (commits.length > 0) {
             await pool.query(
-              `INSERT INTO session_commits (session_id, commit_sha, branch, message, committed_at)
-               SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[])
+              `INSERT INTO session_commits (id, session_id, commit_sha, branch, message, committed_at)
+               SELECT gen_random_uuid()::text, *
+               FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::timestamptz[])
                ON CONFLICT (session_id, commit_sha) DO NOTHING`,
               [
                 commits.map(() => id),
@@ -687,6 +688,139 @@ ${conversationText}`;
   } catch (err) {
     if (err instanceof AiServiceError) return c.json({ error: 'AI service error' }, 502);
     console.error('POST /api/sessions/:id/chat error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// ── Deterministic commit↔session ingest ────────────────────────────────────
+//
+// The CLI backfill (`orchid sync --discover`) resolves a session's REAL commits
+// from local git and POSTs them here, so linking no longer depends on a SHA
+// being echoed in the transcript. The payload is untrusted, so every commit is
+// validated and normalized before it touches SQL.
+
+// Hard caps so a single request can't insert an unbounded batch or store
+// oversized garbage. A session realistically links tens of commits, not
+// thousands; 1000 is a generous ceiling.
+const MAX_COMMITS_PER_REQUEST = 1000;
+const MAX_COMMIT_FIELD_CHARS = 2000;
+// Full SHA-1 is 40 hex chars; SHA-256 object ids are 64. Accept a short prefix
+// (>= 7, what `git log --abbrev` and PR diffs emit) up to a full SHA-256.
+const COMMIT_SHA_REGEX = /^[0-9a-f]{7,64}$/;
+
+interface IngestCommitInput {
+  readonly sha?: unknown;
+  readonly branch?: unknown;
+  readonly remote?: unknown;
+  readonly message?: unknown;
+  readonly committed_at?: unknown;
+}
+
+interface NormalizedCommit {
+  readonly sha: string;
+  readonly branch: string | null;
+  readonly remote: string | null;
+  readonly message: string | null;
+  readonly committedAt: string | null;
+}
+
+// Coerce an untrusted field to a trimmed, length-capped string (or null when
+// absent/blank/non-string). Keeps oversized values from bloating the row.
+const optionalCommitString = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  return trimmed.slice(0, MAX_COMMIT_FIELD_CHARS);
+};
+
+// Parse an untrusted committed_at into an ISO string, or null if it isn't a
+// valid date. Stored into a timestamptz column.
+const optionalCommitDate = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+// Normalize+validate one untrusted commit; returns null when the sha is missing
+// or malformed (those entries are dropped, not inserted).
+const normalizeCommit = (raw: IngestCommitInput): NormalizedCommit | null => {
+  const sha = typeof raw.sha === 'string' ? raw.sha.trim().toLowerCase() : '';
+  if (!COMMIT_SHA_REGEX.test(sha)) return null;
+  return {
+    sha,
+    branch: optionalCommitString(raw.branch),
+    remote: optionalCommitString(raw.remote),
+    message: optionalCommitString(raw.message),
+    committedAt: optionalCommitDate(raw.committed_at),
+  };
+};
+
+// Dedup normalized commits on sha (first-seen wins) so a single request never
+// trips the ON CONFLICT path against itself.
+const dedupCommitsBySha = (commits: readonly NormalizedCommit[]): readonly NormalizedCommit[] =>
+  commits.reduce<readonly NormalizedCommit[]>(
+    (acc, commit) => (acc.some((c) => c.sha === commit.sha) ? acc : [...acc, commit]),
+    [],
+  );
+
+// POST commits resolved from local git for a session. PAT/session authed and
+// scoped exactly like the other /sessions/:id routes: the caller must own (or be
+// on the team of) the session, else 404. Idempotent batch upsert — a single
+// multi-VALUES INSERT via unnest with ON CONFLICT (session_id, commit_sha) DO
+// NOTHING — so a re-post links 0 the second time. Returns { linked }.
+app.post('/sessions/:id/commits', async (c) => {
+  const id = c.req.param('id');
+
+  const body = (await c.req.json().catch(() => null)) as {
+    commits?: readonly IngestCommitInput[];
+  } | null;
+  const rawCommits = body && Array.isArray(body.commits) ? body.commits : null;
+
+  if (rawCommits === null) {
+    return c.json({ error: 'commits is required (array)' }, 400);
+  }
+  if (rawCommits.length > MAX_COMMITS_PER_REQUEST) {
+    return c.json({ error: `too many commits (max ${MAX_COMMITS_PER_REQUEST})` }, 400);
+  }
+
+  const commits = dedupCommitsBySha(
+    rawCommits.map(normalizeCommit).filter((commit): commit is NormalizedCommit => commit !== null),
+  );
+
+  try {
+    // Scope check first: the caller may only write commits to a session it
+    // owns / its team owns. 404 (not 403) so we never reveal another team's
+    // session ids — same shape as GET/DELETE /sessions/:id.
+    const [session] = await db
+      .select({ id: orchidSession.id })
+      .from(orchidSession)
+      .where(scopeConditionForId(c, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+
+    if (commits.length === 0) return c.json({ linked: 0 });
+
+    // Single multi-VALUES INSERT via unnest (never a per-row loop). The `id`
+    // column is NOT NULL with only an app-side default, so we mint one per row
+    // with gen_random_uuid() right in the SELECT. The unique index
+    // uq_session_commits_session_sha makes the ON CONFLICT idempotent.
+    const result = await pool.query(
+      `INSERT INTO session_commits (id, session_id, commit_sha, branch, remote, message, committed_at)
+       SELECT gen_random_uuid()::text, *
+       FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::timestamptz[])
+       ON CONFLICT (session_id, commit_sha) DO NOTHING`,
+      [
+        commits.map(() => id),
+        commits.map((commit) => commit.sha),
+        commits.map((commit) => commit.branch),
+        commits.map((commit) => commit.remote),
+        commits.map((commit) => commit.message),
+        commits.map((commit) => commit.committedAt),
+      ],
+    );
+
+    return c.json({ linked: result.rowCount ?? 0 });
+  } catch (err) {
+    console.error('POST /api/sessions/:id/commits error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });

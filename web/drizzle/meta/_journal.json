@@ -43,6 +43,13 @@
       "when": 1781395219151,
       "tag": "0005_slimy_sunfire",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781402934769,
+      "tag": "0006_clumsy_skin",
+      "breakpoints": true
     }
   ]
 }
