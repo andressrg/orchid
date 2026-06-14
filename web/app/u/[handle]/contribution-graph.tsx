@@ -2,7 +2,8 @@ import type { ProfileDayActivity } from '@/app/lib/queries';
 
 // GitHub-style calendar heatmap. Pure render — derives the full grid from the
 // activity series; no client JS, no effects. 53 weeks ending today, Sunday-first
-// columns. Intensity is bucketed by commits shipped that day.
+// columns. Intensity is bucketed by that day's activity = sessions + commits
+// (sessions alone light the grid until commit↔session linking is populated).
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKS = 53;
@@ -18,10 +19,15 @@ const gridStart = (today: Date): Date => {
   return new Date(start.getTime() - start.getUTCDay() * DAY_MS);
 };
 
+// A day's activity drives the heatmap intensity: sessions + commits, so the
+// grid reflects work even before commits are linked to sessions.
+const activityOf = (day: { readonly sessions: number; readonly commits: number }): number =>
+  day.sessions + day.commits;
+
 // Five-stop intensity ramp from "empty" to the orchid accent.
-const intensityColor = (commits: number, max: number): string => {
-  if (commits <= 0) return 'var(--bg-tertiary)';
-  const ratio = max > 0 ? commits / max : 0;
+const intensityColor = (count: number, max: number): string => {
+  if (count <= 0) return 'var(--bg-tertiary)';
+  const ratio = max > 0 ? count / max : 0;
   const stop = ratio > 0.75 ? 4 : ratio > 0.5 ? 3 : ratio > 0.25 ? 2 : 1;
   const ramp = [
     'rgba(124, 91, 245, 0.18)',
@@ -49,7 +55,7 @@ const MONTH_LABELS = [
 
 export function ContributionGraph({ days }: { days: readonly ProfileDayActivity[] }) {
   const byDay = new Map(days.map((d) => [d.day, d]));
-  const maxCommits = days.reduce((max, d) => Math.max(max, d.commits), 0);
+  const maxActivity = days.reduce((max, d) => Math.max(max, activityOf(d)), 0);
   const start = gridStart(new Date());
 
   // Build 53 weeks × 7 days as a flat, immutable grid.
@@ -106,7 +112,7 @@ export function ContributionGraph({ days }: { days: readonly ProfileDayActivity[
                     style={{
                       background: cell.isFuture
                         ? 'transparent'
-                        : intensityColor(cell.commits, maxCommits),
+                        : intensityColor(cell.sessions + cell.commits, maxActivity),
                       opacity: cell.isFuture ? 0 : 1,
                     }}
                     title={
