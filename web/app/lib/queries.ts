@@ -172,6 +172,40 @@ export async function searchSessions(teamId: string, query: string) {
     .orderBy(desc(rank), desc(orchidSession.startedAt));
 }
 
+// ── GitHub account-linking state ──
+//
+// Whether a user has a GitHub login merged into their Orchid account, for the
+// settings "Connected accounts" affordance. `linked` is read from the `account`
+// table (the row Better Auth writes for providerId 'github' on BOTH the
+// logged-out sign-in and the logged-in `/link-social` flows) — the
+// authoritative signal. `githubLogin` is the handle mapped onto the user row at
+// first GitHub sign-in (via `mapProfileToUser`); it can be null even when
+// `linked` is true, because the logged-in link callback attaches the account
+// row without re-running the profile mapping.
+export interface GithubLinkState {
+  readonly linked: boolean;
+  readonly githubLogin: string | null;
+}
+
+export async function getGithubLinkState(userId: string): Promise<GithubLinkState> {
+  const [githubAccount] = await db
+    .select({ id: account.id })
+    .from(account)
+    .where(and(eq(account.userId, userId), eq(account.providerId, 'github')))
+    .limit(1);
+
+  const [profile] = await db
+    .select({ githubLogin: user.githubLogin })
+    .from(user)
+    .where(eq(user.id, userId))
+    .limit(1);
+
+  return {
+    linked: Boolean(githubAccount),
+    githubLogin: profile?.githubLogin ?? null,
+  };
+}
+
 // ── Public efficiency profile (P7-4) ──
 //
 // A PUBLIC, shareable `/u/<handle>` profile. Renders ONLY aggregate, public-safe

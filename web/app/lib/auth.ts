@@ -22,6 +22,30 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
   },
+  // Account linking lets a logged-in email/password user merge their GitHub
+  // login into the SAME Orchid user (no duplicate account).
+  //
+  // - `trustedProviders: ['github']` — GitHub may auto-link on a logged-OUT
+  //   sign-in even when the existing Orchid account's email is unverified,
+  //   provided the GitHub primary (verified) email matches. Better Auth's
+  //   callback gate is `trustedProviders.includes(provider) || emailVerified`.
+  // - `allowDifferentEmails: true` — the logged-IN `linkSocial` flow can merge a
+  //   GitHub whose email differs from the Orchid email. Without it, linking is
+  //   refused with `LINKING_DIFFERENT_EMAILS_NOT_ALLOWED` / `email_doesn't_match`.
+  //
+  // Security tradeoff: `allowDifferentEmails` is normally an account-takeover
+  // risk, but here linking is gated behind completing the GitHub OAuth
+  // round-trip — the user proves they control the GitHub account before it is
+  // attached, and the link request is bound to their active server session
+  // (Better Auth signs `userId` + `email` into the OAuth state). It only ever
+  // attaches GitHub to the *already-authenticated* user; it never logs anyone in.
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['github'],
+      allowDifferentEmails: true,
+    },
+  },
   // "Continue with GitHub". Better Auth stores the GitHub access token in the
   // `account` table (providerId 'github', accessToken) and links it to the
   // `user`. We request `repo` so private merged PRs also count in the public
