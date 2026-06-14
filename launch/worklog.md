@@ -29,6 +29,29 @@
 
 ---
 
+## 2026-06-14 — Dashboard bug-sweep + fixes (#68 #69) — all verified live
+
+- Julian reported the dashboard "had a lot of things not working." Ran a 4-agent bug-sweep
+  workflow; root causes (ownership/scoping were INTACT — display/UX only):
+  - **Commits tab crashed (HIGH):** API returned snake_case `{commit_sha,committed_at,…}` but
+    the component expected `{sha,date,url,…}` → `commit.sha.slice()` threw → blank tab on any
+    session WITH commits (invisible until the backfill populated them).
+  - **Session click felt dead:** detail route is `force-dynamic` with no `loading.tsx` → click
+    blocked on the slow full render with zero feedback.
+  - **"user.email"/"unconfigured" names:** git-config issue — global `user.name` unset (→
+    "unconfigured") and the orchid repo's LOCAL `user.name` was literally "user.email" (botched
+    `git config user.name user.email`). Names are display-only; ownership (user_id from PAT) fine.
+  - Sweep: dead quick-search buttons; `unique_users`/Team Members counted distinct NAME (inflated).
+- **Fixes shipped + verified on prod:** git config corrected on this machine; **#68** CLI
+  `resolveUserName` hardening (rejects config-key garbage → email-local fallback; CLI rebuilt/
+  relinked); **#69** web — commits-tab shape mapping + component guards, `loading.tsx` instant
+  nav, `friendlyUserName` display normalization (fixes existing rows), distinct-email user count,
+  parseTranscript `type:'user'` user-turn fix, live search buttons. 145 web + 120 CLI tests.
+- **Verified live (a4963c5):** Commits tab shows 5 commits w/ messages+SHAs; 0 bad names (sessions
+  show "Julian"); Team Members = 2 (was 5); session nav works.
+- Pattern: **dogfood the dashboard UX, not just ship features** — a backfill can be correct while a
+  UI shape-mismatch silently crashes the tab that displays it.
+
 ## 2026-06-14 — Commit↔session linking shipped (#67) → FLAGSHIP REVIEW WORKS ON PROD
 
 - **#67 (P2-1b):** deterministic commit↔session linking — scoped/idempotent `POST
