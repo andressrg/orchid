@@ -30,6 +30,7 @@ import {
   computeScrollOffset,
   parseKeypress,
 } from '../sync-utils';
+import { resolveUserName } from '../git-identity';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -326,9 +327,11 @@ const collectGitMetadataForDir = (cwd: string) => {
   const origin = fs.existsSync(cwd)
     ? execGit('remote get-url origin', cwd)
     : '';
+  const gitName = execGit('config user.name', cwd);
+  const gitEmail = execGit('config user.email', cwd);
   return {
-    user_name: execGit('config user.name') || 'unknown',
-    user_email: execGit('config user.email') || 'unknown',
+    user_name: resolveUserName({ gitName, gitEmail }),
+    user_email: gitEmail || 'unknown',
     git_remotes: origin ? [origin] : [],
   };
 };

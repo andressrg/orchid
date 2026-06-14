@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { startSyncWatcher } from '../sync';
+import { resolveUserName } from '../git-identity';
 
 export interface GitMetadata {
   user_name: string;
@@ -68,8 +69,10 @@ function collectRemotes(workingDir: string): string[] {
 export function collectGitMetadata(): GitMetadata {
   const workingDir = process.cwd();
 
-  const user_name = execGit('config user.name') || 'unknown';
-  const user_email = execGit('config user.email') || 'unknown';
+  const gitName = execGit('config user.name');
+  const gitEmail = execGit('config user.email');
+  const user_name = resolveUserName({ gitName, gitEmail });
+  const user_email = gitEmail || 'unknown';
 
   let branch = execGit('rev-parse --abbrev-ref HEAD', workingDir);
   if (!branch || branch === 'HEAD') {
