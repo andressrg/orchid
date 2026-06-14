@@ -29,6 +29,40 @@
 
 ---
 
+## 2026-06-14 — Flagship review + GitHub sign-in + deploy-hang incident (#59 #60 #61)
+
+- **Flagship: conversation-aware code review for agents (#59, P2-2/P2-3/P2-5)** — `POST
+  /api/review-context` resolves a PR/branch's commit SHAs → the sessions that built them →
+  a Claude-grounded brief (intent · decisions · risks · what the diff won't reveal). CLI
+  rewritten: `orchid ask-context`/`orchid review <branch|pr>` (commit-precise, server-side
+  Claude, OpenAI removed); skill enforces ask-before-review. Injection boundary tested
+  (untrusted transcript only in `messages`, never `system`); tenant-scoped. **Live on prod**
+  (`/api/review-context` → 200). Lean review caught + I fixed a real **command-injection**
+  blocker: the branch path interpolated an unvalidated branch name into `execSync` →
+  switched all git/gh calls to `execFileSync` argv (no shell).
+- **GitHub sign-in + real merged-PR counts (#60, P7-1 + partial P7-3)** — Better Auth
+  `socialProviders.github` (+ githubLogin/githubId columns, migration `0005`), "Continue with
+  GitHub" button, and the profile's `prsMerged` now uses the real GitHub merged-PR count (via
+  the linked token, 3s-budget, fails safe to the commit proxy). Answers Julian's "why 0 PRs":
+  the proxy = empty `session_commits`; real PRs need the GitHub link. **Needs `GITHUB_CLIENT_ID`
+  /`SECRET` in Vercel Prod+Preview env** for sign-in to complete on the deploy.
+- **Deploy-hang incident + fix (#61)** — concurrent preview builds (previews share the PROD
+  DB) all hit the build-time migrate's blocking `pg_advisory_lock`; a build died holding it
+  (Neon pooler kept the connection) → **orphaned lock → every new deploy hung "Building"**
+  19–38 min. Prod stayed healthy (nothing shipped). Hardened the migrator: bounded
+  `pg_try_advisory_lock` (90s budget) + `statement_timeout` + connect-timeout + self-heal
+  (no pending → proceed, pending → fail-fast). The lock later freed (pooler reap); shipped
+  #61 → #59 → #60 **sequentially** to avoid re-contending.
+- Learnings (→ Patterns):
+  - **Build-time migrate + a blocking advisory lock + previews-share-prod-DB = deploy-hang
+    risk.** Use a bounded try-lock that self-heals; never an unbounded `pg_advisory_lock` in a
+    build step. Real fix later: give previews their own Neon branch DB (stop sharing prod).
+  - **The review feature + the profile PR count both depend on `session_commits` being
+    populated** — it's empty in prod (commit↔session linking is lossy transcript-regex only).
+    P2-1 (git post-commit hook) / P2-1b (backfill from git+GitHub) is the next unlock for both.
+  - **Don't merge on a non-green Vercel check** (the #55 lesson) — but a check stuck PENDING on
+    a zombie build (vs FAILURE) can be a lock-hang, not a code failure; diagnose via the build log.
+
 ## 2026-06-13 — Auto-migrate pipeline + parallel ships (#54 #55 #56 #57 #58)
 
 - **Auto-migrate on deploy (#57)** — modeled on nanosas (`build: "pnpm db:migrate && next build"`

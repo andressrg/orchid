@@ -151,18 +151,18 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
       a PR comment from `/webhook/github` that resolves commits→sessions→intent). _Accept:_
       opening a PR triggers a Claude review that cites the building sessions' intent; this is the
       same gate the orchestrator's own PRs pass through.
-- [ ] **P2-2 · `orchid review` on Claude, commit-precise.** Rewrite `review` to resolve PR
+- [x] **P2-2 · `orchid review` on Claude, commit-precise.** Rewrite `review` to resolve PR
       commits → sessions (`sessions-for`) and synthesize a Claude review-context brief (intent,
       decisions, risks, what to watch). _Accept:_ given a branch/PR, returns grounded context
       citing session+turn; runs on Claude.
-- [ ] **P2-3 · `orchid ask-context <pr|branch>`.** A single CLI call a reviewing agent makes
+- [x] **P2-3 · `orchid ask-context <pr|branch>`.** A single CLI call a reviewing agent makes
       _before_ reviewing: returns the building sessions' intent + a Q&A handle. _Accept:_
       documented in the skill as a required pre-review step.
 - [ ] **P2-4 · PR webhook actually reviews.** Upgrade `/webhook/github`: resolve PR commits
       → sessions, generate a Claude-grounded review comment (intent + flags), not just a list.
       Commit-precise match (not fuzzy branch). _Accept:_ opening a PR posts a useful,
       intent-aware comment.
-- [ ] **P2-5 · Skill: enforce ask-before-review.** Update `skills/orchid-context/SKILL.md`
+- [x] **P2-5 · Skill: enforce ask-before-review.** Update `skills/orchid-context/SKILL.md`
       so reviewing agents must run `ask-context` first. _Accept:_ skill workflow updated; sample
       transcript demonstrates it.
 
@@ -211,7 +211,7 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 
 ## Phase 7 — Virality: the public efficiency profile _(the flywheel; depends: P0-5)_
 
-- [ ] **P7-1 · Sign up with GitHub.** Add GitHub OAuth to Better Auth. _Accept:_ GitHub
+- [x] **P7-1 · Sign up with GitHub.** Add GitHub OAuth to Better Auth. _Accept:_ GitHub
       signup/login works; stores GitHub identity + token scopes for repo/PR reads.
 - [x] **P7-2 · Token accounting (persist).** Today the CLI computes `totalTokens` from
       transcript `usage` only for the local TUI — **the server never stores tokens** (schema has
