@@ -29,10 +29,21 @@
 
 ---
 
+## 2026-06-14 — Real merged PRs after GitHub merge (#62)
+
+- Signing in with GitHub on a same-email account merged correctly but the profile still showed
+  "0 PRs" + `@julian`: Better Auth runs `mapProfileToUser` only on user CREATION, not on LINK,
+  so `user.githubLogin` stayed empty and the real-PR path was skipped. Fixed: derive the login
+  from the linked account's token (GitHub `/user`) when `githubLogin` is empty, backfill it,
+  then count merged PRs by that login. **Verified live: `/u/julian` now shows 213 PRs merged,
+  0.8 PR/MTok, LEAN tier** (was 0). Self-heals already-merged accounts, no re-login.
+- Pattern: Better Auth `mapProfileToUser` does NOT run on account LINK — recover/backfill
+  provider profile fields (login/id) lazily from the stored token, or via a link-time hook.
+
 ## 2026-06-14 — Flagship review + GitHub sign-in + deploy-hang incident (#59 #60 #61)
 
 - **Flagship: conversation-aware code review for agents (#59, P2-2/P2-3/P2-5)** — `POST
-  /api/review-context` resolves a PR/branch's commit SHAs → the sessions that built them →
+/api/review-context` resolves a PR/branch's commit SHAs → the sessions that built them →
   a Claude-grounded brief (intent · decisions · risks · what the diff won't reveal). CLI
   rewritten: `orchid ask-context`/`orchid review <branch|pr>` (commit-precise, server-side
   Claude, OpenAI removed); skill enforces ask-before-review. Injection boundary tested
