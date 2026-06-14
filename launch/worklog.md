@@ -29,6 +29,21 @@
 
 ---
 
+## 2026-06-14 — Profile polish shipped (#66): year-aware range + #63 recovered
+
+- **#66 live + verified on prod:** (1) heatmap range label now shows the year on multi-year
+  spans — `/u/juliankmazo` reads **"Jun 12, 2025 – Jun 13, 2026"** (was the confusing year-less
+  "Jun 12 – Jun 13"). (2) **Recovered #63** (the bad-rebase-closed Link-GitHub settings) via
+  cherry-pick of `c12c9b6`: Settings → Account → Connected accounts shows **"Connected as
+  @juliankmazo" + Unlink**; `account.accountLinking` (trustedProviders github, allowDifferentEmails)
+  enables the logged-in different-email merge path. Deleted the `recover/github-link-settings` branch.
+- **Virality profile thread COMPLETE:** real GitHub PRs (215), 0.8 PR/MTok LEAN, full-year
+  contribution heatmap (256 active days), year-aware range, GitHub sign-in + account linking/merge.
+- **Next priority (backlog):** **P2-1 / P2-1b commit↔session linking** — the flagship review
+  (`/api/review-context`) returns empty in prod because `session_commits` is unpopulated; a git
+  post-commit hook (`orchid hooks install`) + backfill from git/GitHub would make the review brief
+  (and per-session commits) real. Then P1 privacy, P0-6 write path, P3 auto-summary, P9 landing.
+
 ## 2026-06-14 — Full-year GitHub contribution heatmap (#65) + handoff
 
 - **#65 shipped + verified live:** the profile heatmap now reflects the user's REAL GitHub
