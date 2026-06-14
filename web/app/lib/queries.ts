@@ -2,7 +2,7 @@ import { eq, and, or, desc, sql, type SQL } from 'drizzle-orm';
 import { db } from './db';
 import { orchidSession, organization, member, user, sessionCommit, account } from './schema';
 import { transcriptMatches, transcriptRank } from './fts';
-import { fetchMergedPrCount } from './github';
+import { fetchMergedPrCount, fetchGithubLogin } from './github';
 
 // Resolve team ID from slug + user membership
 export async function resolveTeamId(teamSlug: string, userId: string): Promise<string | null> {
@@ -365,14 +365,38 @@ const githubAccessTokenForUser = async (userId: string): Promise<string | null> 
   return row?.accessToken ?? null;
 };
 
+// Recover a GitHub login when the user has a linked GitHub account but no
+// stored `githubLogin` — which is the case for an account MERGED into an
+// existing email/password user, since Better Auth runs `mapProfileToUser` only
+// on user creation, not on link. We read the login from the account's token
+// (GitHub /user) and backfill `user.githubLogin`/`githubId` so future reads and
+// the `/u/<login>` handle work without another GitHub call. Best-effort: the
+// backfill never blocks the public page. Returns the login, or null.
+const resolveAndBackfillGithubLogin = async (
+  userId: string,
+  accessToken: string,
+): Promise<string | null> => {
+  const profile = await fetchGithubLogin({ accessToken });
+  if (!profile) return null;
+  await db
+    .update(user)
+    .set({ githubLogin: profile.login, githubId: profile.id || null })
+    .where(eq(user.id, userId))
+    .catch(() => undefined);
+  return profile.login;
+};
+
 // Real merged-PR count for a GitHub-linked identity, or null to fall back to
-// the commit proxy. Requires both a githubLogin and a stored access token; the
-// GitHub call itself is timeout-bounded and never throws (see ./github).
+// the commit proxy. Needs a stored GitHub access token; the login comes from
+// `githubLogin` when present, else it's recovered from the token (merged
+// account). The GitHub call is timeout-bounded and never throws (see ./github).
 const realMergedPrCount = async (identity: PublicProfileIdentity): Promise<number | null> => {
-  if (!identity.githubLogin) return null;
   const accessToken = await githubAccessTokenForUser(identity.userId);
   if (!accessToken) return null;
-  return fetchMergedPrCount({ login: identity.githubLogin, accessToken });
+  const login =
+    identity.githubLogin ?? (await resolveAndBackfillGithubLogin(identity.userId, accessToken));
+  if (!login) return null;
+  return fetchMergedPrCount({ login, accessToken });
 };
 
 // Compute the public, aggregate efficiency profile for a resolved identity.

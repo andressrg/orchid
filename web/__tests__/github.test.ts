@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { fetchMergedPrCount } from '@/app/lib/github';
+import { fetchMergedPrCount, fetchGithubLogin } from '@/app/lib/github';
 
 // P7-3: real merged-PR count from the GitHub search API. The public profile's
 // `prsMerged` reads this for GitHub-linked users; it must NEVER throw — a
@@ -84,5 +84,43 @@ describe('fetchMergedPrCount', () => {
     const count = await fetchMergedPrCount({ login: 'octocat', accessToken: 'gho_token' });
 
     expect(count).toBeNull();
+  });
+});
+
+// Recovers the GitHub login from a token — used when a GitHub account was
+// merged into an existing email account (so user.githubLogin is empty).
+describe('fetchGithubLogin', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('returns login + id from GitHub /user', async () => {
+    const calls = captureFetch(jsonResponse({ login: 'juliankmazo', id: 7906134 }));
+
+    const profile = await fetchGithubLogin({ accessToken: 'gho_token' });
+
+    expect(profile).toEqual({ login: 'juliankmazo', id: '7906134' });
+    expect(calls[0].url).toBe('https://api.github.com/user');
+    expect(calls[0].headers.Authorization).toBe('Bearer gho_token');
+  });
+
+  it('returns null without calling GitHub when the token is missing', async () => {
+    const calls = captureFetch(jsonResponse({ login: 'x' }));
+    expect(await fetchGithubLogin({ accessToken: '' })).toBeNull();
+    expect(calls).toHaveLength(0);
+  });
+
+  it('returns null on a non-200, a missing login, or a network error', async () => {
+    captureFetch(jsonResponse({ message: 'Bad credentials' }, 401));
+    expect(await fetchGithubLogin({ accessToken: 'bad' })).toBeNull();
+
+    captureFetch(jsonResponse({ id: 1 })); // no login
+    expect(await fetchGithubLogin({ accessToken: 'gho_token' })).toBeNull();
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new Error('aborted'))),
+    );
+    expect(await fetchGithubLogin({ accessToken: 'gho_token' })).toBeNull();
   });
 });

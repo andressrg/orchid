@@ -64,3 +64,50 @@ export async function fetchMergedPrCount({
 
   return result;
 }
+
+// GitHub's /user response — we read only login + numeric id.
+interface GithubUserResponse {
+  readonly login?: string;
+  readonly id?: number;
+}
+
+const GITHUB_USER_URL = 'https://api.github.com/user';
+
+/**
+ * Resolve the authenticated GitHub user's login + id from an access token.
+ * Recovers the login when a GitHub account was LINKED to an existing Orchid
+ * user — Better Auth runs `mapProfileToUser` only on user creation, not on
+ * link, so `user.githubLogin` can be empty for a merged account. Same hard
+ * rule: returns `null` on missing token / non-200 / timeout / error, never
+ * throws.
+ */
+export async function fetchGithubLogin({
+  accessToken,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: {
+  readonly accessToken: string;
+  readonly timeoutMs?: number;
+}): Promise<{ readonly login: string; readonly id: string } | null> {
+  if (!accessToken) return null;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  return fetch(GITHUB_USER_URL, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'orchid',
+    },
+    signal: controller.signal,
+  })
+    .then(async (response): Promise<{ readonly login: string; readonly id: string } | null> => {
+      if (!response.ok) return null;
+      const data = (await response.json()) as GithubUserResponse;
+      return typeof data.login === 'string' && data.login.length > 0
+        ? { login: data.login, id: data.id != null ? String(data.id) : '' }
+        : null;
+    })
+    .catch((): null => null)
+    .finally(() => clearTimeout(timer));
+}
