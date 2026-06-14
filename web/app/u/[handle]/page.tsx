@@ -28,6 +28,26 @@ const monthDay = (iso: string | null): string => {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 };
 
+// Active-range label. Includes the year on each end when the range spans
+// different calendar years, so a full-year span (e.g. a GitHub contribution
+// calendar) reads "Jun 12, 2025 – Jun 13, 2026" instead of a confusing
+// year-less "Jun 12 – Jun 13".
+const monthDayYear = (iso: string): string =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+
+const activeRange = (first: string | null, last: string | null): string => {
+  if (!first || !last) return `${monthDay(first)} – ${monthDay(last)}`;
+  const sameYear = first.slice(0, 4) === last.slice(0, 4);
+  return sameYear
+    ? `${monthDay(first)} – ${monthDay(last)}`
+    : `${monthDayYear(first)} – ${monthDayYear(last)}`;
+};
+
 // Compact token display: 1_250_000 → "1.3M", 48_000 → "48K".
 const displayTokens = (tokens: number): string => {
   if (tokens >= 1_000_000)
@@ -223,7 +243,7 @@ export default async function PublicProfilePage(props: ProfilePageProps) {
           <div className="profile-section-head">
             <h2 className="profile-section-title">Shipping activity</h2>
             <span className="profile-section-range">
-              {monthDay(profile.firstActiveDay)} – {monthDay(profile.lastActiveDay)}
+              {activeRange(profile.firstActiveDay, profile.lastActiveDay)}
             </span>
           </div>
           <ContributionGraph days={profile.days} />
