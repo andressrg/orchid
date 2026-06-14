@@ -156,11 +156,12 @@ describe('public efficiency profile', () => {
     expect(profile.firstActiveDay).toBe('2026-01-10');
     expect(profile.lastActiveDay).toBe('2026-01-12');
 
-    // Per-day series carries both session and commit counts.
+    // Per-day series carries session + commit counts (no GitHub link → 0
+    // contributions, so the heatmap falls back to the Orchid-session series).
     const jan10 = profile.days.find((d) => d.day === '2026-01-10');
     const jan12 = profile.days.find((d) => d.day === '2026-01-12');
-    expect(jan10).toEqual({ day: '2026-01-10', sessions: 2, commits: 3 });
-    expect(jan12).toEqual({ day: '2026-01-12', sessions: 2, commits: 1 });
+    expect(jan10).toEqual({ day: '2026-01-10', sessions: 2, commits: 3, contributions: 0 });
+    expect(jan12).toEqual({ day: '2026-01-12', sessions: 2, commits: 1, contributions: 0 });
   });
 
   it('returns a zeroed profile for a user with no activity', async () => {
@@ -239,14 +240,12 @@ describe('public efficiency profile — GitHub-linked PRs', () => {
       updatedAt: dayUtc('2026-02-01'),
       userId: GH_USER_ID,
     });
-    await testDb
-      .insert(sessionCommit)
-      .values({
-        id: 'gh-c1',
-        sessionId: 'gh-s1',
-        commitSha: 'sha1',
-        committedAt: dayUtc('2026-02-01'),
-      });
+    await testDb.insert(sessionCommit).values({
+      id: 'gh-c1',
+      sessionId: 'gh-s1',
+      commitSha: 'sha1',
+      committedAt: dayUtc('2026-02-01'),
+    });
   });
 
   afterEach(async () => {
@@ -285,8 +284,11 @@ describe('public efficiency profile — GitHub-linked PRs', () => {
     expect(profile.totalCommits).toBe(1);
     expect(profile.prsMerged).toBe(17);
     expect(profile.prsFromGithub).toBe(true);
-    expect(calls.some((url) => url.includes('api.github.com/search/issues'))).toBe(true);
-    expect(decodeURIComponent(calls[0])).toContain(`author:${GH_LOGIN}`);
+    // The profile fans out the PR-count and calendar fetches in parallel, so
+    // order isn't guaranteed — assert against the search call specifically.
+    const searchCall = calls.find((url) => url.includes('api.github.com/search/issues'));
+    expect(searchCall).toBeDefined();
+    expect(decodeURIComponent(searchCall!)).toContain(`author:${GH_LOGIN}`);
   });
 
   it('falls back to the commit proxy when the GitHub call fails', async () => {
@@ -302,5 +304,107 @@ describe('public efficiency profile — GitHub-linked PRs', () => {
 
     expect(profile.prsMerged).toBe(1); // the commit proxy
     expect(profile.prsFromGithub).toBe(false);
+  });
+
+  // The heatmap + activeDays/range come from the REAL GitHub contribution
+  // calendar when the user is GitHub-linked — so the graph mirrors the full-year
+  // green graph, not just the ~weeks of Orchid sessions. A fetch routed by URL:
+  // the GraphQL endpoint returns the calendar; the search endpoint returns PRs.
+  it('drives the heatmap and activeDays from the GitHub calendar when linked', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          String(input).includes('/graphql')
+            ? ({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                  data: {
+                    viewer: {
+                      contributionsCollection: {
+                        contributionCalendar: {
+                          totalContributions: 14,
+                          weeks: [
+                            {
+                              contributionDays: [
+                                { date: '2025-07-15', contributionCount: 5 },
+                                { date: '2025-07-16', contributionCount: 0 },
+                              ],
+                            },
+                            {
+                              contributionDays: [
+                                // Same day as the Orchid session (2026-02-01).
+                                { date: '2026-02-01', contributionCount: 9 },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                }),
+              } as unknown as Response)
+            : ({
+                ok: true,
+                status: 200,
+                json: async () => ({ total_count: 17 }),
+              } as unknown as Response),
+        ),
+      ),
+    );
+
+    const identity = await resolveProfileUser(GH_LOGIN);
+    const profile = await getPublicEfficiencyProfile(identity!);
+
+    // totalSessions stays the Orchid session count (1) — unchanged by GitHub.
+    expect(profile.totalSessions).toBe(1);
+
+    // The heatmap series is the calendar: one entry per calendar day, with the
+    // GitHub contributionCount driving intensity (and same-day Orchid sessions
+    // merged in).
+    const jul15 = profile.days.find((d) => d.day === '2025-07-15');
+    expect(jul15).toEqual({ day: '2025-07-15', sessions: 0, commits: 0, contributions: 5 });
+    const feb01 = profile.days.find((d) => d.day === '2026-02-01');
+    expect(feb01).toEqual({ day: '2026-02-01', sessions: 1, commits: 1, contributions: 9 });
+
+    // activeDays/range derive from the calendar's active days (count > 0):
+    // 2025-07-15 and 2026-02-01 — 2025-07-16 has 0 so it's not active.
+    expect(profile.activeDays).toBe(2);
+    expect(profile.firstActiveDay).toBe('2025-07-15');
+    expect(profile.lastActiveDay).toBe('2026-02-01');
+  });
+
+  // When the calendar fetch fails (but the PR fetch succeeds), the heatmap
+  // falls back to the Orchid-session series and never blocks the page.
+  it('falls back to the Orchid-session heatmap when the calendar fetch fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL) =>
+        Promise.resolve(
+          String(input).includes('/graphql')
+            ? ({ ok: false, status: 502, json: async () => ({}) } as unknown as Response)
+            : ({
+                ok: true,
+                status: 200,
+                json: async () => ({ total_count: 17 }),
+              } as unknown as Response),
+        ),
+      ),
+    );
+
+    const identity = await resolveProfileUser(GH_LOGIN);
+    const profile = await getPublicEfficiencyProfile(identity!);
+
+    // The heatmap is the Orchid session series: the seeded session day, 0 GitHub
+    // contributions, activeDays = the single Orchid day.
+    expect(profile.activeDays).toBe(1);
+    expect(profile.firstActiveDay).toBe('2026-02-01');
+    expect(profile.lastActiveDay).toBe('2026-02-01');
+    const feb01 = profile.days.find((d) => d.day === '2026-02-01');
+    expect(feb01).toEqual({ day: '2026-02-01', sessions: 1, commits: 1, contributions: 0 });
+    // PRs still real (the search call succeeded).
+    expect(profile.prsMerged).toBe(17);
+    expect(profile.prsFromGithub).toBe(true);
   });
 });

@@ -2,7 +2,7 @@ import { eq, and, or, desc, sql, type SQL } from 'drizzle-orm';
 import { db } from './db';
 import { orchidSession, organization, member, user, sessionCommit, account } from './schema';
 import { transcriptMatches, transcriptRank } from './fts';
-import { fetchMergedPrCount, fetchGithubLogin } from './github';
+import { fetchMergedPrCount, fetchGithubLogin, fetchContributionCalendar } from './github';
 
 // Resolve team ID from slug + user membership
 export async function resolveTeamId(teamSlug: string, userId: string): Promise<string | null> {
@@ -224,6 +224,11 @@ export interface ProfileDayActivity {
   readonly day: string; // YYYY-MM-DD
   readonly sessions: number;
   readonly commits: number;
+  // Real GitHub contributions for the day (the green-graph count) when the user
+  // has a linked GitHub account; 0 otherwise. The heatmap colors by
+  // `sessions + commits + contributions`, so GitHub-linked profiles light up
+  // across the full year while Orchid-only profiles still light up by sessions.
+  readonly contributions: number;
 }
 
 export interface EfficiencyTier {
@@ -399,13 +404,31 @@ const realMergedPrCount = async (identity: PublicProfileIdentity): Promise<numbe
   return fetchMergedPrCount({ login, accessToken });
 };
 
+// Real GitHub contribution calendar (the green graph) for a GitHub-linked
+// identity, or null to keep the Orchid-session heatmap. `viewer` is the token
+// owner, so only a stored GitHub access token is needed — no login lookup. The
+// call is timeout-bounded and never throws (see ./github), so the public page
+// never blocks on it.
+const realContributionCalendar = async (
+  identity: PublicProfileIdentity,
+): Promise<ReadonlyArray<{ readonly day: string; readonly count: number }> | null> => {
+  const accessToken = await githubAccessTokenForUser(identity.userId);
+  if (!accessToken) return null;
+  const calendar = await fetchContributionCalendar({ accessToken });
+  return calendar?.days ?? null;
+};
+
 // Compute the public, aggregate efficiency profile for a resolved identity.
-// Batches into parallel queries: a per-day activity roll-up (for the
-// contribution graph), a deduplicated profile-wide summary (commits + message
+// Batches into parallel queries: a per-day activity roll-up (the Orchid-session
+// heatmap fallback), a deduplicated profile-wide summary (commits + message
 // count for the token estimate, kept off the commit-join fan-out), and — for
-// GitHub-linked users — the real merged-PR count. Sessions are matched on
-// `user_id` OR `user_email` so legacy rows captured before accounts existed
-// (email only, no user_id) still count.
+// GitHub-linked users — the real merged-PR count plus the real GitHub
+// contribution calendar. When the calendar is present it drives the heatmap
+// (and activeDays/range) so the "Shipping activity" graph mirrors the user's
+// full-year GitHub green graph; otherwise it falls back to Orchid sessions.
+// `totalSessions` stays the Orchid session count regardless. Sessions are
+// matched on `user_id` OR `user_email` so legacy rows captured before accounts
+// existed (email only, no user_id) still count.
 export async function getPublicEfficiencyProfile(
   identity: PublicProfileIdentity,
 ): Promise<PublicEfficiencyProfile> {
@@ -413,7 +436,7 @@ export async function getPublicEfficiencyProfile(
     ? or(eq(orchidSession.userId, identity.userId), eq(orchidSession.userEmail, identity.userEmail))
     : eq(orchidSession.userId, identity.userId);
 
-  const [dayRows, [summary], githubPrCount] = await Promise.all([
+  const [dayRows, [summary], githubPrCount, githubCalendar] = await Promise.all([
     // Per-day series: one row per active day with that day's session + commit
     // counts. Sessions bucketed by started_at in UTC for a stable heatmap.
     db
@@ -441,13 +464,46 @@ export async function getPublicEfficiencyProfile(
     // timeout/failure). Runs in parallel with the aggregate queries so it never
     // serializes the public page.
     realMergedPrCount(identity),
+    // Real GitHub contribution calendar (the green graph) for the heatmap; null
+    // when no GitHub link or the call fails. Also runs in parallel.
+    realContributionCalendar(identity),
   ]);
 
-  const days: readonly ProfileDayActivity[] = dayRows.map((row) => ({
+  // Orchid-session per-day series (the fallback heatmap source). `contributions`
+  // is 0 here — these days light up via sessions + commits.
+  const sessionDays: readonly ProfileDayActivity[] = dayRows.map((row) => ({
     day: row.day,
     sessions: Number(row.sessions),
     commits: Number(row.commits),
+    contributions: 0,
   }));
+
+  // The heatmap reflects GitHub when the calendar is linked: one day per
+  // calendar entry, with the GitHub `contributionCount` driving intensity. We
+  // merge in any same-day Orchid sessions/commits so a linked user's grid shows
+  // both, but GitHub contributions are the headline. When there's no GitHub
+  // link or the fetch failed, we fall back to the Orchid-session series.
+  const sessionsByDay = new Map(sessionDays.map((entry) => [entry.day, entry]));
+  const days: readonly ProfileDayActivity[] =
+    githubCalendar !== null
+      ? githubCalendar.map((entry) => {
+          const session = sessionsByDay.get(entry.day);
+          return {
+            day: entry.day,
+            sessions: session?.sessions ?? 0,
+            commits: session?.commits ?? 0,
+            contributions: entry.count,
+          };
+        })
+      : sessionDays;
+
+  // Active days / range derive from whichever series drives the heatmap: GitHub
+  // days with a contribution > 0 (so the header spans the full GitHub year), or
+  // the Orchid active days when falling back.
+  const activeDayList = days.filter(
+    (entry) => entry.sessions + entry.commits + entry.contributions > 0,
+  );
+  const activeDayKeys = activeDayList.map((entry) => entry.day).sort();
 
   const totalSessions = Number(summary?.sessions ?? 0);
   const totalCommits = Number(summary?.commits ?? 0);
@@ -469,9 +525,9 @@ export async function getPublicEfficiencyProfile(
     prsFromGithub,
     tokensSpent,
     tokensEstimated: true,
-    activeDays: days.length,
-    firstActiveDay: days[0]?.day ?? null,
-    lastActiveDay: days[days.length - 1]?.day ?? null,
+    activeDays: activeDayKeys.length,
+    firstActiveDay: activeDayKeys[0] ?? null,
+    lastActiveDay: activeDayKeys[activeDayKeys.length - 1] ?? null,
     headlineMode: headlineModeFor({ prsMerged, tokensSpent }),
     score,
     tier: efficiencyTierForScore(score),

@@ -2,8 +2,11 @@ import type { ProfileDayActivity } from '@/app/lib/queries';
 
 // GitHub-style calendar heatmap. Pure render — derives the full grid from the
 // activity series; no client JS, no effects. 53 weeks ending today, Sunday-first
-// columns. Intensity is bucketed by that day's activity = sessions + commits
-// (sessions alone light the grid until commit↔session linking is populated).
+// columns. Intensity is bucketed by that day's activity =
+// sessions + commits + contributions. For GitHub-linked profiles the real
+// GitHub contribution calendar (the green graph) supplies `contributions`, so
+// the grid fills in across the full year; Orchid-only profiles still light up
+// via sessions + commits (sessions alone work until commits are linked).
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKS = 53;
@@ -19,10 +22,14 @@ const gridStart = (today: Date): Date => {
   return new Date(start.getTime() - start.getUTCDay() * DAY_MS);
 };
 
-// A day's activity drives the heatmap intensity: sessions + commits, so the
-// grid reflects work even before commits are linked to sessions.
-const activityOf = (day: { readonly sessions: number; readonly commits: number }): number =>
-  day.sessions + day.commits;
+// A day's activity drives the heatmap intensity: sessions + commits +
+// contributions, so the grid reflects Orchid work AND the user's real GitHub
+// contribution calendar (when linked).
+const activityOf = (day: {
+  readonly sessions: number;
+  readonly commits: number;
+  readonly contributions: number;
+}): number => day.sessions + day.commits + day.contributions;
 
 // Five-stop intensity ramp from "empty" to the orchid accent.
 const intensityColor = (count: number, max: number): string => {
@@ -69,6 +76,7 @@ export function ContributionGraph({ days }: { days: readonly ProfileDayActivity[
         date,
         commits: activity?.commits ?? 0,
         sessions: activity?.sessions ?? 0,
+        contributions: activity?.contributions ?? 0,
         isFuture: date.getTime() > Date.now(),
       };
     }),
@@ -112,13 +120,13 @@ export function ContributionGraph({ days }: { days: readonly ProfileDayActivity[
                     style={{
                       background: cell.isFuture
                         ? 'transparent'
-                        : intensityColor(cell.sessions + cell.commits, maxActivity),
+                        : intensityColor(activityOf(cell), maxActivity),
                       opacity: cell.isFuture ? 0 : 1,
                     }}
                     title={
                       cell.isFuture
                         ? undefined
-                        : `${cell.commits} commit${cell.commits === 1 ? '' : 's'} · ${cell.sessions} session${cell.sessions === 1 ? '' : 's'} on ${cell.key}`
+                        : `${cell.contributions} contribution${cell.contributions === 1 ? '' : 's'} · ${cell.sessions} session${cell.sessions === 1 ? '' : 's'} on ${cell.key}`
                     }
                   />
                 ))}
