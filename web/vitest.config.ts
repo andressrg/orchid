@@ -13,6 +13,10 @@ export default defineConfig({
       DATABASE_URL: 'postgresql://orchid:orchid@localhost:5432/orchid_test',
       BETTER_AUTH_SECRET: 'test-secret-at-least-32-characters-long',
       BETTER_AUTH_URL: 'http://localhost:3000',
+      // Shorten the build-time migrator's lock budget so migrate.test.ts's
+      // lock-contention scenarios resolve in ~3s instead of the 90s prod budget.
+      MIGRATE_LOCK_BUDGET_MS: '3000',
+      MIGRATE_LOCK_RETRY_MS: '400',
     },
   },
   resolve: {

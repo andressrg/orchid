@@ -10,6 +10,51 @@ const SCRATCH_DB = 'orchid_migtest';
 const ADMIN_URL = 'postgresql://orchid:orchid@localhost:5432/orchid';
 const SCRATCH_URL = `postgresql://orchid:orchid@localhost:5432/${SCRATCH_DB}`;
 
+// Same key the migrator uses, so a second client's `pg_advisory_lock` genuinely
+// contends with the migrator's `pg_try_advisory_lock` (orphaned-lock simulation).
+const ADVISORY_LOCK_KEY = 7264193055;
+// The migrator's lock budget is shortened to ~3s for the lock-contention tests via
+// MIGRATE_LOCK_BUDGET_MS in vitest.config — see the env block there. Asserting it
+// here keeps the test honest if that ever drifts.
+const SHORT_LOCK_BUDGET_MS = Number(process.env.MIGRATE_LOCK_BUDGET_MS ?? 3_000);
+
+// Open a session that holds the advisory lock until released, simulating a build
+// that died (or is mid-flight) still owning the lock. Returns a release fn that
+// unlocks and tears down the holding connection.
+async function holdAdvisoryLock(): Promise<{ release: () => Promise<void> }> {
+  const pool = new Pool({ connectionString: SCRATCH_URL });
+  const client = await pool.connect();
+  await client.query('SELECT pg_advisory_lock($1)', [ADVISORY_LOCK_KEY]);
+  return {
+    release: async () => {
+      await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]);
+      client.release();
+      await pool.end();
+    },
+  };
+}
+
+// Seed the scratch DB so its ledger already records the given tags as applied,
+// WITHOUT running their SQL — mimics a DB that is already migrated up to those tags.
+async function seedLedger({ tags }: { tags: readonly string[] }): Promise<void> {
+  await withScratch(async (pool) => {
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS orchid_schema_migrations (
+         tag text PRIMARY KEY,
+         applied_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+    // Also provision the schema-presence table so the migrator's baseline check
+    // sees a non-fresh DB (it never runs anyway once every tag is in the ledger).
+    await pool.query(`CREATE TABLE IF NOT EXISTS orchid_session (id text PRIMARY KEY)`);
+    const placeholders = tags.map((_, index) => `($${index + 1})`).join(', ');
+    await pool.query(
+      `INSERT INTO orchid_schema_migrations (tag) VALUES ${placeholders} ON CONFLICT DO NOTHING`,
+      [...tags],
+    );
+  });
+}
+
 const REAL_DRIZZLE_DIR = resolve(process.cwd(), 'drizzle');
 
 // The real, committed migration tags in journal order — read at runtime so this
@@ -216,6 +261,63 @@ describe('migrate (build-time runner)', () => {
       });
     } finally {
       await rm(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  it('lock held by another session + NO pending: gives up after the budget and proceeds (exit 0)', async () => {
+    // Ledger already has every real journal tag → nothing pending. Hold the
+    // advisory lock from a second session to simulate an orphaned lock from a
+    // dead build. The migrator must NOT hang: it polls try-lock up to the
+    // shortened budget, never gets it, sees no pending work, warns, and returns
+    // success without ever applying SQL.
+    const realTags = await realJournalTags();
+    await seedLedger({ tags: realTags });
+
+    const { release } = await holdAdvisoryLock();
+    try {
+      const startedAt = Date.now();
+      const result = await migrate({ databaseUrl: SCRATCH_URL });
+      const elapsed = Date.now() - startedAt;
+
+      expect(result.baselined).toBe(false);
+      expect(result.applied).toEqual([]);
+      // Proved it actually waited the budget (the lock was never free) but did
+      // not hang far beyond it.
+      expect(elapsed).toBeGreaterThanOrEqual(SHORT_LOCK_BUDGET_MS - 500);
+      expect(elapsed).toBeLessThan(SHORT_LOCK_BUDGET_MS + 5_000);
+
+      // Ledger unchanged — it proceeded without touching anything.
+      await withScratch(async (pool) => {
+        expect(await trackedTags({ pool })).toEqual(sorted(realTags));
+      });
+    } finally {
+      await release();
+    }
+  });
+
+  it('lock held by another session + migrations PENDING: gives up after the budget and FAILS the build', async () => {
+    // Ledger is missing the last real migration → it IS pending. With the lock
+    // held by another session, the migrator must give up after the budget and
+    // throw (exit non-zero) rather than hang or deploy un-migrated code.
+    const realTags = await realJournalTags();
+    const allButLast = realTags.slice(0, -1);
+    await seedLedger({ tags: allButLast });
+
+    const { release } = await holdAdvisoryLock();
+    try {
+      const startedAt = Date.now();
+      await expect(migrate({ databaseUrl: SCRATCH_URL })).rejects.toThrow(
+        /Could not acquire migrate lock/,
+      );
+      const elapsed = Date.now() - startedAt;
+      expect(elapsed).toBeGreaterThanOrEqual(SHORT_LOCK_BUDGET_MS - 500);
+
+      // Nothing was applied while the lock was contended — ledger unchanged.
+      await withScratch(async (pool) => {
+        expect(await trackedTags({ pool })).toEqual(sorted(allButLast));
+      });
+    } finally {
+      await release();
     }
   });
 });

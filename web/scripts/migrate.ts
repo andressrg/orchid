@@ -23,7 +23,27 @@ const STATEMENT_BREAKPOINT = '--> statement-breakpoint';
 // A single arbitrary 64-bit key so concurrent migrators (e.g. two racing deploys)
 // serialize instead of clobbering each other. Released in `finally` and also
 // automatically when the session connection closes — so there is no stuck lock.
+// UNCHANGED: every deploy must contend on the same key for serialization to work.
 const ADVISORY_LOCK_KEY = 7264193055;
+
+// Lock acquisition is bounded and self-healing — it never blocks forever.
+//
+// History: an unconditional blocking `pg_advisory_lock` hung a build indefinitely
+// when a prior build died while holding the (session-level) lock and its Neon
+// pooler connection lingered — orphaning the lock so every later build hung in
+// "Building" forever. We now poll `pg_try_advisory_lock` (non-blocking, returns a
+// bool) on a fixed interval up to a total budget; if the budget expires we decide
+// by pending work rather than hang (see `migrate`).
+//
+// Overridable via env so tests can shorten the budget without waiting the full 90s.
+const LOCK_BUDGET_MS = Number(env.MIGRATE_LOCK_BUDGET_MS ?? 90_000);
+const LOCK_RETRY_INTERVAL_MS = Number(env.MIGRATE_LOCK_RETRY_MS ?? 2_000);
+
+// Caps so neither a stray blocking statement nor a network stall to Neon can hang a
+// build forever. `statement_timeout` bounds every single statement on the session;
+// the connect timeout bounds acquiring the pooled connection itself.
+const STATEMENT_TIMEOUT = env.MIGRATE_STATEMENT_TIMEOUT ?? '120s';
+const CONNECT_TIMEOUT_MS = Number(env.MIGRATE_CONNECT_TIMEOUT_MS ?? 15_000);
 
 // Tracking table for applied migrations. Distinct from drizzle-kit's own
 // `__drizzle_migrations` (which we never write to) so the two never collide.
@@ -175,6 +195,23 @@ async function applyMigration({
   }
 }
 
+// Journal tags not yet recorded in the ledger, in run order. Read-only: it never
+// touches the lock, so it is safe to call when the lock is held by someone else
+// (the budget-expired path uses it to decide fail-vs-proceed). Ensures the ledger
+// table exists first so a fresh DB reports every tag as pending rather than erroring.
+async function computePending({
+  client,
+  drizzleDir,
+}: {
+  client: PoolClient;
+  drizzleDir: string;
+}): Promise<{ pending: readonly string[] }> {
+  await ensureMigrationsTable({ client });
+  const { tags } = await readJournalTags({ drizzleDir });
+  const { applied } = await readAppliedTags({ client });
+  return { pending: tags.filter((tag) => !applied.has(tag)) };
+}
+
 async function applyPending({
   client,
   drizzleDir,
@@ -205,6 +242,42 @@ async function applyPending({
   return { applied: pending, baselined };
 }
 
+const sleep = (ms: number): Promise<void> => new Promise((res) => setTimeout(res, ms));
+
+// Reject if `pool.connect()` does not resolve within `CONNECT_TIMEOUT_MS`, so a
+// network stall to Neon cannot hang the build at the connection step. The losing
+// connect promise is detached; the pool is torn down by the caller's cleanup.
+async function connectWithTimeout({ pool }: { pool: Pool }): Promise<PoolClient> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(
+      () => reject(new Error(`Timed out acquiring a DB connection after ${CONNECT_TIMEOUT_MS}ms`)),
+      CONNECT_TIMEOUT_MS,
+    ),
+  );
+  return Promise.race([pool.connect(), timeout]);
+}
+
+// Bounded, non-blocking lock acquisition. Polls `pg_try_advisory_lock` (returns a
+// bool, never blocks) every `LOCK_RETRY_INTERVAL_MS` until the lock is taken or the
+// `deadline` passes. Recursion-with-accumulator (the elapsed deadline) keeps it
+// functional — no mutable retry counter, no blocking server-side wait.
+async function tryAcquireLockUntil({
+  client,
+  deadline,
+}: {
+  client: PoolClient;
+  deadline: number;
+}): Promise<{ acquired: boolean }> {
+  const result = await client.query<{ locked: boolean }>(
+    'SELECT pg_try_advisory_lock($1) AS locked',
+    [ADVISORY_LOCK_KEY],
+  );
+  if (result.rows[0]?.locked === true) return { acquired: true };
+  if (Date.now() + LOCK_RETRY_INTERVAL_MS >= deadline) return { acquired: false };
+  await sleep(LOCK_RETRY_INTERVAL_MS);
+  return tryAcquireLockUntil({ client, deadline });
+}
+
 export async function migrate({
   databaseUrl,
   drizzleDir = defaultDrizzleDir(),
@@ -216,13 +289,52 @@ export async function migrate({
   // transactions. The plain `pg` driver works for Neon's direct connection string
   // (the prod/preview DATABASE_URL) and for the local Docker Postgres alike.
   const pool = new Pool({ connectionString: databaseUrl });
-  const client = await pool.connect();
+  // `connectWithTimeout` can reject (network stall) before we hold a client; in
+  // that case there is nothing to release, so just tear down the pool and rethrow.
+  const client = await connectWithTimeout({ pool }).catch(async (error) => {
+    await pool.end();
+    throw error;
+  });
 
-  await client.query('SELECT pg_advisory_lock($1)', [ADVISORY_LOCK_KEY]);
+  // Acquire the lock without ever blocking: poll try-lock up to the budget. The
+  // result is the accumulator the `finally` reads to decide whether WE hold the
+  // lock and must unlock it.
+  const acquireLock = async (): Promise<{ acquired: boolean }> => {
+    // Cap every statement on this session so no single call — including a stray
+    // blocking one — can hang a build forever.
+    await client.query(`SET statement_timeout = '${STATEMENT_TIMEOUT}'`);
+    return tryAcquireLockUntil({ client, deadline: Date.now() + LOCK_BUDGET_MS });
+  };
+
+  const { acquired } = await acquireLock().catch(async (error) => {
+    client.release();
+    await pool.end();
+    throw error;
+  });
+
   try {
-    return await applyPending({ client, drizzleDir });
+    if (acquired) {
+      // Hold the lock — proceed exactly as before: ensure table, baseline, apply.
+      return await applyPending({ client, drizzleDir });
+    }
+
+    // Budget expired without the lock — someone else holds it, or a dead build
+    // orphaned it. Decide by pending work instead of hanging. `computePending`
+    // is read-only and does NOT need the lock.
+    const { pending } = await computePending({ client, drizzleDir });
+    if (pending.length === 0) {
+      log({
+        message: `WARNING: could not acquire migrate lock within ${LOCK_BUDGET_MS}ms; no migrations pending, proceeding without it. Schema is already up to date — nothing to do.`,
+      });
+      return { applied: [], baselined: false };
+    }
+
+    throw new Error(
+      `Could not acquire migrate lock within ${LOCK_BUDGET_MS}ms and ${pending.length} migration(s) are pending (${pending.join(', ')}); failing the build rather than deploying un-migrated code. The lock may be orphaned by a dead build — once its connection is reaped the next deploy will proceed.`,
+    );
   } finally {
-    await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]);
+    // Only unlock if WE acquired it — never release another session's lock.
+    if (acquired) await client.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]);
     client.release();
     await pool.end();
   }
