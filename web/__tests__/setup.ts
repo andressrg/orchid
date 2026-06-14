@@ -81,12 +81,15 @@ export async function insertTestSessionCommit(params: {
   commitSha: string;
   branch?: string;
   message?: string;
+  remote?: string | null;
+  committedAt?: Date;
 }) {
   await testDb.insert(schema.sessionCommit).values({
     sessionId: params.sessionId,
     commitSha: params.commitSha,
     branch: params.branch ?? 'main',
     message: params.message ?? 'test commit',
-    committedAt: new Date(),
+    remote: params.remote ?? null,
+    committedAt: params.committedAt ?? new Date(),
   });
 }

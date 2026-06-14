@@ -26,11 +26,21 @@ export interface Turn {
   text: string;
 }
 
-function extractTextContent(content: unknown): string {
+type ContentBlock = string | { type?: string; text?: string };
+type TranscriptContent = string | ContentBlock[] | null | undefined;
+
+interface TranscriptLine {
+  type?: string;
+  role?: string;
+  content?: TranscriptContent;
+  message?: { role?: string; content?: TranscriptContent };
+}
+
+function extractTextContent(content: TranscriptContent): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .map((block: { type?: string; text?: string }) => {
+      .map((block) => {
         if (typeof block === 'string') return block;
         if (block && block.type === 'text' && typeof block.text === 'string') return block.text;
         return '';
@@ -41,41 +51,50 @@ function extractTextContent(content: unknown): string {
   return '';
 }
 
-export function parseTranscript(transcript: string): Turn[] {
-  const turns: Turn[] = [];
-  const lines = transcript.split('\n').filter((l) => l.trim());
+// Resolve a single transcript line into a {role, text} turn, or null when it
+// isn't a renderable message. Handles both the legacy top-level
+// `{type:'human'|'assistant', content}` shape and the Claude CLI shape, which
+// writes `{type:'user'|'assistant'}` with the body under `message.content` — the
+// `type === 'user'` case is why user turns previously fell through and rendered
+// as 'Claude'.
+function parseTranscriptLine(line: string): Turn | null {
+  try {
+    const obj = JSON.parse(line) as TranscriptLine;
+    const content = obj.message?.content ?? obj.content;
 
-  for (const line of lines) {
-    try {
-      const obj = JSON.parse(line);
-      let role: 'user' | 'assistant' | 'unknown' | undefined;
-      let text = '';
+    const isUser =
+      obj.type === 'human' ||
+      obj.type === 'user' ||
+      obj.role === 'human' ||
+      obj.role === 'user' ||
+      obj.message?.role === 'user' ||
+      obj.message?.role === 'human';
+    const isAssistant =
+      obj.type === 'assistant' || obj.role === 'assistant' || obj.message?.role === 'assistant';
 
-      if (obj.type === 'human' || obj.role === 'human' || obj.role === 'user') {
-        role = 'user';
-        text = extractTextContent(obj.content || (obj.message && obj.message.content));
-      } else if (obj.type === 'assistant' || obj.role === 'assistant') {
-        role = 'assistant';
-        text = extractTextContent(obj.content || (obj.message && obj.message.content));
-      } else if (obj.message) {
-        role =
-          obj.message.role === 'user' || obj.message.role === 'human'
-            ? 'user'
-            : obj.message.role === 'assistant'
-              ? 'assistant'
-              : 'unknown';
-        text = extractTextContent(obj.message.content);
-      }
+    const role: Turn['role'] = isUser
+      ? 'user'
+      : isAssistant
+        ? 'assistant'
+        : obj.message
+          ? 'unknown'
+          : 'unknown';
 
-      if (role && text) {
-        turns.push({ role, text });
-      }
-    } catch {
-      // skip non-JSON lines
-    }
+    if (!isUser && !isAssistant && !obj.message) return null;
+
+    const text = extractTextContent(content);
+    return text ? { role, text } : null;
+  } catch {
+    return null; // skip non-JSON lines
   }
+}
 
-  return turns;
+export function parseTranscript(transcript: string): Turn[] {
+  return transcript
+    .split('\n')
+    .filter((l) => l.trim())
+    .map(parseTranscriptLine)
+    .filter((turn): turn is Turn => turn !== null);
 }
 
 export function timeAgo(dateStr: string): string {

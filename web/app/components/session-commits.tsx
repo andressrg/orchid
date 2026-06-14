@@ -63,7 +63,7 @@ function CommitCard({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
-  const firstLine = commit.message.split('\n')[0];
+  const firstLine = (commit.message ?? '').split('\n')[0];
   const totalChanges = commit.additions + commit.deletions;
 
   return (
@@ -80,10 +80,10 @@ function CommitCard({
               <span className="text-[13px] font-medium truncate text-night-100">{firstLine}</span>
             </div>
             <div className="flex items-center gap-3 text-[11px] text-night-400">
-              <span className="font-mono">{commit.sha.slice(0, 7)}</span>
-              <span>{commit.author}</span>
-              <span>{timeAgo(commit.date)}</span>
-              <span className="font-mono text-night-300">{commit.repo}</span>
+              <span className="font-mono">{(commit.sha ?? '').slice(0, 7)}</span>
+              {commit.author && <span>{commit.author}</span>}
+              {commit.date && <span>{timeAgo(commit.date)}</span>}
+              {commit.repo && <span className="font-mono text-night-300">{commit.repo}</span>}
             </div>
           </div>
 
@@ -144,16 +144,18 @@ function CommitCard({
               </div>
             ))}
           </div>
-          <div className="mt-3 pt-2 border-t border-night-750">
-            <a
-              href={commit.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[11px] font-medium transition-opacity hover:opacity-80 text-accent"
-            >
-              View on GitHub →
-            </a>
-          </div>
+          {commit.url && (
+            <div className="mt-3 pt-2 border-t border-night-750">
+              <a
+                href={commit.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] font-medium transition-opacity hover:opacity-80 text-accent"
+              >
+                View on GitHub →
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -246,7 +248,8 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
 
   const totalAdditions = commits.reduce((s, c) => s + c.additions, 0);
   const totalDeletions = commits.reduce((s, c) => s + c.deletions, 0);
-  const repos = [...new Set(commits.map((c) => c.repo))];
+  const totalChanges = totalAdditions + totalDeletions;
+  const repos = [...new Set(commits.map((c) => c.repo).filter(Boolean))];
 
   return (
     <div className="px-6 py-6 max-w-3xl mx-auto animate-fade-in">
@@ -271,8 +274,12 @@ export function SessionCommits({ sessionId }: { sessionId: string }) {
             {commits.length} commit{commits.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <span className="text-[11px] font-mono text-success">+{totalAdditions}</span>
-        <span className="text-[11px] font-mono text-danger">−{totalDeletions}</span>
+        {totalChanges > 0 && (
+          <>
+            <span className="text-[11px] font-mono text-success">+{totalAdditions}</span>
+            <span className="text-[11px] font-mono text-danger">−{totalDeletions}</span>
+          </>
+        )}
         <div className="ml-auto flex items-center gap-2">
           {repos.map((repo) => (
             <span
