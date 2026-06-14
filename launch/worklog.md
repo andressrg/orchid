@@ -29,6 +29,29 @@
 
 ---
 
+## 2026-06-14 — NEXT TICK PICK UP HERE (handoff)
+
+**Shipped + live on prod this session:** #59 flagship conversation-aware review, #60 GitHub
+sign-in + real PRs, #61 resilient migrator, #62 real merged-PR count after merge (profile shows
+214 PRs / 0.8 PR-MTok LEAN), #64 heatmap colors by sessions+commits.
+
+**Next actions (highest value first):**
+
+1. **Heatmap from REAL GitHub contributions (Julian's ask).** The profile "Shipping activity"
+   only lights ~2 months because it's sourced from Orchid SESSIONS (Orchid usage started Apr).
+   Julian's GitHub shows 1,325 contributions all year. Now that GitHub is linked, fetch the
+   user's **contribution calendar** via GitHub GraphQL (`viewer.contributionsCollection.
+contributionCalendar { weeks { contributionDays { date contributionCount } } }`) with the
+   linked `account.accessToken` (add `fetchContributionCalendar` to `web/app/lib/github.ts`,
+   timeout-bounded, never throws). In `getPublicEfficiencyProfile`: when GitHub-linked, build
+   the heatmap `days` (+ activeDays + first/lastActiveDay range) from the GitHub calendar so the
+   grid matches GitHub's green graph (full year). Fall back to Orchid sessions when unlinked.
+   Update the heatmap tooltip wording ("contributions"). Then verify on prod /u/juliankmazo.
+2. **Merge PR #63** (Settings → Account → "Link GitHub" + accountLinking config; rebased onto
+   main, gate green). Build #1 off the post-#63 main to avoid queries.ts conflicts.
+3. (Noted, non-urgent) The efficiency metric (PRs ÷ Orchid tokens) rewards NOT using AI — Julian
+   flagged it half-jokingly. Revisit framing later.
+
 ## 2026-06-14 — Real merged PRs after GitHub merge (#62)
 
 - Signing in with GitHub on a same-email account merged correctly but the profile still showed
