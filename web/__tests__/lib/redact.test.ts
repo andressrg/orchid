@@ -83,6 +83,36 @@ describe('redactSecrets — per-detector replacement and raw-secret removal', ()
     expect(r2.findings.some((f) => f.type === 'openai_key')).toBe(false);
   });
 
+  it('openai_key: modern key whose body contains - and _ is FULLY redacted (no leak)', () => {
+    // Real modern OpenAI keys (`sk-proj-…`, `sk-svcacct-…`, `sk-admin-…`) embed
+    // both `-` and `_` in their bodies — the prior `[A-Za-z0-9]`-only body class
+    // missed them. We assemble a fake key from the ACTUAL OpenAI alphabet:
+    //  - `-` and `_` appear within the FIRST 20 body chars (the TOTAL-MISS case:
+    //    a body class without them never satisfies `{20,}`, so the whole key
+    //    survives), and
+    //  - a distinctive tail (the PARTIAL-LEAK case: a too-narrow class stops the
+    //    match early and leaves the tail in cleartext).
+    const tail = 'TheSecretTail_must-not-survive_XYZ';
+    const key = `sk-proj-aB3_Cd2-eF4_gH5-${tail}`;
+    const { redacted, findings } = redactSecrets(`OPENAI_API_KEY=${key}`);
+
+    // Whole key is replaced — placeholder only, nothing of the key remains.
+    expect(redacted).toBe('OPENAI_API_KEY=[REDACTED:openai_key]');
+    expect(redacted).not.toContain(key);
+    // No portion of the body — neither the early mixed segment nor the tail —
+    // survives in cleartext anywhere in the output.
+    expect(redacted).not.toContain(tail);
+    expect(redacted).not.toContain('aB3_Cd2-');
+    expect(redacted).not.toContain('sk-proj-');
+    expect(findings).toContainEqual({ type: 'openai_key', count: 1 });
+
+    // The service-account variant shares the same body alphabet.
+    const svc = 'sk-svcacct-Q1_w2-E3_r4-T5_y6-AnotherFakeTail_z';
+    const r2 = redactSecrets(svc);
+    expect(r2.redacted).toBe('[REDACTED:openai_key]');
+    expect(r2.redacted).not.toContain('AnotherFakeTail');
+  });
+
   it('stripe_key: live secret/restricted key is replaced', () => {
     const sk = secretShaped('sk_live_', 30);
     const rk = secretShaped('rk_live_', 30);

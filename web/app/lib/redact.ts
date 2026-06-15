@@ -74,9 +74,15 @@ const DETECTORS: readonly SecretDetector[] = [
   },
   {
     // OpenAI key. Negative lookahead excludes the anthropic `sk-ant-` prefix so
-    // the two never collide; supports the optional `proj-` segment.
+    // the two never collide; supports the optional `proj-` segment. The body
+    // class includes `_` and `-` because modern OpenAI keys (the dominant
+    // format today: `sk-proj-…`, `sk-svcacct-…`, `sk-admin-…`) embed both in
+    // their bodies. Without them an embedded `-`/`_` would either defeat the
+    // `{20,}` quantifier entirely (TOTAL MISS — the whole key survives) or stop
+    // the match early and leave the secret tail in cleartext (PARTIAL LEAK).
+    // The `(?!ant-)` lookahead still makes anthropic keys win their own detector.
     type: 'openai_key',
-    pattern: /sk-(?!ant-)(?:proj-)?[A-Za-z0-9]{20,}/g,
+    pattern: /sk-(?!ant-)(?:proj-)?[A-Za-z0-9_-]{20,}/g,
   },
   {
     type: 'stripe_key',
