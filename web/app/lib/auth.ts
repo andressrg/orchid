@@ -2,14 +2,17 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { organization } from 'better-auth/plugins';
 import { Resend } from 'resend';
+import { resolveAuthUrls, type AuthUrlEnv } from './auth-urls';
 import { db } from './db';
 import * as schema from './schema';
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 
-const baseURL =
-  process.env.BETTER_AUTH_URL ||
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+// Derive baseURL + the trusted preview/prod origins from Vercel's system env
+// vars. On previews this trusts the deploy's own host so login no longer fails
+// with "Invalid origin"; in production baseURL stays BETTER_AUTH_URL unchanged.
+// (process.env values are string | undefined, which AuthUrlEnv expects.)
+const { baseURL, trustedOrigins } = resolveAuthUrls(process.env as AuthUrlEnv);
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -18,6 +21,8 @@ export const auth = betterAuth({
   }),
   secret: process.env.BETTER_AUTH_SECRET,
   baseURL,
+  // Better Auth's config expects a mutable string[]; copy the readonly list.
+  trustedOrigins: [...trustedOrigins],
   basePath: '/api/auth',
   emailAndPassword: {
     enabled: true,
