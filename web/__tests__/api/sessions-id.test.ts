@@ -124,6 +124,45 @@ describe('sessions/:id', () => {
       expect(listed.output_tokens).toBe(6789);
     });
 
+    it('redacts secrets server-side before storing (TRUST guarantee, Phase T)', async () => {
+      // Assembled from fake parts so the literal source isn't a scannable key,
+      // while still matching the anthropic_key detector shape.
+      const secret = `sk-ant-api03-${'EXAMPLEFAKE0NOTAREALSECRET'.repeat(2).slice(0, 40)}`;
+      const conn = 'postgres://appuser:s3cr3tpass@db.internal:5432/orchid';
+      const transcript = [
+        `{"role":"user","content":"my key is ${secret}"}`,
+        `{"role":"assistant","content":"connection ${conn}"}`,
+      ].join('\n');
+
+      const res = await app.request('/api/sessions/with-secrets', {
+        method: 'PUT',
+        headers: { ...headers, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          user_name: 'alice',
+          user_email: 'alice@example.com',
+          working_dir: '/home/alice',
+          git_remotes: [],
+          branch: 'main',
+          tool: 'claude',
+          transcript,
+          status: 'active',
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      // The raw secret must NEVER reach the DB; GET reads back the stored row.
+      const getRes = await app.request('/api/sessions/with-secrets', { headers });
+      const getData = await getRes.json();
+      const stored = getData.transcript as string;
+
+      expect(stored).toContain('[REDACTED:anthropic_key]');
+      expect(stored).toContain('[REDACTED:connection_password]');
+      expect(stored).not.toContain(secret);
+      expect(stored).not.toContain('s3cr3tpass');
+      // Scheme + user are preserved so the URL stays diagnosable.
+      expect(stored).toContain('postgres://appuser:');
+    });
+
     it('derives token totals from the transcript when not sent (backfill path)', async () => {
       const transcript = [
         '{"type":"user","content":"hi"}',
