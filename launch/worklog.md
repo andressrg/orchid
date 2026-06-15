@@ -14,6 +14,8 @@
 - SQL columns are **table-qualified**; code is **functional** (no loops/mutation/`any`).
 - Quality gate per task: `bash check.sh` + tests + headed-browser verify for UI.
 - **Authed preview verify is blocked by "Invalid origin"** (Better Auth `trustedOrigins`); until S-0 fixes it, verify authed flows on **prod** (login works) with revert-ready discipline. `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
+- **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
+- **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
 
 ---
 
@@ -28,6 +30,32 @@
 ```
 
 ---
+
+## 2026-06-14 — P3-1 auto-summary on session end (#70) — verified live on prod
+
+- **Shipped:** Claude summaries now persist on the session row and render **instantly with no
+  click** (server-side). When a session flips to `done`, an `after()` task generates the summary
+  and stores it; the on-demand `GET /sessions/:id/summary` became **cache-read → compute →
+  persist**; `getSessionById` returns it; the page SSRs it via `initialSummary`; `AISummary`
+  seeds from that prop (no `useEffect`).
+- **Build:** dynamic workflow (implement-in-worktree → open PR → 1 reviewer + 1 tester in
+  parallel → fix). New column `orchid_session.summary` (migration `0007_lonely_black_bolt`),
+  helper `generateSessionSummary`, regression test `web/__tests__/api/summary-cache.test.ts`.
+- **Adversarial catch (real, fixed):** the first cut regenerated + **overwrote** the summary on
+  _every_ `done` PUT — and the Stop hook + every `orchid sync` resend `done` repeatedly → a fresh
+  Claude call + a re-rolled (temp 0.3) summary each time. Gated on the upsert's `RETURNING *`
+  row (`!existingSummary`) + `WHERE orchid_session.summary IS NULL`; added a load-bearing test
+  (fails if the gate is removed). Idempotent like the commit-extraction `after()` above it.
+- **Files:** `schema.ts`, `drizzle/0007_*` (+ journal/snapshot), `api-app.ts`, `queries.ts`,
+  `t/[teamSlug]/sessions/[id]/page.tsx`, `components/ai-summary.tsx`, the new test. PR #70 →
+  squash-merge `625d203`.
+- **Verify:** 147 web tests + `check.sh` green; CI green; **prod headed-browser** — generated a
+  summary on a real session, **reloaded → it rendered immediately with no click** (proves
+  persist + SSR cache-read). Prod `/api/health` ok on `625d203`.
+- **Learnings:** (1) `done` is NOT a one-shot signal — the Stop hook and `orchid sync` resend it
+  many times per session; any on-`done` work MUST be idempotent (gate the write, don't re-run the
+  model). (2) `ON CONFLICT … DO UPDATE` that doesn't touch a column preserves its prior value, so
+  `RETURNING *` is a reliable "already computed?" check. (Both promoted to Patterns.)
 
 ## 2026-06-14 — Dashboard bug-sweep + fixes (#68 #69) — all verified live
 

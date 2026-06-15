@@ -168,10 +168,13 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 
 ## Phase 3 — Fast Claude intelligence _(depends: P0)_
 
-- [ ] **P3-1 · Auto-summary on session end.** When a session flips to `done`, enqueue a
+- [x] **P3-1 · Auto-summary on session end.** When a session flips to `done`, enqueue a
       background job (**Vercel Workflows**, or **Temporal OSS** on the droplet) that generates a
       Claude summary + key moments and stores them on the row. _Accept:_ finished sessions have a
-      summary without a click; generated in `< 2s` typical.
+      summary without a click; generated in `< 2s` typical. **DONE 2026-06-14 (#70, `625d203`)** —
+      server-side `after()` on `done` (idempotent) + cache-read endpoint + SSR `initialSummary`;
+      summary stored on `orchid_session.summary` (migration 0007); verified live on prod (generate →
+      reload → instant, no click). Key-moments extraction is its own task → **P3-2**.
 - [ ] **P3-2 · Key moments / turnover extraction.** Store structured "important moments"
       (decisions, blockers, file/area touched) per session at end. _Accept:_ viewer shows them
       instantly (precomputed, not on-click).
@@ -269,6 +272,11 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
       file the worst offender as a new P4 task in this list. _Accept:_ worklog records findings.
 - [ ] **C-2 · Beauty/UX audit.** Compare against Linear; file polish tasks.
 - [ ] **C-3 · Bug sweep.** Run flows, capture errors/console, file fixes.
+  - _Open finding (2026-06-14):_ session/dashboard pages log **React #418 (hydration text
+    mismatch)** in prod console — almost certainly the time renderers (`toLocaleString()` /
+    `timeAgo()` / `formatDuration`) computing different values server vs client. Non-breaking
+    but noisy. Fix: render times client-only or with `suppressHydrationWarning` / a stable
+    server-formatted string. (Not a P3-1 regression — summary text is identical SSR/client.)
 - [ ] **C-4 · Dogfood review loop.** Use Orchid's own review on its own PRs into
       `orchestrator`; record whether context helped.
 
