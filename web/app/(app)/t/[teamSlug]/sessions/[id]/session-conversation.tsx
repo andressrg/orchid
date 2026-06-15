@@ -136,17 +136,19 @@ function MessageBubble({
 export async function SessionConversation({
   sessionId,
   teamId,
+  userId,
   userName,
   isActive,
   highlightTurn,
 }: {
   sessionId: string;
   teamId: string;
+  userId: string;
   userName: string;
   isActive: boolean;
   highlightTurn: number | null;
 }) {
-  const transcript = await getSessionTranscriptById(sessionId, teamId);
+  const transcript = await getSessionTranscriptById({ sessionId, teamId, userId });
   const turns = transcript ? parseTranscript(transcript) : [];
 
   return (

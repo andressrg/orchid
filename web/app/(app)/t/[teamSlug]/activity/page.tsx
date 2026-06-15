@@ -77,7 +77,7 @@ export default async function ActivityPage({ params }: { params: Promise<{ teamS
   const serverAuth = await getServerAuth(teamSlug);
   if (!serverAuth) return null;
 
-  const sessions = await listSessions(serverAuth.teamId);
+  const sessions = await listSessions({ teamId: serverAuth.teamId, userId: serverAuth.userId });
 
   // Group by user
   const byUser = new Map<string, typeof sessions>();

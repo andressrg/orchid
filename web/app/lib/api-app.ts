@@ -299,12 +299,24 @@ app.use('*', async (c, next) => {
   return c.json({ error: 'Unauthorized' }, 401);
 });
 
-// Scope helpers
+// Scope helpers — the ENFORCED read-scope (P1-2). A caller may read a session
+// IFF they own it OR it is shared with their team:
+//   orchid_session.user_id = <me>
+//   OR (orchid_session.team_id = <myTeam> AND orchid_session.visibility = 'team')
+// This is the single source of truth for the API layer; every /sessions* read
+// route funnels through scopeConditions / scopeConditionForId, so adding the
+// visibility predicate here protects them all at once. Mirrors
+// `visibleSessionScope` in queries.ts (the SSR layer).
 function scopeConditions(c: { get(key: string): string | null }) {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
-  if (teamId) return eq(orchidSession.teamId, teamId);
+  if (userId && teamId)
+    return or(
+      eq(orchidSession.userId, userId),
+      and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team')),
+    );
   if (userId) return eq(orchidSession.userId, userId);
+  if (teamId) return and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team'));
   return undefined;
 }
 
@@ -901,6 +913,15 @@ interface SessionCommitRow {
 app.get('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
   try {
+    // Read-scope guard (P1-2): the caller may only see commits for a session
+    // they can read (own, or team-visible). 404 — not 403 — so we never reveal
+    // another team's / member's session ids, matching GET/DELETE /sessions/:id.
+    const [session] = await db
+      .select({ id: orchidSession.id })
+      .from(orchidSession)
+      .where(scopeConditionForId(c, id));
+    if (!session) return c.json({ error: 'Session not found' }, 404);
+
     const result = await pool.query<SessionCommitRow>(
       `SELECT session_commits.commit_sha, session_commits.branch, session_commits.remote, session_commits.message, session_commits.committed_at
        FROM session_commits
@@ -1134,8 +1155,10 @@ app.post('/review-context', async (c) => {
     const prefixes = shas.map((sha) => `${sha}%`);
 
     // Resolve shas → distinct sessions (prefix match), aggregating every matched
-    // commit per session. Scope to the caller's team (preferred) or user so a PAT
-    // never surfaces sessions outside its grant. Single round trip.
+    // commit per session. Enforces the SAME read-scope as scopeConditions
+    // (P1-2): a session surfaces IFF the caller owns it OR it is team-visible to
+    // the caller's team — so review-context never reveals another member's
+    // PRIVATE session transcript. Single round trip.
     const result = await pool.query(
       `SELECT orchid_session.id,
               orchid_session.user_name,
@@ -1145,8 +1168,8 @@ app.post('/review-context', async (c) => {
        FROM session_commits
        JOIN orchid_session ON orchid_session.id = session_commits.session_id
        JOIN unnest($1::text[]) AS prefix ON session_commits.commit_sha LIKE prefix
-       WHERE ($2::text IS NOT NULL AND orchid_session.team_id = $2)
-          OR ($2::text IS NULL AND $3::text IS NOT NULL AND orchid_session.user_id = $3)
+       WHERE ($3::text IS NOT NULL AND orchid_session.user_id = $3)
+          OR ($2::text IS NOT NULL AND orchid_session.team_id = $2 AND orchid_session.visibility = 'team')
        GROUP BY orchid_session.id, orchid_session.user_name, orchid_session.branch, orchid_session.transcript
        ORDER BY orchid_session.id`,
       [prefixes, teamId, userId],

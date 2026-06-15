@@ -36,8 +36,32 @@ export async function getUserTeams(userId: string) {
     .orderBy(organization.name);
 }
 
-// List sessions for a team (returns API-compatible format)
-export async function listSessions(teamId: string) {
+// The ENFORCED read-scope (P1-2), single source of truth for the SSR layer. A
+// user may read a session IFF they own it OR it is shared with their team:
+//   orchid_session.user_id = <me>
+//   OR (orchid_session.team_id = <myTeam> AND orchid_session.visibility = 'team')
+// Mirrors `scopeConditions` in api-app.ts (the API layer). The `or(...)!` is
+// non-null because both branches are always present.
+const visibleSessionScope = ({
+  userId,
+  teamId,
+}: {
+  readonly userId: string;
+  readonly teamId: string;
+}): SQL =>
+  or(
+    eq(orchidSession.userId, userId),
+    and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team')),
+  )!;
+
+// List sessions visible to a user within a team (returns API-compatible format).
+export async function listSessions({
+  teamId,
+  userId,
+}: {
+  readonly teamId: string;
+  readonly userId: string;
+}) {
   const rows = await db
     .select({
       id: orchidSession.id,
@@ -55,7 +79,7 @@ export async function listSessions(teamId: string) {
       output_tokens: orchidSession.outputTokens,
     })
     .from(orchidSession)
-    .where(eq(orchidSession.teamId, teamId))
+    .where(visibleSessionScope({ userId, teamId }))
     .orderBy(desc(orchidSession.startedAt));
 
   return rows.map((r) => ({
@@ -90,12 +114,20 @@ export async function getTeamStats(teamId: string) {
   return stats;
 }
 
-// Get a single session (scoped to team)
+// Get a single session (scoped to the visible-session rule)
 // Session metadata only — deliberately does NOT select the (potentially huge)
 // transcript TEXT column, so the detail page's metadata paint stays off the
 // JSONL read path. The conversation body is fetched separately via
 // `getSessionTranscriptById` (streamed in after the metadata renders).
-export async function getSessionById(sessionId: string, teamId: string) {
+export async function getSessionById({
+  sessionId,
+  teamId,
+  userId,
+}: {
+  readonly sessionId: string;
+  readonly teamId: string;
+  readonly userId: string;
+}) {
   const [row] = await db
     .select({
       id: orchidSession.id,
@@ -114,7 +146,7 @@ export async function getSessionById(sessionId: string, teamId: string) {
       summary: orchidSession.summary,
     })
     .from(orchidSession)
-    .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
+    .where(and(eq(orchidSession.id, sessionId), visibleSessionScope({ userId, teamId })));
   if (!row) return null;
   return {
     id: row.id,
@@ -136,15 +168,20 @@ export async function getSessionById(sessionId: string, teamId: string) {
 
 // Dedicated transcript fetch — selects ONLY the transcript body for one scoped
 // session. Kept separate from `getSessionById` so metadata reads never pull the
-// JSONL. Returns null when the session doesn't exist / isn't in the team.
-export async function getSessionTranscriptById(
-  sessionId: string,
-  teamId: string,
-): Promise<string | null> {
+// JSONL. Returns null when the session doesn't exist / isn't visible to the user.
+export async function getSessionTranscriptById({
+  sessionId,
+  teamId,
+  userId,
+}: {
+  readonly sessionId: string;
+  readonly teamId: string;
+  readonly userId: string;
+}): Promise<string | null> {
   const [row] = await db
     .select({ transcript: orchidSession.transcript })
     .from(orchidSession)
-    .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
+    .where(and(eq(orchidSession.id, sessionId), visibleSessionScope({ userId, teamId })));
   if (!row) return null;
   return row.transcript || '';
 }
@@ -157,7 +194,15 @@ export async function getSessionTranscriptById(
 // (quotes, `or`, `-`, stray operators) without throwing, so malformed queries
 // degrade to "no matches" rather than a 500. The result shape is unchanged from
 // the previous `ilike` implementation.
-export async function searchSessions(teamId: string, query: string) {
+export async function searchSessions({
+  teamId,
+  userId,
+  query,
+}: {
+  readonly teamId: string;
+  readonly userId: string;
+  readonly query: string;
+}) {
   const rank: SQL<number> = transcriptRank(query);
   return db
     .select({
@@ -172,7 +217,7 @@ export async function searchSessions(teamId: string, query: string) {
       message_count: orchidSession.messageCount,
     })
     .from(orchidSession)
-    .where(and(eq(orchidSession.teamId, teamId), transcriptMatches(query)))
+    .where(and(visibleSessionScope({ userId, teamId }), transcriptMatches(query)))
     .orderBy(desc(rank), desc(orchidSession.startedAt));
 }
 
