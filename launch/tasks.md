@@ -22,7 +22,7 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 > early/high-priority; don't run real external/customer sessions through the loop until it's
 > in — our own repo's sessions are accepted short-term while T-2 lands fast.
 
-- [ ] **S-0 · Make the verify gate real.** Previews must boot a **migrated** DB or "green" is
+- [x] **S-0 · Make the verify gate real.** Previews must boot a **migrated** DB or "green" is
       fake: add automatic migration on Vercel build (a `db:migrate` build/postinstall step, or
       boot-time migrate-with-lock) and confirm `ANTHROPIC_API_KEY` is in Vercel **preview** env
       (`vercel env add`). Until then, also verify locally against the migrated docker DB.
@@ -31,6 +31,11 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
       `baseURL`; preview hosts aren't in `trustedOrigins`. Add Vercel preview hosts to
       `trustedOrigins` (scope to our project, e.g. `https://orchid-web-*-frecuenti.vercel.app` + the per-deploy `VERCEL_URL`) so dashboard/sessions/chat can be verified on previews, not
       just prod. This is the real blocker to "verify on the preview URL."
+      **DONE 2026-06-14 (#71, `f230773`)** — migrate-on-build was already in `build`; `trustedOrigins`
+      now derived from Vercel system envs (`resolveAuthUrls`, scoped exact hosts, no wildcard).
+      **Verified: preview login works** (redirects to dashboard, no Invalid origin) **and prod login
+      unbroken**. Remaining sub-item: confirm `ANTHROPIC_API_KEY` in Vercel **preview** env — check on
+      the next PR's preview (login now works there, so AI features are directly testable).
 - [ ] **S-1 · Authenticate the GitHub webhook.** Verify `X-Hub-Signature-256` HMAC on
       `/webhook/github` (unauthenticated today — api-app.ts:63 skips it) and `escapeLike` the
       repo name (api-app.ts:783).

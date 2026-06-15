@@ -13,7 +13,7 @@
 - Sessions are **private by default** after P1-1 — don't reintroduce team-wide reads.
 - SQL columns are **table-qualified**; code is **functional** (no loops/mutation/`any`).
 - Quality gate per task: `bash check.sh` + tests + headed-browser verify for UI.
-- **Authed preview verify is blocked by "Invalid origin"** (Better Auth `trustedOrigins`); until S-0 fixes it, verify authed flows on **prod** (login works) with revert-ready discipline. `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
+- **Authed preview verify now WORKS** (S-0, #71, `f230773`) — Better Auth trusts the per-deploy Vercel hosts (`VERCEL_URL`/`VERCEL_BRANCH_URL`), so **log into the PR's preview URL** with `ORCHID_TEST_EMAIL`/`PASSWORD` and verify there. The acceptance test for an auth-touching change is "login succeeds on the preview AND prod login still works." (Was "Invalid origin" on every preview pre-S-0.) `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 - **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
 - **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
 
@@ -30,6 +30,36 @@
 ```
 
 ---
+
+## 2026-06-14 — S-0 trusted preview origins (#71) — previews are now authed-verifiable
+
+- **Shipped:** Better Auth now trusts the Vercel preview hosts, so authed flows (dashboard,
+  sessions, chat, review) can be **verified on the PR's own preview URL** — not just prod. This
+  retires the long-standing "verify on prod" risk in the loop's gate.
+- **How:** new pure module `web/app/lib/auth-urls.ts` → `resolveAuthUrls(env)` derives `baseURL`
+  - `trustedOrigins` from Vercel system envs (`VERCEL_ENV`/`VERCEL_URL`/`VERCEL_BRANCH_URL`/
+    `VERCEL_PROJECT_PRODUCTION_URL`/`BETTER_AUTH_URL`). Preview `baseURL` = the branch alias (its
+    own host); `trustedOrigins` = the de-duped exact origins for this deploy. **No `*.vercel.app`
+    wildcard** (that would trust arbitrary third-party Vercel apps → CSRF) — only Vercel-controlled
+    exact hosts. Wired into `auth.ts` (call site spreads `[...trustedOrigins]` since Better Auth's
+    field wants a mutable array).
+- **Prod safety:** for `VERCEL_ENV==='production'`, `baseURL === BETTER_AUTH_URL` exactly as
+  before — locked in by a dedicated unit test. The other half of S-0 (migrate DB on build) was
+  already done (`"build": "pnpm db:migrate && next build"`).
+- **Review:** clean single pass — security reviewer + tester both **ship**, zero must-fix.
+  6-case unit suite (`auth-urls.test.ts`): production (baseURL unchanged), preview (branch wins),
+  preview-without-branch (deploy fallback), local, no-wildcard assertion, de-dup. 153 web tests +
+  `check.sh` green; CI green.
+- **Verified live:** (1) **logged into the PR preview** `…task-trusted-preview-origins…vercel.app`
+  → redirected to the dashboard, **no "Invalid origin"** (the exact flow that failed pre-S-0);
+  (2) after squash-merge `f230773`, **fresh prod login still works** → dashboard; prod
+  `/api/health` ok. Files: `auth-urls.ts`, `auth.ts`, `auth-urls.test.ts`. PR #71.
+- **Open sub-item:** confirm `ANTHROPIC_API_KEY` is in the Vercel **preview** env so AI features
+  (summary/chat/review) also exercise on previews — now easy to check on the next PR's preview
+  (login works), so deferred there rather than guessed.
+- **Learning:** derive auth URLs from Vercel system envs (don't hardcode/wildcard); the
+  acceptance test for any auth change is now **preview-login + prod-login**, both headed. (Pattern
+  updated above.)
 
 ## 2026-06-14 — P3-1 auto-summary on session end (#70) — verified live on prod
 
