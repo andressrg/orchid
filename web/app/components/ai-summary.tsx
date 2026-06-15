@@ -4,8 +4,17 @@ import { useState } from 'react';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
-export function AISummary({ sessionId }: { sessionId: string }) {
-  const [summary, setSummary] = useState<string | null>(null);
+export function AISummary({
+  sessionId,
+  initialSummary,
+}: {
+  sessionId: string;
+  initialSummary?: string | null;
+}) {
+  // Seed from the server-rendered summary (generated on session end) so a
+  // finished session shows its summary instantly — no click, no fetch. Falls
+  // back to click-to-generate when there's no stored summary.
+  const [summary, setSummary] = useState<string | null>(initialSummary ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
 

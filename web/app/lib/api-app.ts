@@ -172,6 +172,30 @@ const scheduleAfterResponse = (task: () => Promise<void>): void => {
   }
 };
 
+// The system prompt for the session summary. Trusted instruction → Claude's
+// top-level `system` field; the (untrusted) transcript rides only in `messages`.
+const SESSION_SUMMARY_SYSTEM_PROMPT =
+  'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.';
+
+// Generate a Claude summary of one session transcript. Parses turns, builds the
+// same length-capped conversation text as the /summary endpoint, and returns
+// null when there's no conversation content (so callers can skip persisting an
+// empty summary). May throw AiServiceError on a provider failure.
+const generateSessionSummary = async (transcript: string): Promise<string | null> => {
+  const turns = parseTranscriptTurns(transcript);
+  const conversationText = turns.map((t) => `[${t.role}]: ${t.text.slice(0, 500)}`).join('\n\n');
+  if (conversationText.trim() === '') return null;
+
+  const summary = await generateAiText({
+    systemPrompt: SESSION_SUMMARY_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: conversationText }],
+    maxTokens: 200,
+    temperature: 0.3,
+  });
+
+  return summary || null;
+};
+
 type AuthContext = {
   userId: string | null;
   teamId: string | null;
@@ -461,6 +485,26 @@ app.put('/sessions/:id', async (c) => {
       });
     }
 
+    // After responding, auto-generate + persist a Claude summary when the
+    // session has just finished, so the viewer renders it instantly (no click).
+    // Additive to (and independent of) the commit-extraction task above.
+    if (transcript && status === 'done' && AI_AVAILABLE) {
+      scheduleAfterResponse(async () => {
+        try {
+          const summary = await generateSessionSummary(transcript as string);
+          if (summary) {
+            await pool.query(
+              `UPDATE orchid_session SET summary = $1, updated_at = NOW() WHERE orchid_session.id = $2`,
+              [summary, id],
+            );
+            console.log(`Generated summary for session ${id}`);
+          }
+        } catch (err) {
+          console.error('after() summary generation error:', err);
+        }
+      });
+    }
+
     return c.json(result.rows[0]);
   } catch (err) {
     console.error('PUT /api/sessions/:id error:', err);
@@ -604,29 +648,30 @@ app.get('/sessions/:id/summary', async (c) => {
   try {
     const [session] = await db.select().from(orchidSession).where(scopeConditionForId(c, id));
     if (!session) return c.json({ error: 'Session not found' }, 404);
+
+    // Cache hit: the summary was already generated (auto-on-end or a prior
+    // request) and persisted — return it without calling Claude.
+    if (session.summary && session.summary.trim() !== '') {
+      return c.json({ summary: session.summary });
+    }
+
     if (!session.transcript) return c.json({ summary: 'No conversation content available.' });
 
-    // Claude Code transcripts are JSONL where conversation turns are nested
-    // under `obj.message` ({ role, content }), and `content` may be a string or
-    // an array of content blocks. The shared parser reads role/text from the
-    // right fields (same as /chat and /review-context).
-    const turns = parseTranscriptTurns(session.transcript);
+    // Cache miss: generate from the transcript via the shared helper (parses the
+    // Claude Code JSONL the same way as /chat and /review-context), then PERSIST
+    // so future reads (and the server-rendered viewer) are instant.
+    const summary = await generateSessionSummary(session.transcript);
 
-    const conversationText = turns.map((t) => `[${t.role}]: ${t.text.slice(0, 500)}`).join('\n\n');
-
-    if (conversationText.trim() === '') {
+    if (summary === null) {
       return c.json({ summary: 'No conversation content available.' });
     }
 
-    const summary = await generateAiText({
-      systemPrompt:
-        'Summarize this AI coding conversation in 2-3 sentences. Focus on: what was built/changed, key decisions made, and the outcome. Be specific and concise.',
-      messages: [{ role: 'user', content: conversationText }],
-      maxTokens: 200,
-      temperature: 0.3,
-    });
+    await pool.query(`UPDATE orchid_session SET summary = $1 WHERE orchid_session.id = $2`, [
+      summary,
+      id,
+    ]);
 
-    return c.json({ summary: summary || 'Unable to generate summary.' });
+    return c.json({ summary });
   } catch (err) {
     if (err instanceof AiServiceError) return c.json({ error: 'AI service error' }, 502);
     console.error('GET /api/sessions/:id/summary error:', err);

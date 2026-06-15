@@ -1,0 +1,1 @@
+ALTER TABLE "orchid_session" ADD COLUMN "summary" text;
