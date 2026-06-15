@@ -1,6 +1,14 @@
-import { eq, and, or, desc, sql, type SQL } from 'drizzle-orm';
+import { eq, and, or, desc, sql, exists, isNull, gt, type SQL } from 'drizzle-orm';
 import { db } from './db';
-import { orchidSession, organization, member, user, sessionCommit, account } from './schema';
+import {
+  orchidSession,
+  organization,
+  member,
+  user,
+  sessionCommit,
+  account,
+  sessionShare,
+} from './schema';
 import { transcriptMatches, transcriptRank } from './fts';
 import { fetchMergedPrCount, fetchGithubLogin, fetchContributionCalendar } from './github';
 
@@ -36,12 +44,32 @@ export async function getUserTeams(userId: string) {
     .orderBy(organization.name);
 }
 
-// The ENFORCED read-scope (P1-2), single source of truth for the SSR layer. A
-// user may read a session IFF they own it OR it is shared with their team:
+// The "shared with me" read-scope disjunct (P1-3). A session is readable when a
+// non-expired `session_share` grant exists for the user, correlated to the
+// outer `orchid_session` row. Null `expires_at` = never expires. Mirrors
+// `sharedWithUser` in api-app.ts (the API layer).
+const sharedWithUser = (userId: string): SQL =>
+  exists(
+    db
+      .select({ one: sql`1` })
+      .from(sessionShare)
+      .where(
+        and(
+          eq(sessionShare.sessionId, orchidSession.id),
+          eq(sessionShare.granteeUserId, userId),
+          or(isNull(sessionShare.expiresAt), gt(sessionShare.expiresAt, sql`now()`)),
+        ),
+      ),
+  );
+
+// The ENFORCED read-scope (P1-2 + P1-3), single source of truth for the SSR
+// layer. A user may read a session IFF they own it, it is shared with their
+// team, OR it is shared with them via a non-expired session_share grant:
 //   orchid_session.user_id = <me>
 //   OR (orchid_session.team_id = <myTeam> AND orchid_session.visibility = 'team')
+//   OR EXISTS a non-expired session_share for (orchid_session.id, <me>)
 // Mirrors `scopeConditions` in api-app.ts (the API layer). The `or(...)!` is
-// non-null because both branches are always present.
+// non-null because the branches are always present.
 const visibleSessionScope = ({
   userId,
   teamId,
@@ -52,6 +80,7 @@ const visibleSessionScope = ({
   or(
     eq(orchidSession.userId, userId),
     and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team')),
+    sharedWithUser(userId),
   )!;
 
 // List sessions visible to a user within a team (returns API-compatible format).
