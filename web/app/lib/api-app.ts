@@ -586,13 +586,25 @@ app.put('/sessions/:id', async (c) => {
   }
 });
 
-// Delete session (scoped)
+// Delete session (OWNER-ONLY).
+//
+// Destructive: deleting a session cascades away its share grants and linked
+// commits. This MUST gate on ownership, NOT the read-scope predicate. The read
+// scope (scopeConditionForId) now includes the P1-3 "shared with me" branch, so
+// gating delete on it would let a READ-only grantee destroy the owner's session.
+// requireSessionOwner loads through the read scope first (404 when not visible —
+// never reveals existence), then asserts ownership (403 when visible but not the
+// owner), so a share/team viewer can read but never delete. We delete by
+// (id AND user_id = owner) so the destructive predicate itself is owner-scoped.
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
+
     const deleted = await db
       .delete(orchidSession)
-      .where(scopeConditionForId(c, id)!)
+      .where(and(eq(orchidSession.id, id), eq(orchidSession.userId, owner.ownerId)))
       .returning({ id: orchidSession.id });
     if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json({ deleted: deleted[0].id });
@@ -1069,10 +1081,12 @@ const dedupCommitsBySha = (commits: readonly NormalizedCommit[]): readonly Norma
   );
 
 // POST commits resolved from local git for a session. PAT/session authed and
-// scoped exactly like the other /sessions/:id routes: the caller must own (or be
-// on the team of) the session, else 404. Idempotent batch upsert — a single
-// multi-VALUES INSERT via unnest with ON CONFLICT (session_id, commit_sha) DO
-// NOTHING — so a re-post links 0 the second time. Returns { linked }.
+// OWNER-ONLY (this is a write to the owner's session metadata): the caller must
+// own the session. A session they can't see → 404 (never reveals existence); a
+// session they can see but don't own (team-visible / shared) → 403. Idempotent
+// batch upsert — a single multi-VALUES INSERT via unnest with ON CONFLICT
+// (session_id, commit_sha) DO NOTHING — so a re-post links 0 the second time.
+// Returns { linked }.
 app.post('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
 
@@ -1093,14 +1107,16 @@ app.post('/sessions/:id/commits', async (c) => {
   );
 
   try {
-    // Scope check first: the caller may only write commits to a session it
-    // owns / its team owns. 404 (not 403) so we never reveal another team's
-    // session ids — same shape as GET/DELETE /sessions/:id.
-    const [session] = await db
-      .select({ id: orchidSession.id })
-      .from(orchidSession)
-      .where(scopeConditionForId(c, id));
-    if (!session) return c.json({ error: 'Session not found' }, 404);
+    // OWNER-ONLY write. Linking commits mutates the owner's session metadata
+    // (session_commits powers /commits/sessions + /review-context reverse-
+    // lookups), so this MUST gate on ownership, NOT the read-scope predicate.
+    // The read scope now includes the P1-3 "shared with me" branch, so gating
+    // writes on it would let a READ-only grantee pollute the owner's commit
+    // history. requireSessionOwner loads through the read scope first (404 when
+    // not visible — never reveals existence), then asserts ownership (403 when
+    // visible but not the owner), so a share/team viewer can read but never write.
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
 
     if (commits.length === 0) return c.json({ linked: 0 });
 

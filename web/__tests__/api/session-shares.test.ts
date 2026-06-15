@@ -2,9 +2,18 @@ import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { and, eq } from 'drizzle-orm';
 import { testDb, cleanTestDb } from '../setup';
 import { generateToken } from '@/app/lib/crypto';
-import { user, organization, apiKey, orchidSession, sessionShare } from '@/app/lib/schema';
+import {
+  user,
+  organization,
+  apiKey,
+  orchidSession,
+  sessionShare,
+  sessionCommit,
+} from '@/app/lib/schema';
 import { getSessionById, listSessions } from '@/app/lib/queries';
 import app from '@/app/lib/api-app';
+
+const FULL_SHA = 'c0ffee11c0ffee11c0ffee11c0ffee11c0ffee11';
 
 // P1-3 — session share grants. An owner (A) grants another user scoped READ
 // access to one of their PRIVATE sessions (S), and can revoke it. This extends
@@ -311,6 +320,83 @@ describe('P1-3 session share grants', () => {
     it('B GET /sessions/:S/shares → 404 (not visible / not owner)', async () => {
       const res = await app.request(`/api/sessions/${SESSION_S}/shares`, { headers: headersB });
       expect(res.status).toBe(404);
+    });
+  });
+
+  // A READ grant must never confer write/destroy. These guard the privilege-
+  // escalation holes where DELETE /sessions/:id and POST /sessions/:id/commits
+  // were gated on the read-scope predicate (which now includes the shared-with-me
+  // branch) instead of ownership. B is granted read access to S, can READ it, but
+  // must be blocked (403) from deleting it or writing commits to it — and S (plus
+  // its grant) must survive intact.
+  describe('a read grant does NOT confer write/delete (no privilege escalation)', () => {
+    const grantReadToB = async (): Promise<void> => {
+      const res = await app.request(`/api/sessions/${SESSION_S}/share`, {
+        method: 'POST',
+        headers: { ...headersA, 'content-type': 'application/json' },
+        body: JSON.stringify({ granteeUserId: USER_B, capability: 'read' }),
+      });
+      expect(res.status).toBe(200);
+      // Sanity: the grant really does give B READ access.
+      const canRead = await app.request(`/api/sessions/${SESSION_S}`, { headers: headersB });
+      expect(canRead.status).toBe(200);
+    };
+
+    it('B DELETE /sessions/:S → 403 and the session + grant survive', async () => {
+      await grantReadToB();
+
+      const delRes = await app.request(`/api/sessions/${SESSION_S}`, {
+        method: 'DELETE',
+        headers: headersB,
+      });
+      expect(delRes.status).toBe(403);
+
+      // The session row was NOT destroyed.
+      const [stillThere] = await testDb
+        .select({ id: orchidSession.id })
+        .from(orchidSession)
+        .where(eq(orchidSession.id, SESSION_S));
+      expect(stillThere?.id).toBe(SESSION_S);
+
+      // The grant did NOT cascade away — B can still read.
+      const stillReads = await app.request(`/api/sessions/${SESSION_S}`, { headers: headersB });
+      expect(stillReads.status).toBe(200);
+    });
+
+    it('B POST /sessions/:S/commits → 403 and nothing is linked', async () => {
+      await grantReadToB();
+
+      const res = await app.request(`/api/sessions/${SESSION_S}/commits`, {
+        method: 'POST',
+        headers: { ...headersB, 'content-type': 'application/json' },
+        body: JSON.stringify({ commits: [{ sha: FULL_SHA }] }),
+      });
+      expect(res.status).toBe(403);
+
+      // No commit-link row was written to the owner's session.
+      const rows = await testDb
+        .select({ sha: sessionCommit.commitSha })
+        .from(sessionCommit)
+        .where(eq(sessionCommit.sessionId, SESSION_S));
+      expect(rows).toHaveLength(0);
+    });
+
+    it('the owner (A) can still DELETE and POST commits to S', async () => {
+      // Owner write still works (the fix must not break the legitimate path).
+      const commitRes = await app.request(`/api/sessions/${SESSION_S}/commits`, {
+        method: 'POST',
+        headers: { ...headersA, 'content-type': 'application/json' },
+        body: JSON.stringify({ commits: [{ sha: FULL_SHA }] }),
+      });
+      expect(commitRes.status).toBe(200);
+      expect((await commitRes.json()).linked).toBe(1);
+
+      const delRes = await app.request(`/api/sessions/${SESSION_S}`, {
+        method: 'DELETE',
+        headers: headersA,
+      });
+      expect(delRes.status).toBe(200);
+      expect((await delRes.json()).deleted).toBe(SESSION_S);
     });
   });
 });
