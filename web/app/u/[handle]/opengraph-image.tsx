@@ -4,6 +4,7 @@ import {
   getPublicEfficiencyProfile,
   type PublicEfficiencyProfile,
   type ProfileDayActivity,
+  type PublicProfileIdentity,
 } from '@/app/lib/queries';
 
 // Auto-generated social card for the public efficiency profile (P7-5). Next
@@ -197,12 +198,93 @@ const fallbackCard = () =>
     { ...size },
   );
 
+// Empty-profile card — mirrors the live page's <EmptyProfile />, which renders
+// when profile.activeDays === 0 (a just-registered user with no captured
+// activity). It shows the person's avatar + name and the same "no shipping
+// activity yet" message instead of the populated data card, so a pasted
+// /u/<handle> link never shows a misleading "0 / tokens spent / 0 sessions"
+// headline that contradicts the page. Still 1200×630, 200.
+const emptyCard = (identity: PublicProfileIdentity) =>
+  new ImageResponse(
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        width: '100%',
+        height: '100%',
+        padding: 72,
+        background: BG_PRIMARY,
+        backgroundImage: `radial-gradient(circle at 82% -10%, rgba(124, 91, 245, 0.28), transparent 55%), radial-gradient(circle at 0% 110%, rgba(218, 112, 214, 0.12), transparent 45%)`,
+      }}
+    >
+      {/* Top row: identity + wordmark — same header as the data card */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 72,
+              height: 72,
+              borderRadius: 18,
+              fontSize: 34,
+              fontWeight: 700,
+              color: ACCENT,
+              background: 'rgba(124, 91, 245, 0.15)',
+              border: `1px solid ${BORDER_SUBTLE}`,
+            }}
+          >
+            {identity.avatarInitial}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <div style={{ display: 'flex', fontSize: 34, fontWeight: 700, color: TEXT_PRIMARY }}>
+              {identity.displayName}
+            </div>
+            <div style={{ display: 'flex', fontSize: 22, color: TEXT_TERTIARY }}>
+              @{identity.handle}
+            </div>
+          </div>
+        </div>
+        <OrchidWordmark />
+      </div>
+
+      {/* Empty headline — mirrors EmptyProfile's title + sub copy */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div
+          style={{
+            display: 'flex',
+            fontSize: 56,
+            fontWeight: 750,
+            letterSpacing: '-0.03em',
+            color: TEXT_PRIMARY,
+          }}
+        >
+          No shipping activity yet
+        </div>
+        <div style={{ display: 'flex', fontSize: 28, color: TEXT_SECONDARY }}>
+          Run `orchid claude` to start the graph.
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', fontSize: 22, color: TEXT_TERTIARY }}>orchidkeep.com</div>
+    </div>,
+    { ...size },
+  );
+
 export default async function ProfileOgImage({ params }: { params: Promise<{ handle: string }> }) {
   const { handle } = await params;
   const identity = await resolveProfileUser(handle);
   if (!identity) return fallbackCard();
 
   const profile = await getPublicEfficiencyProfile(identity);
+  // Mirror the live page's empty-profile short-circuit: page.tsx renders
+  // <EmptyProfile /> (no headline, no stats) when activeDays === 0, so the card
+  // must too — otherwise a just-registered profile shows a misleading
+  // "0 / tokens spent / 0 sessions" data card that contradicts the page.
+  if (profile.activeDays === 0) return emptyCard(identity);
+
   const headline = headlineFor(profile);
   const weeks = contributionStrip(profile.days);
 
