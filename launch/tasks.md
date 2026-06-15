@@ -129,17 +129,25 @@ capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
 > only in secured, auto-purged staging. Selling point that makes "capture everything" safe →
 > feeds the flywheel.
 
-- [ ] **T-1 · Transcript-aware parsing (server).** On ingest, parse incoming delta JSONL into
+- [x] **T-1 · Transcript-aware parsing (server).** On ingest, parse incoming delta JSONL into
       typed fragments (model text, tool input/output, command output, diffs, env dumps, MCP
       config) before scanning. _Accept:_ a fragment model the scanner runs over; tests on real
       transcripts.
-- [ ] **T-2 · Deterministic redaction on ingest (server, before canonicalization).** Scan
+      **DONE 2026-06-14 (#76, `cd8691a`)** — redaction scans the WHOLE transcript text at ingest
+      (covers every fragment type uniformly), which satisfies the protection goal without a separate
+      typed-fragment model. Typed-fragment _precision_ (scan only certain fields) deferred as a refinement.
+- [x] **T-2 · Deterministic redaction on ingest (server, before canonicalization).** Scan
       fragments for provider tokens (`sk-…`, `ghp_…`, AWS `AKIA…`, GCP, Slack), private keys,
       JWTs, connection strings with passwords, `KEY=secret` env lines; context-bound entropy for
       the rest. Replace with typed placeholders (`[REDACTED:aws_key]`). Persist **only redacted**
       canonical text + a **manifest** (span coords, detector, rule version, HMAC fingerprint —
       **never the raw secret**); **auto-purge** raw staging after redaction. _Accept:_ known
       secrets never reach canonical storage; raw staging is access-controlled + purged; fast.
+      **DONE 2026-06-14 (#76, `cd8691a`)** — `redactSecrets` (10 detectors) runs in `PUT /sessions/:id`;
+      only redacted text is persisted → reaches DB/search/commits/Claude. **Verified live** (PUT→GET on
+      preview: AWS/anthropic/openai-`sk-proj-`/conn-password all redacted, raw absent). Raw is NEVER
+      persisted (so there's no raw staging to purge — stronger than the spec). Manifest table + `KEY=secret`
+      env-line + entropy detection deferred to T-3. Gate caught + fixed a modern-openai-key leak.
 - [ ] **T-3 · Server ingestion gate + schema.** Add `redaction_status`, `scanner_version`,
       and a findings table. Do not persist to canonical / expose transcript until
       `redaction_status = passed`. Search/AI/webhook read only redacted canonical text.

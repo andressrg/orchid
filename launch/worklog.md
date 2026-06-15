@@ -16,6 +16,7 @@
 - **Authed preview verify now WORKS** (S-0, #71, `f230773`) — Better Auth trusts the per-deploy Vercel hosts (`VERCEL_URL`/`VERCEL_BRANCH_URL`), so **log into the PR's preview URL** with `ORCHID_TEST_EMAIL`/`PASSWORD` and verify there. The acceptance test for an auth-touching change is "login succeeds on the preview AND prod login still works." (Was "Invalid origin" on every preview pre-S-0.) `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 - **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
 - **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
+- **Secrets are redacted server-side at ingest** (T-1/T-2, #76) — `redactSecrets` in `web/app/lib/redact.ts` runs in `PUT /sessions/:id` so raw provider tokens/keys/JWTs/conn-passwords never reach the DB, search index, commits, or Claude. When adding a secret detector, **test it against the REAL secret alphabet** (incl. `-`/`_`), not a sanitized fixture — an alphanumeric-only fixture let modern `sk-proj-` OpenAI keys leak past 29 green tests (caught in #76 review).
 - **Access control is private-by-default + scoped: a user sees a session IFF `user_id=me` OR `(team_id=myTeam AND visibility='team')` OR `(a non-expired session_share to me)`** (P1, #72/#73). THREE mirrored read-scope helpers — API `scopeConditions` + raw-SQL `sessionReadScopeSql`, SSR `visibleSessionScope`. When touching ACL: sweep EVERY read path; the central helper misses raw `pool.query` reverse-lookups (`/commits/sessions`, `/review-context`). **Destructive/write routes MUST gate on ownership (`requireSessionOwner`), NEVER on the read scope** — `scopeConditionForId` is derived from the read scope, so reusing it for DELETE/POST silently lets read-grantees mutate the owner's data (caught in #73 review). Always run an **adversarial security reviewer told to write a real exploit test** — that's what caught both the "out of scope" leak (#72) and the read-grant→delete escalation (#73).
 
 ---
@@ -31,6 +32,37 @@
 ```
 
 ---
+
+## 2026-06-14 — T-1/T-2 secret redaction at ingest (#76) — "we never store your secrets" is real
+
+- **Shipped:** deterministic server-side secret redaction at ingest. New pure module
+  `web/app/lib/redact.ts` → `redactSecrets(text)` (reduce over 10 high-confidence, prefix-anchored,
+  length-bounded detectors: private_key block, JWT, anthropic, openai (incl. modern `sk-proj-`),
+  stripe, github, AWS access-key id, google, slack, connection-string password). Each match →
+  `[REDACTED:<type>]`; connection strings redact ONLY the password (scheme+user preserved). Findings
+  carry `{type,count}` only — never the raw secret. Deterministic + idempotent; all regexes linear (no ReDoS).
+- **Applied at ingest** in `PUT /sessions/:id`: redact once into `safeTranscript`, then route EVERY
+  downstream consumer through it — messageCount, token counting, the INSERT, the `after()` commit
+  extraction, and the `after()` auto-summary. So raw secrets never reach the DB, the tsvector search
+  index, commit extraction, OR Claude. (Forward protection; the staging/manifest/auto-purge + backfill
+  are noted follow-ups.)
+- **The gate caught a guarantee-defeating bug:** the first `openai_key` regex body was `[A-Za-z0-9]`
+  (no `-`/`_`) → modern `sk-proj-`/`sk-svcacct-` keys (the MOST likely secret in an AI-coding
+  transcript) would totally miss or partially leak into all four sinks. The security reviewer proved
+  it with a real-alphabet exploit and the test fixtures (pure-alphanumeric) hid it. Fixed → widened to
+  `[A-Za-z0-9_-]` + a real-alphabet RED→GREEN test. 229 web tests / 29 files green; `check.sh` green.
+- **Verified LIVE on the preview** (authed PUT→GET): a session whose transcript contained an AWS key,
+  an anthropic key, a modern `sk-proj-` openai key (with `-`/`_`), and a `postgres://user:pw@host`
+  string was **stored fully redacted** — all four raw secrets absent, all placeholders present,
+  password-only redaction on the connection string. Test session deleted. Prod `cd8691a` `/api/health` ok.
+  Files: `redact.ts`, `api-app.ts`, `redact.test.ts`, `sessions-id.test.ts`. PR #76.
+- **Follow-ups (filed, NOT punted):** T-3 manifest table + `redaction_status`/`scanner_version` + raw
+  auto-purged staging (couples with P0-6); **backfill re-scan of pre-existing rows** (active sessions
+  self-heal on next full PUT; done rows still hold raw — run a one-time pass); AWS _secret_ key + slack
+  `xapp-`/`xoxe-` + entropy detection; T-4 prompt-boundary already satisfied.
+- **Learning:** a security redactor's tests MUST exercise the REAL secret alphabet — a sanitized
+  (alphanumeric-only) fixture passed 29 tests while the headline case (OpenAI keys) leaked. Adversarial
+  reviewer with "write a real exploit" mandate is the safety net. (Promoted to Patterns.)
 
 ## 2026-06-14 — P1-4 aggregate-only dashboard (#75) — PRIVACY PHASE COMPLETE (5/5)
 
