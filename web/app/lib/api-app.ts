@@ -12,6 +12,7 @@ import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
 import { tokenUsageFromTranscript } from './token-usage';
+import { redactSecrets } from './redact';
 import { askClaude, type ClaudeMessage } from './ai';
 import { transcriptMatches, transcriptRank } from './fts';
 
@@ -473,22 +474,37 @@ app.put('/sessions/:id', async (c) => {
   const userId = c.get('userId');
   const teamId = c.get('teamId');
 
-  let messageCount = 0;
-  if (transcript) {
-    messageCount = (transcript as string).split('\n').filter((l: string) => l.trim()).length;
+  // TRUST guarantee (Phase T): redact known secret formats on the server BEFORE
+  // the transcript touches anything downstream. `safeTranscript` — never the raw
+  // `transcript` — is what flows into the DB, the tsvector search index, commit
+  // extraction, and Claude. Non-string bodies pass through untouched.
+  const redaction = typeof transcript === 'string' ? redactSecrets(transcript) : null;
+  const safeTranscript = redaction ? redaction.redacted : transcript;
+
+  // Ops visibility: log the finding TYPES + counts only, never any raw value.
+  if (redaction && redaction.findings.length > 0) {
+    console.log(
+      `Redacted secrets from session ${id}:`,
+      redaction.findings.map((f) => `${f.type}=${f.count}`).join(' '),
+    );
   }
+
+  const messageCount = safeTranscript
+    ? (safeTranscript as string).split('\n').filter((l: string) => l.trim()).length
+    : 0;
 
   // Persist token totals. Prefer the values the CLI computed from the full
   // transcript; fall back to recomputing here so older CLIs (and a per-request
   // backfill) still store accurate totals. Cache tokens fold into inputTokens.
+  // Redaction does not touch the `usage` JSON, so derived totals are unaffected.
   const tokenUsage =
     typeof input_tokens === 'number' || typeof output_tokens === 'number'
       ? {
           inputTokens: typeof input_tokens === 'number' ? input_tokens : 0,
           outputTokens: typeof output_tokens === 'number' ? output_tokens : 0,
         }
-      : transcript
-        ? tokenUsageFromTranscript(transcript as string)
+      : safeTranscript
+        ? tokenUsageFromTranscript(safeTranscript as string)
         : { inputTokens: 0, outputTokens: 0 };
 
   try {
@@ -516,7 +532,7 @@ app.put('/sessions/:id', async (c) => {
         JSON.stringify(git_remotes),
         branch,
         tool,
-        transcript,
+        safeTranscript,
         status || 'active',
         messageCount,
         userId,
@@ -527,10 +543,10 @@ app.put('/sessions/:id', async (c) => {
     );
 
     // After responding, extract commit SHAs from the transcript and store them
-    if (transcript && (status === 'done' || !status)) {
+    if (safeTranscript && (status === 'done' || !status)) {
       scheduleAfterResponse(async () => {
         try {
-          const commits = extractCommitsFromTranscript(transcript as string);
+          const commits = extractCommitsFromTranscript(safeTranscript as string);
           if (commits.length > 0) {
             await pool.query(
               `INSERT INTO session_commits (id, session_id, commit_sha, branch, message, committed_at)
@@ -562,10 +578,10 @@ app.put('/sessions/:id', async (c) => {
     // call or overwrite an already-stored summary. The conditional UPDATE
     // (summary IS NULL) is a second guard against a concurrent writer.
     const existingSummary = result.rows[0]?.summary;
-    if (transcript && status === 'done' && AI_AVAILABLE && !existingSummary) {
+    if (safeTranscript && status === 'done' && AI_AVAILABLE && !existingSummary) {
       scheduleAfterResponse(async () => {
         try {
-          const summary = await generateSessionSummary(transcript as string);
+          const summary = await generateSessionSummary(safeTranscript as string);
           if (summary) {
             await pool.query(
               `UPDATE orchid_session SET summary = $1, updated_at = NOW() WHERE orchid_session.id = $2 AND orchid_session.summary IS NULL`,
