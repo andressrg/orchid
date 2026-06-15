@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { friendlyUserName } from '@/app/lib/display';
+import { friendlyUserName, dashboardListState } from '@/app/lib/display';
 
 // friendlyUserName is display-only: it cleans up existing rows at render time
 // (no re-sync). A real name passes through; placeholder/garbage names fall back
@@ -29,5 +29,25 @@ describe('friendlyUserName', () => {
     expect(friendlyUserName(undefined, undefined)).toBe('Unknown');
     expect(friendlyUserName('unknown', null)).toBe('Unknown');
     expect(friendlyUserName('unknown', '')).toBe('Unknown');
+  });
+});
+
+// dashboardListState distinguishes the three dashboard states under
+// private-by-default scoping: the viewer's list can be empty while the team is
+// active. 'locked' (team has sessions, none visible) must NOT show the
+// "no sessions yet" onboarding CTA meant for a genuinely fresh team.
+describe('dashboardListState', () => {
+  it('renders the list when the viewer has visible sessions', () => {
+    expect(dashboardListState({ visibleCount: 3, totalTeamSessions: 10 })).toBe('list');
+    expect(dashboardListState({ visibleCount: 1, totalTeamSessions: 1 })).toBe('list');
+  });
+
+  it('is locked when the viewer sees none but the team has sessions', () => {
+    expect(dashboardListState({ visibleCount: 0, totalTeamSessions: 42 })).toBe('locked');
+    expect(dashboardListState({ visibleCount: 0, totalTeamSessions: 1 })).toBe('locked');
+  });
+
+  it('is fresh only when the team genuinely has no sessions', () => {
+    expect(dashboardListState({ visibleCount: 0, totalTeamSessions: 0 })).toBe('fresh');
   });
 });
