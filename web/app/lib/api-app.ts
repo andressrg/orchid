@@ -488,13 +488,19 @@ app.put('/sessions/:id', async (c) => {
     // After responding, auto-generate + persist a Claude summary when the
     // session has just finished, so the viewer renders it instantly (no click).
     // Additive to (and independent of) the commit-extraction task above.
-    if (transcript && status === 'done' && AI_AVAILABLE) {
+    //
+    // Gate on the upserted row's existing summary so redundant `done` PUTs (the
+    // Stop hook + every `orchid sync` re-send 'done') don't fire a fresh Claude
+    // call or overwrite an already-stored summary. The conditional UPDATE
+    // (summary IS NULL) is a second guard against a concurrent writer.
+    const existingSummary = result.rows[0]?.summary;
+    if (transcript && status === 'done' && AI_AVAILABLE && !existingSummary) {
       scheduleAfterResponse(async () => {
         try {
           const summary = await generateSessionSummary(transcript as string);
           if (summary) {
             await pool.query(
-              `UPDATE orchid_session SET summary = $1, updated_at = NOW() WHERE orchid_session.id = $2`,
+              `UPDATE orchid_session SET summary = $1, updated_at = NOW() WHERE orchid_session.id = $2 AND orchid_session.summary IS NULL`,
               [summary, id],
             );
             console.log(`Generated summary for session ${id}`);
