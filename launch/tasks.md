@@ -100,9 +100,13 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
       (`/commits/sessions`, `/review-context`) routed through shared `sessionReadScopeSql` + ≥7-char
       prefix guard (closed a cross-team metadata leak found in review). 7 cross-user/cross-team tests.
       Shares deferred to P1-3 (rule is own/team only for now). Verified preview + prod.
-- [ ] **P1-3 · Share grants table + API.** `session_share (session_id, grantee_user_id,
+- [x] **P1-3 · Share grants table + API.** `session_share (session_id, grantee_user_id,
 capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
       `DELETE`. _Accept:_ owner can grant/revoke; grantee gains scoped access.
+      **DONE 2026-06-14 (#73, `7294462`)** — `session_share` (migration `0009`) + owner-only
+      `POST`/`DELETE`/`GET /sessions/:id/share[s]`; read-scope gains the "shared-with-me (non-expired)"
+      disjunct in all 3 helpers. Review caught + fixed 2 escalations (read-grantee could DELETE / write
+      commits) → mutating routes now `requireSessionOwner`. 19 share tests. Verified preview + prod.
 - [ ] **P1-4 · Aggregate-only team dashboard.** Team activity shows counts/stats, not other
       users' session content, unless shared/team-visible. _Accept:_ dashboard leaks no private
       content; empty/locked states shown.

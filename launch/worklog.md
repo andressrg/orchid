@@ -16,7 +16,7 @@
 - **Authed preview verify now WORKS** (S-0, #71, `f230773`) — Better Auth trusts the per-deploy Vercel hosts (`VERCEL_URL`/`VERCEL_BRANCH_URL`), so **log into the PR's preview URL** with `ORCHID_TEST_EMAIL`/`PASSWORD` and verify there. The acceptance test for an auth-touching change is "login succeeds on the preview AND prod login still works." (Was "Invalid origin" on every preview pre-S-0.) `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 - **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
 - **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
-- **Access control is private-by-default + scoped: a user sees a session IFF `user_id=me` OR `(team_id=myTeam AND visibility='team')`** (P1, #72). Two enforcement layers — API `scopeConditions` (Drizzle) and SSR `visibleSessionScope` (`queries.ts`). When touching ACL: sweep EVERY read path; the central helper misses raw `pool.query` reverse-lookups (`/commits/sessions`, `/review-context` use the shared `sessionReadScopeSql`). Always run an **adversarial security reviewer told to write a real cross-team exploit test** — that's what caught a leak punted as "out of scope" (never punt; AGENTS.md).
+- **Access control is private-by-default + scoped: a user sees a session IFF `user_id=me` OR `(team_id=myTeam AND visibility='team')` OR `(a non-expired session_share to me)`** (P1, #72/#73). THREE mirrored read-scope helpers — API `scopeConditions` + raw-SQL `sessionReadScopeSql`, SSR `visibleSessionScope`. When touching ACL: sweep EVERY read path; the central helper misses raw `pool.query` reverse-lookups (`/commits/sessions`, `/review-context`). **Destructive/write routes MUST gate on ownership (`requireSessionOwner`), NEVER on the read scope** — `scopeConditionForId` is derived from the read scope, so reusing it for DELETE/POST silently lets read-grantees mutate the owner's data (caught in #73 review). Always run an **adversarial security reviewer told to write a real exploit test** — that's what caught both the "out of scope" leak (#72) and the read-grant→delete escalation (#73).
 
 ---
 
@@ -31,6 +31,36 @@
 ```
 
 ---
+
+## 2026-06-14 — P1-3 session share grants (#73) — access model now own/team/shared
+
+- **Shipped:** an owner can grant another user scoped **read** access to a private session, and
+  revoke it. `session_share` table (migration `0009`: session_id→cascade, grantee_user_id→cascade,
+  capability `read|continue` default `read`, created_by, expires_at nullable; unique on
+  (session_id, grantee_user_id)). The read-scope gains a third disjunct — **OR a non-expired
+  share to me** — added to ALL THREE mirrored helpers (`scopeConditions`, `sessionReadScopeSql`,
+  `visibleSessionScope`) via `exists(...)`. Endpoints (owner-only): `POST /sessions/:id/share`
+  (grant by email or userId, upsert, self-grant 400, unknown grantee 404), `DELETE
+/sessions/:id/share/:granteeUserId`, `GET /sessions/:id/shares`.
+- **Gate caught two real privilege escalations:** because `scopeConditionForId` is derived from the
+  (now share-inclusive) read scope, two MUTATING routes were gated on it — so a **read-only**
+  grantee could **DELETE the owner's session** (cascading the row + commits) and **POST commit
+  links**. Fix: both now use `requireSessionOwner` (owner-scoped predicate); audited every other
+  `scopeConditionForId` caller (rest are reads; PUT is independently owner-gated). Added a "read
+  grant does NOT confer write/delete" test block (grantee → 403 on DELETE + POST /commits).
+- **Verified:** preview (S-0 login) — `GET /sessions/:id/shares` → 200 `{shares:[]}`, self-grant
+  → 400, reads unregressed; after squash-merge `7294462`, **prod** `GET /api/sessions` → 200 / 157
+  visible, `/api/health` ok. Cross-user grant/revoke/expiry/non-owner/write-protection locked by
+  19 DB-backed tests (192 web tests total). Files: `schema.ts`, `api-app.ts`, `queries.ts`,
+  `drizzle/0009_*`, `session-shares.test.ts`. PR #73.
+- **Follow-ups:** `GET /summary` cache-miss UPDATE is still read-scope-gated (a read-grantee can
+  trigger the idempotent summary write + one Claude call — benign, derived from content they can
+  read; owner-gate it later); add the explicit `$userParam IS NOT NULL` guard to the raw-SQL
+  EXISTS branch; `__tests__/setup.ts` assumes a pre-migrated DB (fine locally; a fresh CI DB would
+  need `db:migrate` first).
+- **Learning:** when a READ-scope predicate is reused to build the by-id predicate, MUTATING routes
+  silently inherit the widened access — **destructive/write routes must gate on ownership, never on
+  the read scope**. (Promoted to Patterns.)
 
 ## 2026-06-14 — P1-1 + P1-2 private-by-default + enforced scoping (#72) — the #1 goal, live
 
