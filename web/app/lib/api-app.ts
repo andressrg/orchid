@@ -327,6 +327,34 @@ function scopeConditionForId(c: { get(key: string): string | null }, sessionId: 
   return and(...conditions);
 }
 
+// Raw-SQL twin of scopeConditions, for the few endpoints that go through
+// `pool.query` (commit reverse-lookups) instead of Drizzle. Same invariant:
+// a caller reads a session IFF they own it OR it is team-visible to their team.
+// Callers MUST bind exactly `[..., teamId, userId]` so the `$<teamParam>` /
+// `$<userParam>` placeholders line up. Kept as one expression so the read-scope
+// lives in a single place across both query layers — a missed path is a leak.
+function sessionReadScopeSql({
+  teamParam,
+  userParam,
+}: {
+  readonly teamParam: number;
+  readonly userParam: number;
+}): string {
+  return (
+    `($${userParam}::text IS NOT NULL AND orchid_session.user_id = $${userParam})` +
+    ` OR ($${teamParam}::text IS NOT NULL AND orchid_session.team_id = $${teamParam}` +
+    ` AND orchid_session.visibility = 'team')`
+  );
+}
+
+// A commit SHA short enough to prefix-match huge swathes of the commit table is
+// an enumeration vector (the scope still applies, but broad fan-out is abuse).
+// Require a meaningful prefix (git's default short-sha is 7) on reverse lookups.
+const MIN_COMMIT_SHA_PREFIX = 7;
+const HEX_SHA_PREFIX = /^[0-9a-fA-F]+$/;
+const validCommitShaPrefixes = (shas: readonly string[]): readonly string[] =>
+  shas.filter((sha) => sha.length >= MIN_COMMIT_SHA_PREFIX && HEX_SHA_PREFIX.test(sha));
+
 function escapeLike(s: string): string {
   return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
@@ -1048,30 +1076,54 @@ app.get('/decisions', async (c) => {
   }
 });
 
-// Reverse lookup: find sessions for one or more commit SHAs
+// Reverse lookup: find sessions for one or more commit SHAs.
+//
+// This is a session-read path — it returns session metadata (user_email,
+// working_dir, git_remotes, branch, tool, status, timestamps) — so it MUST
+// enforce the same read-scope as scopeConditions / /review-context (P1-2):
+// a session surfaces IFF the caller owns it OR it is team-visible to the
+// caller's team. Without this guard any authenticated caller could reverse a
+// commit SHA prefix into another user's PRIVATE / cross-team session metadata.
 app.get('/commits/sessions', async (c) => {
   const shasParam = c.req.query('shas') || '';
-  const shas = shasParam
+  const rawShas = shasParam
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean);
 
-  if (shas.length === 0) {
+  if (rawShas.length === 0) {
     return c.json({ error: 'shas query parameter is required (comma-separated)' }, 400);
   }
+
+  // Reject short / non-hex prefixes so a caller can't broadly enumerate the
+  // commit table with 1-2 char prefixes (the scope still applies, but we don't
+  // serve the fan-out). Require git's default short-sha length.
+  const shas = validCommitShaPrefixes(rawShas);
+  if (shas.length === 0) {
+    return c.json(
+      { error: `each sha must be a hex commit prefix of at least ${MIN_COMMIT_SHA_PREFIX} chars` },
+      400,
+    );
+  }
+
+  const teamId = c.get('teamId');
+  const userId = c.get('userId');
 
   try {
     const prefixes = shas.map((sha) => `${sha}%`);
 
     const result = await pool.query(
-      `SELECT DISTINCT sc.session_id, sc.commit_sha, sc.branch, sc.remote, sc.message, sc.committed_at,
-              os.user_name, os.user_email, os.status, os.started_at, os.updated_at,
-              os.working_dir, os.git_remotes, os.tool
-       FROM session_commits sc
-       JOIN orchid_session os ON os.id = sc.session_id
-       JOIN unnest($1::text[]) AS prefix ON sc.commit_sha LIKE prefix
-       ORDER BY sc.committed_at DESC`,
-      [prefixes],
+      `SELECT DISTINCT session_commits.session_id, session_commits.commit_sha, session_commits.branch,
+              session_commits.remote, session_commits.message, session_commits.committed_at,
+              orchid_session.user_name, orchid_session.user_email, orchid_session.status,
+              orchid_session.started_at, orchid_session.updated_at,
+              orchid_session.working_dir, orchid_session.git_remotes, orchid_session.tool
+       FROM session_commits
+       JOIN orchid_session ON orchid_session.id = session_commits.session_id
+       JOIN unnest($1::text[]) AS prefix ON session_commits.commit_sha LIKE prefix
+       WHERE ${sessionReadScopeSql({ teamParam: 2, userParam: 3 })}
+       ORDER BY session_commits.committed_at DESC`,
+      [prefixes, teamId, userId],
     );
 
     return c.json({ sessions: result.rows });
@@ -1156,9 +1208,10 @@ app.post('/review-context', async (c) => {
 
     // Resolve shas → distinct sessions (prefix match), aggregating every matched
     // commit per session. Enforces the SAME read-scope as scopeConditions
-    // (P1-2): a session surfaces IFF the caller owns it OR it is team-visible to
-    // the caller's team — so review-context never reveals another member's
-    // PRIVATE session transcript. Single round trip.
+    // (P1-2) via the shared sessionReadScopeSql expression: a session surfaces
+    // IFF the caller owns it OR it is team-visible to the caller's team — so
+    // review-context never reveals another member's PRIVATE session transcript.
+    // Single round trip.
     const result = await pool.query(
       `SELECT orchid_session.id,
               orchid_session.user_name,
@@ -1168,8 +1221,7 @@ app.post('/review-context', async (c) => {
        FROM session_commits
        JOIN orchid_session ON orchid_session.id = session_commits.session_id
        JOIN unnest($1::text[]) AS prefix ON session_commits.commit_sha LIKE prefix
-       WHERE ($3::text IS NOT NULL AND orchid_session.user_id = $3)
-          OR ($2::text IS NOT NULL AND orchid_session.team_id = $2 AND orchid_session.visibility = 'team')
+       WHERE ${sessionReadScopeSql({ teamParam: 2, userParam: 3 })}
        GROUP BY orchid_session.id, orchid_session.user_name, orchid_session.branch, orchid_session.transcript
        ORDER BY orchid_session.id`,
       [prefixes, teamId, userId],
