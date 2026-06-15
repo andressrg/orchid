@@ -256,8 +256,12 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 - [x] **P7-4 · Efficiency profile page.** Public `/u/<handle>`: PRs shipped ÷ tokens,
       contribution-graph style, beautiful (Linear-grade). _Accept:_ renders from imported data;
       proud-to-share.
-- [ ] **P7-5 · Share + OG image.** `@vercel/og` renders the graph as a PNG; share-to-X/
+- [x] **P7-5 · Share + OG image.** `@vercel/og` renders the graph as a PNG; share-to-X/
       LinkedIn buttons. _Accept:_ sharing a profile produces a rich card image.
+      **DONE 2026-06-14 (#77, `2304044`)** — `opengraph-image.tsx` (Next `next/og`, Node runtime) renders a
+      1200×630 card mirroring the profile (score/tier/PRs/tokens + contribution strip + Orchid mark);
+      `twitter:card=summary_large_image`; `share-profile.tsx` X/LinkedIn/Copy row. Verified live: prod OG
+      route → 200 image/png (89KB), proud-to-share. Empty-profile card mismatch caught + fixed in review.
 - [ ] **P7-6 · Bulk import.** Let a new user import all past local sessions (all tools) at
       signup. _Accept:_ one command/flow imports history into the profile.
 

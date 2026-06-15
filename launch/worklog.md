@@ -16,6 +16,7 @@
 - **Authed preview verify now WORKS** (S-0, #71, `f230773`) — Better Auth trusts the per-deploy Vercel hosts (`VERCEL_URL`/`VERCEL_BRANCH_URL`), so **log into the PR's preview URL** with `ORCHID_TEST_EMAIL`/`PASSWORD` and verify there. The acceptance test for an auth-touching change is "login succeeds on the preview AND prod login still works." (Was "Invalid origin" on every preview pre-S-0.) `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 - **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
 - **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
+- **OG images use `next/og` `ImageResponse`** — flexbox-only (no grid; every multi-child container `display:flex`), literal hex (no CSS vars/external CSS), gradient text via `backgroundClip:'text'`+`WebkitBackgroundClip`+`color:transparent`; a **DB-backed OG route MUST be `runtime='nodejs'`** (Edge breaks the pg driver). Mirror the page's empty/not-found states in the card so a shared link never contradicts the page (#77).
 - **Secrets are redacted server-side at ingest** (T-1/T-2, #76) — `redactSecrets` in `web/app/lib/redact.ts` runs in `PUT /sessions/:id` so raw provider tokens/keys/JWTs/conn-passwords never reach the DB, search index, commits, or Claude. When adding a secret detector, **test it against the REAL secret alphabet** (incl. `-`/`_`), not a sanitized fixture — an alphanumeric-only fixture let modern `sk-proj-` OpenAI keys leak past 29 green tests (caught in #76 review).
 - **Access control is private-by-default + scoped: a user sees a session IFF `user_id=me` OR `(team_id=myTeam AND visibility='team')` OR `(a non-expired session_share to me)`** (P1, #72/#73). THREE mirrored read-scope helpers — API `scopeConditions` + raw-SQL `sessionReadScopeSql`, SSR `visibleSessionScope`. When touching ACL: sweep EVERY read path; the central helper misses raw `pool.query` reverse-lookups (`/commits/sessions`, `/review-context`). **Destructive/write routes MUST gate on ownership (`requireSessionOwner`), NEVER on the read scope** — `scopeConditionForId` is derived from the read scope, so reusing it for DELETE/POST silently lets read-grantees mutate the owner's data (caught in #73 review). Always run an **adversarial security reviewer told to write a real exploit test** — that's what caught both the "out of scope" leak (#72) and the read-grant→delete escalation (#73).
 
@@ -32,6 +33,30 @@
 ```
 
 ---
+
+## 2026-06-14 — P7-5 shareable efficiency profile: OG image + share buttons (#77) — the flywheel
+
+- **Shipped:** the public profile `/u/<handle>` is now shareable. New `app/u/[handle]/opengraph-image.tsx`
+  (Next `next/og` `ImageResponse`, **`runtime='nodejs'`** since it queries Postgres) renders a 1200×630
+  Linear-grade card mirroring the live profile: avatar + name/@handle, tier badge, big gradient
+  efficiency headline (per `headlineMode`), "Orchid Efficiency Score", a contribution-graph strip,
+  right-aligned stats, Orchid wordmark. `generateMetadata` adds `twitter: { card: 'summary_large_image' }`;
+  og:image/twitter:image auto-wired by the file convention. New `share-profile.tsx` client component:
+  X / LinkedIn / Copy-link row (pure `buildShareUrls`, fully URL-encoded, no `useEffect`).
+- **Review caught a real mismatch:** the OG card didn't replicate the page's empty-profile short-circuit
+  → a brand-new user's card showed a misleading "0 tokens / 0 sessions" headline instead of the empty
+  state. Fixed with an `emptyCard` gated on `profile.activeDays === 0` (mirrors the page's `EmptyProfile`).
+  235 web tests / 30 files green; `check.sh` + `pnpm build` green.
+- **Verified LIVE on the preview** (headed browser): the OG route renders the real card —
+  **"0.9 PRs / million tokens", LEAN tier, 226 PRs merged · 263.4M est. tokens**, contribution strip,
+  Orchid mark — proud-to-share. The profile page shows the **X / LinkedIn / Copy link** row; `og:image`
+  points at the opengraph-image route and `twitter:card=summary_large_image`. After squash-merge `2304044`,
+  prod healthy. Files: `opengraph-image.tsx`, `share-profile.tsx`, `page.tsx`, `globals.css`, `share-profile.test.ts`. PR #77.
+- **ImageResponse/satori gotchas (for future OG work):** flexbox-only (NO `display:grid`; every multi-child
+  container needs `display:flex`); NO CSS vars/external CSS — use literal hex; gradient text via
+  `backgroundClip:'text'`+`WebkitBackgroundClip`+`color:transparent`; a DB-backed OG route MUST be Node runtime
+  (Edge breaks the pg driver). (Promoted to Patterns.)
+- **Virality flywheel:** profile (P7-4) + token accounting (P7-2) + GitHub auth (P7-1) + **shareable card (P7-5)** now live.
 
 ## 2026-06-14 — Decommissioned the unused DigitalOcean droplet (Vercel-only async)
 
