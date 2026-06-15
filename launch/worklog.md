@@ -32,6 +32,29 @@
 
 ---
 
+## 2026-06-14 — P1-5 Share UI (#74) — sharing is now a real, demoable affordance
+
+- **Shipped:** a Linear-style **Share** popover on the session page. Owner view: invite a teammate
+  by email (→ `POST /share`, inline server-error surfacing), a live grants list with per-row
+  Remove (→ `DELETE /share/:granteeUserId`), empty state, and a **Copy link** that now actually
+  works (the recipient can open it once granted). Non-owner view: Copy link only. Replaces the old
+  `copy-link.tsx`, which only copied a URL that 404'd for non-shared users (misleading affordance).
+- **Implementation:** new client component `share-session.tsx` — all network in event handlers
+  (grants fetched on popover-open), **no `useEffect`**, typed readonly interfaces, no any/mutation.
+  `getSessionById` now returns `is_owner` (selects `orchid_session.user_id`, compares to viewer) so
+  the page gates the manage UI. Backend unchanged (P1-3).
+- **Review:** clean single pass — reviewer + tester both **ship**, zero must-fix. 195 web tests / 28
+  files green; `check.sh` green. Tests assert the `GET /shares` UI-contract shape + `is_owner` true/false.
+- **Verified live on the preview** (headed browser): opened Share on a session I own → owner popover
+  renders; invited my own email → inline **"Cannot share a session with yourself"** (server error
+  surfaced); empty state + Copy link present. After squash-merge `fc66f30`, prod `/api/health` ok.
+  Files: `share-session.tsx`, `queries.ts`, session `page.tsx`, `session-shares.test.ts`, `queries.test.ts`;
+  `copy-link.tsx` deleted. PR #74.
+- **Tooling-gap follow-up (filed under C-3):** eslint does NOT actually ban `useEffect` — the gate
+  only catches `any` (via no-explicit-any). Add a `no-restricted-syntax` rule so the AGENTS.md
+  no-useEffect convention is enforced by `check.sh` for future PRs.
+- **Privacy phase is now 4/5** (P1-1,2,3,5 done; P1-4 aggregate-only dashboard remains).
+
 ## 2026-06-14 — P1-3 session share grants (#73) — access model now own/team/shared
 
 - **Shipped:** an owner can grant another user scoped **read** access to a private session, and

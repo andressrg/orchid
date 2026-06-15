@@ -110,8 +110,11 @@ capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
 - [ ] **P1-4 · Aggregate-only team dashboard.** Team activity shows counts/stats, not other
       users' session content, unless shared/team-visible. _Accept:_ dashboard leaks no private
       content; empty/locked states shown.
-- [ ] **P1-5 · Share UI.** A "Share" affordance on a session (copy link / pick teammate).
+- [x] **P1-5 · Share UI.** A "Share" affordance on a session (copy link / pick teammate).
       _Accept:_ Linear-style, instant, generates a working share.
+      **DONE 2026-06-14 (#74, `fc66f30`)** — `share-session.tsx` popover: invite by email + grants list +
+      revoke + working Copy link, owner-gated via `getSessionById.is_owner`; no useEffect. Verified live
+      on preview (invite/error/empty/copy). Replaced the misleading copy-only button.
 
 ## Phase T — Secret redaction (TRUST — do early) _(depends: none; land before raw transcripts pile up)_
 
@@ -293,6 +296,10 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
     `timeAgo()` / `formatDuration`) computing different values server vs client. Non-breaking
     but noisy. Fix: render times client-only or with `suppressHydrationWarning` / a stable
     server-formatted string. (Not a P3-1 regression — summary text is identical SSR/client.)
+  - _Open finding (2026-06-14, #74 review):_ the **gate does NOT enforce the no-`useEffect`
+    convention** — `web/eslint.config.mjs` is stock Next (catches `any` via `no-explicit-any`, but
+    nothing bans `useEffect`). Add a `no-restricted-syntax` rule (e.g. ban `CallExpression[callee.name='useEffect']`)
+    so `bash check.sh` fails on stray `useEffect`, making AGENTS.md's rule real for future PRs.
 - [ ] **C-4 · Dogfood review loop.** Use Orchid's own review on its own PRs into
       `orchestrator`; record whether context helped.
 
