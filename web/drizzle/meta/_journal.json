@@ -50,6 +50,13 @@
       "when": 1781402934769,
       "tag": "0006_clumsy_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1781487174052,
+      "tag": "0007_lonely_black_bolt",
+      "breakpoints": true
     }
   ]
 }

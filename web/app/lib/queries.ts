@@ -111,6 +111,7 @@ export async function getSessionById(sessionId: string, teamId: string) {
       messageCount: orchidSession.messageCount,
       inputTokens: orchidSession.inputTokens,
       outputTokens: orchidSession.outputTokens,
+      summary: orchidSession.summary,
     })
     .from(orchidSession)
     .where(and(eq(orchidSession.id, sessionId), eq(orchidSession.teamId, teamId)));
@@ -129,6 +130,7 @@ export async function getSessionById(sessionId: string, teamId: string) {
     message_count: row.messageCount || 0,
     input_tokens: row.inputTokens || 0,
     output_tokens: row.outputTokens || 0,
+    summary: row.summary || null,
   };
 }
 

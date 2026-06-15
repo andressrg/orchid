@@ -66,6 +66,10 @@ export const orchidSession = pgTable(
     // PRs-÷-tokens metric without re-parsing every transcript on read.
     inputTokens: integer('input_tokens').default(0),
     outputTokens: integer('output_tokens').default(0),
+    // Persisted Claude summary, generated server-side when a session flips to
+    // `done`, so the session viewer renders the summary instantly (no click).
+    // Null until generated; the on-demand /summary endpoint backfills + caches.
+    summary: text('summary'),
     userId: text('user_id').references(() => user.id),
     teamId: text('team_id').references(() => organization.id),
   },

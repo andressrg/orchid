@@ -235,8 +235,9 @@ export default async function SessionPage({
         </div>
       )}
 
-      {/* AI Summary */}
-      <AISummary sessionId={session.id} />
+      {/* AI Summary — server-rendered instantly when already generated on session
+          end; falls back to click-to-generate for sessions with no stored summary. */}
+      <AISummary sessionId={session.id} initialSummary={session.summary} />
 
       {/* Tabbed content: Conversation, Commits, Chat. The conversation body is
           streamed in via Suspense so this metadata shell paints without waiting
