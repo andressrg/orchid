@@ -16,6 +16,7 @@
 - **Authed preview verify now WORKS** (S-0, #71, `f230773`) — Better Auth trusts the per-deploy Vercel hosts (`VERCEL_URL`/`VERCEL_BRANCH_URL`), so **log into the PR's preview URL** with `ORCHID_TEST_EMAIL`/`PASSWORD` and verify there. The acceptance test for an auth-touching change is "login succeeds on the preview AND prod login still works." (Was "Invalid origin" on every preview pre-S-0.) `bash check.sh` does NOT run web vitest — run `cd web && pnpm test` separately.
 - **`status: 'done'` is NOT a one-shot signal** — the Stop hook (`cli/.../hooks.ts`) and every `orchid sync` resend `done` many times per session. Any on-`done` server work (summaries, key-moments, notifications) MUST be idempotent: gate the write (`!existing` + `WHERE col IS NULL`), never re-run the model on a repeat. Model the commit-extraction `after()` (ON CONFLICT DO NOTHING).
 - **`ON CONFLICT … DO UPDATE` preserves columns it doesn't SET**, so the upsert's `RETURNING *` row is a reliable "already computed?" check without a second query.
+- **Access control is private-by-default + scoped: a user sees a session IFF `user_id=me` OR `(team_id=myTeam AND visibility='team')`** (P1, #72). Two enforcement layers — API `scopeConditions` (Drizzle) and SSR `visibleSessionScope` (`queries.ts`). When touching ACL: sweep EVERY read path; the central helper misses raw `pool.query` reverse-lookups (`/commits/sessions`, `/review-context` use the shared `sessionReadScopeSql`). Always run an **adversarial security reviewer told to write a real cross-team exploit test** — that's what caught a leak punted as "out of scope" (never punt; AGENTS.md).
 
 ---
 
@@ -30,6 +31,41 @@
 ```
 
 ---
+
+## 2026-06-14 — P1-1 + P1-2 private-by-default + enforced scoping (#72) — the #1 goal, live
+
+- **Shipped the privacy layer:** sessions are now **private by default** (new captures) with the
+  rule enforced everywhere: a user sees a session IFF `user_id = me` OR `(team_id = myTeam AND
+visibility = 'team')`. Existing rows backfilled to `team` (no surprise to current users); new
+  inserts get the DB default `private` with **no write-path change**.
+- **Two enforcement layers, one rule each:** (1) API — `scopeConditions` (Drizzle) rewritten with
+  `or(own, and(team, visibility=team))` → automatically covers every endpoint that routes through
+  it (list, search, GET/:id, delete, stats, summary, chat, decisions, commits). (2) SSR — shared
+  `visibleSessionScope` in `queries.ts`; `listSessions`/`getSessionById`/`getSessionTranscriptById`/
+  `searchSessions` converted to object params with `userId` threaded from `getServerAuth` through
+  every page caller (dashboard, activity, session page + conversation component). Migration `0008`
+  (column default `private` + backfill + `(team_id,visibility)` index).
+- **The review gate earned its day:** the security reviewer wrote an adversarial test and found
+  `GET /commits/sessions` (reverse SHA→session lookup, reachable via the CLI `orchid data
+sessions-for`) had **ZERO** scoping — a cross-team leak of private session metadata (emails,
+  private repo URLs, local paths) via short SHA-prefix enumeration. The implementer had punted it
+  as "out of scope" (against our mindset rule). Fix: routed it + `/review-context` through one
+  shared raw-SQL `sessionReadScopeSql` helper, added a **≥7-char hex** prefix guard against
+  enumeration, and an adversarial cross-team test. 173 tests / 27 files green; `check.sh` green.
+- **Verified:** preview (S-0 login works now) — dashboard lists my sessions, session detail +
+  transcript load, no self-regression; after squash-merge `2f83b39`, **prod** dashboard loads my
+  sessions, `/api/health` ok. Cross-user/cross-team isolation locked by 7 new integration tests
+  (`sessions-visibility`, `commits-sessions-visibility`, `queries`, `search`).
+- **Files:** `schema.ts`, `drizzle/0008_*`, `api-app.ts`, `queries.ts`, dashboard/activity/session
+  pages + conversation, 3 test files. PR #72.
+- **Follow-ups filed:** P1-4 still owns the aggregate leak (`getTeamStats`/`/stats` counts — `/stats`
+  API now respects visibility, the SSR `getTeamStats` does not yet); add same-team private-exclusion
+  tests for `searchSessions` + `/review-context`; consider the ≥7-char prefix guard on `/review-context` too.
+- **Learnings:** (1) access-control changes need a _completeness_ sweep of EVERY read path — the
+  central helper covered 9 endpoints but two raw-SQL reverse-lookups (`/commits/sessions`,
+  `/review-context`) bypassed it; enumerate raw `pool.query` reads explicitly. (2) The adversarial
+  security reviewer (told to write a real exploit test) is what caught the "out of scope" punt —
+  keep that lens mandatory on auth/ACL PRs. (Promoted to Patterns.)
 
 ## 2026-06-14 — S-0 trusted preview origins (#71) — previews are now authed-verifiable
 

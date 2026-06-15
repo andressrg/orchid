@@ -85,14 +85,21 @@ nice-to-haves remain; then the Claude GitHub app reviews the PR with Orchid cont
 
 ## Phase 1 — Privacy & the access layer _(#1 goal — depends: none)_
 
-- [ ] **P1-1 · Per-session owner + visibility.** Add `visibility` (`private`|`team`) to
+- [x] **P1-1 · Per-session owner + visibility.** Add `visibility` (`private`|`team`) to
       `orchid_session`, default `private`; backfill existing rows to `team` (so we don't
       surprise current users) but new sessions default `private`. Migration. _Accept:_ column
       exists, indexed; default private for new captures.
-- [ ] **P1-2 · Scope reads by owner + visibility + shares.** Update `scopeConditions` and
+      **DONE 2026-06-14 (#72, `2f83b39`)** — migration `0008` (default `private` + backfill→`team` +
+      `(team_id,visibility)` index). New captures private with no write-path change (DB default).
+- [x] **P1-2 · Scope reads by owner + visibility + shares.** Update `scopeConditions` and
       `queries.ts` so a user sees: their own sessions, `team`-visible sessions, and sessions
       explicitly shared with them. _Accept:_ a teammate can NOT load another user's private
       session (404); covered by tests.
+      **DONE 2026-06-14 (#72, `2f83b39`)** — rule `own OR (team AND visibility='team')` enforced in BOTH
+      layers (API `scopeConditions`, SSR `visibleSessionScope`); raw-SQL reverse-lookups
+      (`/commits/sessions`, `/review-context`) routed through shared `sessionReadScopeSql` + ≥7-char
+      prefix guard (closed a cross-team metadata leak found in review). 7 cross-user/cross-team tests.
+      Shares deferred to P1-3 (rule is own/team only for now). Verified preview + prod.
 - [ ] **P1-3 · Share grants table + API.** `session_share (session_id, grantee_user_id,
 capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
       `DELETE`. _Accept:_ owner can grant/revoke; grantee gains scoped access.
