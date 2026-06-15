@@ -107,9 +107,12 @@ capability: read|continue, created_by, expires_at)`. `POST /sessions/:id/share`,
       `POST`/`DELETE`/`GET /sessions/:id/share[s]`; read-scope gains the "shared-with-me (non-expired)"
       disjunct in all 3 helpers. Review caught + fixed 2 escalations (read-grantee could DELETE / write
       commits) → mutating routes now `requireSessionOwner`. 19 share tests. Verified preview + prod.
-- [ ] **P1-4 · Aggregate-only team dashboard.** Team activity shows counts/stats, not other
+- [x] **P1-4 · Aggregate-only team dashboard.** Team activity shows counts/stats, not other
       users' session content, unless shared/team-visible. _Accept:_ dashboard leaks no private
       content; empty/locked states shown.
+      **DONE 2026-06-14 (#75, `592d8ed`)** — pure `dashboardListState` (list/locked/fresh) + a "Nothing
+      shared with you yet" locked state; stat cards stay aggregate team metrics by design, session list
+      is scoped (P1-2/3). Audited list/activity/decisions — no content leaks. **Privacy phase complete (5/5).**
 - [x] **P1-5 · Share UI.** A "Share" affordance on a session (copy link / pick teammate).
       _Accept:_ Linear-style, instant, generates a working share.
       **DONE 2026-06-14 (#74, `fc66f30`)** — `share-session.tsx` popover: invite by email + grants list +

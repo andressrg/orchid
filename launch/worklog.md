@@ -32,6 +32,28 @@
 
 ---
 
+## 2026-06-14 — P1-4 aggregate-only dashboard (#75) — PRIVACY PHASE COMPLETE (5/5)
+
+- **Shipped:** the dashboard now distinguishes three states via a pure, tested helper
+  `dashboardListState({visibleCount, totalTeamSessions})` → `list | locked | fresh`. New **locked**
+  state ("Nothing shared with you yet — your team has N sessions, but they're private to their
+  owners") for a viewer who can see none while the team is active — instead of the misleading
+  "No sessions yet. Run orchid claude" onboarding CTA (now reserved for a genuinely empty team).
+- **Design decision (logged):** stat cards stay **aggregate team metrics** (total/active/members) —
+  the task explicitly allows counts/stats; they're team-activity, not content. Only the session
+  **list** is owner/visibility/share-scoped (P1-2/P1-3). Audited dashboard list, activity, and
+  decisions — all route through scoped reads; **no private content leaks**.
+- **Lean gate (small UI change, done inline):** 3 `dashboardListState` unit cases (list/locked/fresh
+  - boundaries); `check.sh` + full suite green; 1 adversarial reviewer → **SHIP**, zero must-fix
+    (confirmed no leak, sound 3-way logic, functional style; also tidied a pre-existing `let stats`→`const`).
+- **Verified:** preview (S-0 login) — dashboard renders the list (157 sessions, list state, no false
+  locked/fresh); the locked/fresh paths can't be triggered with a single account that owns everything,
+  so they're covered by unit tests. Prod `592d8ed` `/api/health` ok. Files: `display.ts`,
+  dashboard `page.tsx`, `display.test.ts`. PR #75.
+- **Milestone: the #1 goal (privacy & access layer) is fully shipped** — private by default (P1-1),
+  enforced own/team scoping (P1-2), share grants (P1-3), Share UI (P1-5), aggregate-only dashboard
+  (P1-4). All live + verified.
+
 ## 2026-06-14 — P1-5 Share UI (#74) — sharing is now a real, demoable affordance
 
 - **Shipped:** a Linear-style **Share** popover on the session page. Owner view: invite a teammate
