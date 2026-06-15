@@ -53,7 +53,11 @@ export default async function SessionPage({
   const serverAuth = await getServerAuth(teamSlug);
   if (!serverAuth) return null;
 
-  const session = await getSessionById(decodeURIComponent(id), serverAuth.teamId);
+  const session = await getSessionById({
+    sessionId: decodeURIComponent(id),
+    teamId: serverAuth.teamId,
+    userId: serverAuth.userId,
+  });
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -249,6 +253,7 @@ export default async function SessionPage({
             <SessionConversation
               sessionId={session.id}
               teamId={serverAuth.teamId}
+              userId={serverAuth.userId}
               userName={userName}
               isActive={isActive}
               highlightTurn={highlightTurn}

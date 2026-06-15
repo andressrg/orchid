@@ -57,6 +57,13 @@
       "when": 1781487174052,
       "tag": "0007_lonely_black_bolt",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781490271050,
+      "tag": "0008_fuzzy_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

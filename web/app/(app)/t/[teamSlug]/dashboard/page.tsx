@@ -68,7 +68,7 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
   const serverAuth = await getServerAuth(teamSlug);
   if (!serverAuth) return null;
 
-  const sessions = await listSessions(serverAuth.teamId);
+  const sessions = await listSessions({ teamId: serverAuth.teamId, userId: serverAuth.userId });
   let stats = await getTeamStats(serverAuth.teamId);
 
   if (!stats) {

@@ -70,6 +70,12 @@ export const orchidSession = pgTable(
     // `done`, so the session viewer renders the summary instantly (no click).
     // Null until generated; the on-demand /summary endpoint backfills + caches.
     summary: text('summary'),
+    // Read-scoping visibility (P1-1). New captures default to 'private' (only the
+    // owning user sees them); 'team' makes a session visible to the whole team.
+    // Existing rows are backfilled to 'team' in migration 0008 so no current
+    // session changes hands. The one source of truth for who-sees-what is
+    // `visibleSessionScope` (queries.ts) / `scopeConditions` (api-app.ts).
+    visibility: text('visibility').notNull().default('private'),
     userId: text('user_id').references(() => user.id),
     teamId: text('team_id').references(() => organization.id),
   },
