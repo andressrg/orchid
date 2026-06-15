@@ -160,6 +160,7 @@ export async function getSessionById({
   const [row] = await db
     .select({
       id: orchidSession.id,
+      userId: orchidSession.userId,
       userName: orchidSession.userName,
       userEmail: orchidSession.userEmail,
       workingDir: orchidSession.workingDir,
@@ -179,6 +180,10 @@ export async function getSessionById({
   if (!row) return null;
   return {
     id: row.id,
+    // Whether the current viewer owns this session — gates the manage-shares UI
+    // (P1-5). A team-visible / shared-with-me viewer reads the session but must
+    // not see the owner-only "manage access" affordance.
+    is_owner: row.userId === userId,
     user_name: row.userName || '',
     user_email: row.userEmail || '',
     working_dir: row.workingDir || '',

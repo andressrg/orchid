@@ -321,6 +321,40 @@ describe('P1-3 session share grants', () => {
       const res = await app.request(`/api/sessions/${SESSION_S}/shares`, { headers: headersB });
       expect(res.status).toBe(404);
     });
+
+    // P1-5 — the Share UI (share-session.tsx) renders each grant from this
+    // payload, so the exact field set is a UI contract: it needs
+    // grantee_user_id (the DELETE key), grantee_email + grantee_name (the row
+    // label), and capability. Assert every key is present with the right type.
+    it('A GET /sessions/:S/shares returns the exact shape the Share UI consumes', async () => {
+      await app.request(`/api/sessions/${SESSION_S}/share`, {
+        method: 'POST',
+        headers: { ...headersA, 'content-type': 'application/json' },
+        body: JSON.stringify({ granteeEmail: `${USER_B}@example.com`, capability: 'read' }),
+      });
+      const res = await app.request(`/api/sessions/${SESSION_S}/shares`, { headers: headersA });
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        readonly shares: ReadonlyArray<{
+          readonly grantee_user_id: string;
+          readonly grantee_email: string;
+          readonly grantee_name: string | null;
+          readonly capability: string;
+        }>;
+      };
+      expect(data.shares).toHaveLength(1);
+      const [grant] = data.shares;
+      // Keys the UI dereferences are all present.
+      expect(grant).toHaveProperty('grantee_user_id');
+      expect(grant).toHaveProperty('grantee_email');
+      expect(grant).toHaveProperty('grantee_name');
+      expect(grant).toHaveProperty('capability');
+      expect(grant.grantee_user_id).toBe(USER_B);
+      expect(grant.grantee_email).toBe(`${USER_B}@example.com`);
+      // USER_B was seeded with name 'User B'; the UI prefers name over email.
+      expect(grant.grantee_name).toBe('User B');
+      expect(typeof grant.capability).toBe('string');
+    });
   });
 
   // A READ grant must never confer write/destroy. These guard the privilege-

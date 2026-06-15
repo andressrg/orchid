@@ -6,7 +6,7 @@ import { getServerAuth } from '@/app/lib/server-auth';
 import { getSessionById } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
 import { AISummary } from '@/app/components/ai-summary';
-import { CopyLink } from '@/app/components/copy-link';
+import { ShareSession } from '@/app/components/share-session';
 import { SessionTabs } from '@/app/components/session-tabs';
 import { SessionConversation, ConversationSkeleton } from './session-conversation';
 
@@ -150,7 +150,7 @@ export default async function SessionPage({
                 </Link>
               ) : null;
             })()}
-          <CopyLink />
+          <ShareSession sessionId={session.id} isOwner={session.is_owner} />
           <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
             {messageCount} turns
           </span>
