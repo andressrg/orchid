@@ -114,6 +114,44 @@ export const sessionCommit = pgTable(
   ],
 );
 
+// Session share grants (P1-3). An owner grants another user scoped READ access
+// to one of their (private) sessions. Extends the P1-2 read-scope with a third
+// disjunct: "OR the session is shared with me and the grant is not expired".
+// One grant per (session, grantee) — upsertable via the unique index — so a
+// re-share updates capability/expiry instead of stacking rows. `capability`
+// is 'read' | 'continue'; both grant READ for now ('continue'/takeover is
+// RFC #17, enforced later). The single source of truth for who-sees-what is
+// `visibleSessionScope` (queries.ts) / `scopeConditions` (api-app.ts), both of
+// which now read this table.
+export const sessionShare = pgTable(
+  'session_share',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => crypto.randomUUID()),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => orchidSession.id, { onDelete: 'cascade' }),
+    granteeUserId: text('grantee_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    capability: text('capability').notNull().default('read'),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One grant per (session, grantee): the upsert target. Re-sharing updates
+    // the existing row's capability/expiry rather than inserting a duplicate.
+    uniqueIndex('uq_session_share_session_grantee').on(t.sessionId, t.granteeUserId),
+    // Grantee reverse-lookup: the read-scope's "shared with me" branch filters
+    // by grantee_user_id, so it's the hot index.
+    index('idx_session_share_grantee').on(t.granteeUserId),
+  ],
+);
+
 export const apiKey = pgTable(
   'api_key',
   {

@@ -4,10 +4,10 @@ import { promisify } from 'node:util';
 import { gunzip } from 'node:zlib';
 
 const gunzipAsync = promisify(gunzip);
-import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull } from 'drizzle-orm';
+import { eq, and, ilike, or, desc, sql, isNull, gt, isNotNull, exists } from 'drizzle-orm';
 import { after } from 'next/server';
 import pool, { db } from './db';
-import { orchidSession, apiKey, organization, member } from './schema';
+import { orchidSession, apiKey, organization, member, sessionShare, user } from './schema';
 import { auth } from './auth';
 import { hashToken, generateToken } from './crypto';
 import { extractCommitsFromTranscript } from './extract-commits';
@@ -299,14 +299,37 @@ app.use('*', async (c, next) => {
   return c.json({ error: 'Unauthorized' }, 401);
 });
 
-// Scope helpers — the ENFORCED read-scope (P1-2). A caller may read a session
-// IFF they own it OR it is shared with their team:
+// The "shared with me" read-scope disjunct (P1-3). A session is readable by a
+// user when a non-expired `session_share` grant exists for them — correlated to
+// the outer `orchid_session` row. A null `expires_at` means the grant never
+// expires. Used by scopeConditions here and mirrored by `visibleSessionScope`
+// in queries.ts (the SSR layer). `exists(...)` keeps it a correlated subquery
+// so it composes with the own/team disjuncts in a single WHERE.
+const sharedWithUser = (userId: string) =>
+  exists(
+    db
+      .select({ one: sql`1` })
+      .from(sessionShare)
+      .where(
+        and(
+          eq(sessionShare.sessionId, orchidSession.id),
+          eq(sessionShare.granteeUserId, userId),
+          or(isNull(sessionShare.expiresAt), gt(sessionShare.expiresAt, sql`now()`)),
+        ),
+      ),
+  );
+
+// Scope helpers — the ENFORCED read-scope (P1-2 + P1-3). A caller may read a
+// session IFF they own it, it is shared with their team, OR it is shared with
+// them via a non-expired session_share grant:
 //   orchid_session.user_id = <me>
 //   OR (orchid_session.team_id = <myTeam> AND orchid_session.visibility = 'team')
+//   OR EXISTS a non-expired session_share for (orchid_session.id, <me>)
 // This is the single source of truth for the API layer; every /sessions* read
 // route funnels through scopeConditions / scopeConditionForId, so adding the
-// visibility predicate here protects them all at once. Mirrors
-// `visibleSessionScope` in queries.ts (the SSR layer).
+// predicate here protects them all at once. Mirrors `visibleSessionScope` in
+// queries.ts (the SSR layer). The shared-with-me branch applies whenever there's
+// a userId — it works even when teamId is null.
 function scopeConditions(c: { get(key: string): string | null }) {
   const teamId = c.get('teamId');
   const userId = c.get('userId');
@@ -314,8 +337,9 @@ function scopeConditions(c: { get(key: string): string | null }) {
     return or(
       eq(orchidSession.userId, userId),
       and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team')),
+      sharedWithUser(userId),
     );
-  if (userId) return eq(orchidSession.userId, userId);
+  if (userId) return or(eq(orchidSession.userId, userId), sharedWithUser(userId));
   if (teamId) return and(eq(orchidSession.teamId, teamId), eq(orchidSession.visibility, 'team'));
   return undefined;
 }
@@ -329,7 +353,8 @@ function scopeConditionForId(c: { get(key: string): string | null }, sessionId: 
 
 // Raw-SQL twin of scopeConditions, for the few endpoints that go through
 // `pool.query` (commit reverse-lookups) instead of Drizzle. Same invariant:
-// a caller reads a session IFF they own it OR it is team-visible to their team.
+// a caller reads a session IFF they own it, it is team-visible to their team,
+// OR it is shared with them via a non-expired session_share grant (P1-3).
 // Callers MUST bind exactly `[..., teamId, userId]` so the `$<teamParam>` /
 // `$<userParam>` placeholders line up. Kept as one expression so the read-scope
 // lives in a single place across both query layers — a missed path is a leak.
@@ -343,7 +368,10 @@ function sessionReadScopeSql({
   return (
     `($${userParam}::text IS NOT NULL AND orchid_session.user_id = $${userParam})` +
     ` OR ($${teamParam}::text IS NOT NULL AND orchid_session.team_id = $${teamParam}` +
-    ` AND orchid_session.visibility = 'team')`
+    ` AND orchid_session.visibility = 'team')` +
+    ` OR EXISTS (SELECT 1 FROM session_share WHERE session_share.session_id = orchid_session.id` +
+    ` AND session_share.grantee_user_id = $${userParam}` +
+    ` AND (session_share.expires_at IS NULL OR session_share.expires_at > now()))`
   );
 }
 
@@ -558,18 +586,214 @@ app.put('/sessions/:id', async (c) => {
   }
 });
 
-// Delete session (scoped)
+// Delete session (OWNER-ONLY).
+//
+// Destructive: deleting a session cascades away its share grants and linked
+// commits. This MUST gate on ownership, NOT the read-scope predicate. The read
+// scope (scopeConditionForId) now includes the P1-3 "shared with me" branch, so
+// gating delete on it would let a READ-only grantee destroy the owner's session.
+// requireSessionOwner loads through the read scope first (404 when not visible —
+// never reveals existence), then asserts ownership (403 when visible but not the
+// owner), so a share/team viewer can read but never delete. We delete by
+// (id AND user_id = owner) so the destructive predicate itself is owner-scoped.
 app.delete('/sessions/:id', async (c) => {
   const id = c.req.param('id');
   try {
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
+
     const deleted = await db
       .delete(orchidSession)
-      .where(scopeConditionForId(c, id)!)
+      .where(and(eq(orchidSession.id, id), eq(orchidSession.userId, owner.ownerId)))
       .returning({ id: orchidSession.id });
     if (deleted.length === 0) return c.json({ error: 'Session not found' }, 404);
     return c.json({ deleted: deleted[0].id });
   } catch (err) {
     console.error('DELETE /api/sessions/:id error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// ── Session share grants (P1-3) ────────────────────────────────────────────
+//
+// An owner grants another user scoped READ access to one of their sessions, and
+// can revoke it. Extends the P1-2 read-scope (own OR team-visible) with the
+// "shared with me" branch enforced in scopeConditions / visibleSessionScope.
+//
+// All three routes are OWNER-ONLY. We first load the session through the SAME
+// scoped read every other /sessions/:id route uses, so a session the caller
+// can't even see returns 404 (never reveals its existence). If it IS visible but
+// the caller isn't the owner, that's a 403. Ownership is `orchid_session.user_id`
+// === the caller's userId — only the owner may grant/revoke access to their own
+// session, regardless of how they can read it (team-visible / shared).
+
+// A share grants 'read' or 'continue'; both grant READ for now ('continue' is
+// the RFC #17 takeover capability, enforced later).
+type ShareCapability = 'read' | 'continue';
+
+// Validate an untrusted capability, defaulting to 'read'. 'continue' is accepted
+// (RFC #17 takeover) but grants only READ for now — enforcement lands later.
+const normalizeCapability = (value: unknown): ShareCapability =>
+  value === 'continue' ? 'continue' : 'read';
+
+// Parse an untrusted expiresAt into a Date, or null when absent/blank/invalid.
+// An invalid date is treated as "no expiry" rather than 400-ing the grant.
+const optionalExpiresAt = (value: unknown): Date | null => {
+  if (typeof value !== 'string' || value.trim() === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+// Owner-only guard shared by all three share routes. Returns the owner's userId
+// and the sessionId, OR a ready-to-return error response. Loads the session
+// through the caller's read-scope first (404 when not visible — never reveals
+// existence), then checks ownership (403 when visible but not the owner).
+const requireSessionOwner = async (
+  c: { get(key: string): string | null; req: { param(name: string): string } },
+  sessionId: string,
+): Promise<
+  | { readonly ownerId: string; readonly error?: undefined }
+  | {
+      readonly ownerId?: undefined;
+      readonly error: { readonly message: string; readonly status: 403 | 404 };
+    }
+> => {
+  const userId = c.get('userId');
+  if (!userId) return { error: { message: 'Requires user authentication', status: 403 } };
+
+  const [session] = await db
+    .select({ ownerId: orchidSession.userId })
+    .from(orchidSession)
+    .where(scopeConditionForId(c, sessionId));
+
+  if (!session) return { error: { message: 'Session not found', status: 404 } };
+  if (session.ownerId !== userId)
+    return { error: { message: 'Only the session owner can manage shares', status: 403 } };
+
+  return { ownerId: userId };
+};
+
+interface ShareGrantBody {
+  readonly granteeEmail?: unknown;
+  readonly granteeUserId?: unknown;
+  readonly capability?: unknown;
+  readonly expiresAt?: unknown;
+}
+
+// POST /sessions/:id/share — owner grants a user scoped read access. Resolve the
+// grantee by id or email, disallow self-grants, and upsert one row per
+// (session, grantee) so a re-share updates capability/expiry instead of stacking.
+app.post('/sessions/:id/share', async (c) => {
+  const id = c.req.param('id');
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'Requires user authentication' }, 403);
+
+  const body = (await c.req.json().catch(() => ({}))) as ShareGrantBody;
+  const granteeEmail = typeof body.granteeEmail === 'string' ? body.granteeEmail.trim() : '';
+  const explicitGranteeId = typeof body.granteeUserId === 'string' ? body.granteeUserId.trim() : '';
+
+  if (granteeEmail === '' && explicitGranteeId === '') {
+    return c.json({ error: 'granteeEmail or granteeUserId is required' }, 400);
+  }
+
+  try {
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
+
+    // Resolve the grantee: an explicit user id is verified to exist; an email is
+    // looked up case-insensitively. Unknown grantee → 404.
+    const [grantee] = explicitGranteeId
+      ? await db.select({ id: user.id }).from(user).where(eq(user.id, explicitGranteeId))
+      : await db.select({ id: user.id }).from(user).where(ilike(user.email, granteeEmail));
+
+    if (!grantee) return c.json({ error: 'Grantee not found' }, 404);
+    if (grantee.id === owner.ownerId)
+      return c.json({ error: 'Cannot share a session with yourself' }, 400);
+
+    const capability = normalizeCapability(body.capability);
+    const expiresAt = optionalExpiresAt(body.expiresAt);
+
+    // Upsert on (session_id, grantee_user_id): a re-share updates the existing
+    // grant's capability/expiry/creator rather than inserting a duplicate.
+    const [grant] = await db
+      .insert(sessionShare)
+      .values({
+        sessionId: id,
+        granteeUserId: grantee.id,
+        capability,
+        createdBy: owner.ownerId,
+        expiresAt,
+      })
+      .onConflictDoUpdate({
+        target: [sessionShare.sessionId, sessionShare.granteeUserId],
+        set: { capability, expiresAt, createdBy: owner.ownerId },
+      })
+      .returning({
+        id: sessionShare.id,
+        session_id: sessionShare.sessionId,
+        grantee_user_id: sessionShare.granteeUserId,
+        capability: sessionShare.capability,
+        expires_at: sessionShare.expiresAt,
+        created_by: sessionShare.createdBy,
+        created_at: sessionShare.createdAt,
+      });
+
+    return c.json(grant);
+  } catch (err) {
+    console.error('POST /api/sessions/:id/share error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// DELETE /sessions/:id/share/:granteeUserId — owner revokes a grant. 200 with
+// the deleted grantee id, or 404 when there was no such grant.
+app.delete('/sessions/:id/share/:granteeUserId', async (c) => {
+  const id = c.req.param('id');
+  const granteeUserId = c.req.param('granteeUserId');
+
+  try {
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
+
+    const deleted = await db
+      .delete(sessionShare)
+      .where(and(eq(sessionShare.sessionId, id), eq(sessionShare.granteeUserId, granteeUserId)))
+      .returning({ grantee_user_id: sessionShare.granteeUserId });
+
+    if (deleted.length === 0) return c.json({ error: 'Share not found' }, 404);
+    return c.json({ deleted: deleted[0].grantee_user_id });
+  } catch (err) {
+    console.error('DELETE /api/sessions/:id/share/:granteeUserId error:', err);
+    return c.json({ error: 'Internal server error' }, 500);
+  }
+});
+
+// GET /sessions/:id/shares — owner lists the grants on their session (grantee
+// identity + capability + expiry), for the P1-5 share UI.
+app.get('/sessions/:id/shares', async (c) => {
+  const id = c.req.param('id');
+
+  try {
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
+
+    const shares = await db
+      .select({
+        grantee_user_id: sessionShare.granteeUserId,
+        grantee_email: user.email,
+        grantee_name: user.name,
+        capability: sessionShare.capability,
+        expires_at: sessionShare.expiresAt,
+        created_at: sessionShare.createdAt,
+      })
+      .from(sessionShare)
+      .innerJoin(user, eq(user.id, sessionShare.granteeUserId))
+      .where(eq(sessionShare.sessionId, id))
+      .orderBy(desc(sessionShare.createdAt));
+
+    return c.json({ shares });
+  } catch (err) {
+    console.error('GET /api/sessions/:id/shares error:', err);
     return c.json({ error: 'Internal server error' }, 500);
   }
 });
@@ -857,10 +1081,12 @@ const dedupCommitsBySha = (commits: readonly NormalizedCommit[]): readonly Norma
   );
 
 // POST commits resolved from local git for a session. PAT/session authed and
-// scoped exactly like the other /sessions/:id routes: the caller must own (or be
-// on the team of) the session, else 404. Idempotent batch upsert — a single
-// multi-VALUES INSERT via unnest with ON CONFLICT (session_id, commit_sha) DO
-// NOTHING — so a re-post links 0 the second time. Returns { linked }.
+// OWNER-ONLY (this is a write to the owner's session metadata): the caller must
+// own the session. A session they can't see → 404 (never reveals existence); a
+// session they can see but don't own (team-visible / shared) → 403. Idempotent
+// batch upsert — a single multi-VALUES INSERT via unnest with ON CONFLICT
+// (session_id, commit_sha) DO NOTHING — so a re-post links 0 the second time.
+// Returns { linked }.
 app.post('/sessions/:id/commits', async (c) => {
   const id = c.req.param('id');
 
@@ -881,14 +1107,16 @@ app.post('/sessions/:id/commits', async (c) => {
   );
 
   try {
-    // Scope check first: the caller may only write commits to a session it
-    // owns / its team owns. 404 (not 403) so we never reveal another team's
-    // session ids — same shape as GET/DELETE /sessions/:id.
-    const [session] = await db
-      .select({ id: orchidSession.id })
-      .from(orchidSession)
-      .where(scopeConditionForId(c, id));
-    if (!session) return c.json({ error: 'Session not found' }, 404);
+    // OWNER-ONLY write. Linking commits mutates the owner's session metadata
+    // (session_commits powers /commits/sessions + /review-context reverse-
+    // lookups), so this MUST gate on ownership, NOT the read-scope predicate.
+    // The read scope now includes the P1-3 "shared with me" branch, so gating
+    // writes on it would let a READ-only grantee pollute the owner's commit
+    // history. requireSessionOwner loads through the read scope first (404 when
+    // not visible — never reveals existence), then asserts ownership (403 when
+    // visible but not the owner), so a share/team viewer can read but never write.
+    const owner = await requireSessionOwner(c, id);
+    if (owner.error) return c.json({ error: owner.error.message }, owner.error.status);
 
     if (commits.length === 0) return c.json({ linked: 0 });
 
