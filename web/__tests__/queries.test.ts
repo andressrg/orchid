@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { testDb, getTestAuth, cleanTestDb } from './setup';
-import { orchidSession, organization } from '@/app/lib/schema';
+import { orchidSession, organization, user, sessionShare } from '@/app/lib/schema';
 import { getSessionById, getSessionTranscriptById } from '@/app/lib/queries';
 
 // P0-3: the session-detail metadata read (`getSessionById`) must NOT pull the
@@ -71,5 +71,85 @@ describe('getSessionById / getSessionTranscriptById', () => {
         userId: OTHER_USER,
       }),
     ).toBeNull();
+  });
+});
+
+// P1-5: getSessionById carries `is_owner` so the session page can owner-gate the
+// manage-shares UI (share-session.tsx). It's true only for the session's owner;
+// a non-owner viewer who can READ the session via a share grant gets `false`,
+// so they see Copy-link but never the invite/remove controls.
+const SHARE_TEAM = 'team-isowner';
+const SHARE_VIEWER = 'isowner-viewer';
+const SHARED_SESSION = 's-isowner';
+
+describe('getSessionById is_owner (P1-5 owner gate)', () => {
+  let ownerId: string;
+
+  beforeAll(async () => {
+    ownerId = (await getTestAuth()).userId;
+    await testDb
+      .insert(organization)
+      .values({ id: SHARE_TEAM, name: 'is_owner Team', slug: SHARE_TEAM, createdAt: new Date() })
+      .onConflictDoNothing();
+    await testDb
+      .insert(user)
+      .values({
+        id: SHARE_VIEWER,
+        name: 'Shared Viewer',
+        email: `${SHARE_VIEWER}@example.com`,
+        emailVerified: true,
+      })
+      .onConflictDoNothing();
+  });
+
+  beforeEach(async () => {
+    // cleanTestDb deletes orchid_session; the share grant cascades away with it.
+    await cleanTestDb();
+    await testDb.insert(orchidSession).values({
+      id: SHARED_SESSION,
+      userName: 'owner',
+      userEmail: 'owner@example.com',
+      workingDir: '/home/test/project',
+      gitRemotes: [],
+      branch: 'main',
+      tool: 'claude',
+      transcript: TRANSCRIPT,
+      status: 'done',
+      messageCount: 1,
+      userId: ownerId,
+      teamId: SHARE_TEAM,
+      visibility: 'private',
+    });
+    // Grant the non-owner viewer scoped read access (so the session is visible
+    // to them, but they are not the owner).
+    await testDb.insert(sessionShare).values({
+      sessionId: SHARED_SESSION,
+      granteeUserId: SHARE_VIEWER,
+      capability: 'read',
+      createdBy: ownerId,
+    });
+  });
+
+  it('is_owner is true for the owner', async () => {
+    const session = await getSessionById({
+      sessionId: SHARED_SESSION,
+      teamId: SHARE_TEAM,
+      userId: ownerId,
+    });
+    expect(session).not.toBeNull();
+    expect(session?.is_owner).toBe(true);
+  });
+
+  it('is_owner is false for a non-owner viewer with shared access', async () => {
+    const session = await getSessionById({
+      sessionId: SHARED_SESSION,
+      teamId: SHARE_TEAM,
+      userId: SHARE_VIEWER,
+    });
+    // The viewer CAN read the session (shared-with-me branch)…
+    expect(session).not.toBeNull();
+    expect(session?.id).toBe(SHARED_SESSION);
+    // …but is NOT the owner, so the manage-shares UI stays hidden.
+    expect(session?.is_owner).toBe(false);
   });
 });
