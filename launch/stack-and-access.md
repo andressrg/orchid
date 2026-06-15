@@ -15,7 +15,7 @@ Almost everything is already authed locally as Julian, so the orchestrator runs 
 | `vercel` CLI                        | read-only babysitting only (`vercel logs`/`inspect`) — **previews & prod deploys are PR-driven, never `vercel deploy`/`vercel link --yes`** | ✅ authed                                 |
 | `neonctl` CLI                       | migrations, FTS index, DB admin                                                                                                             | ✅ authed                                 |
 | `claude`, `pulumi`                  | conductor + droplet IaC                                                                                                                     | ✅ present                                |
-| Droplet SSH key                     | services-sandbox access                                                                                                                     | ✅ `~/.ssh/orchid-agent` + derived `.pub` |
+| Droplet SSH key                     | services-sandbox access — **droplet decommissioned 2026-06-14 (unused); async = Vercel**                                                    | ✅ `~/.ssh/orchid-agent` + derived `.pub` |
 | `ANTHROPIC_API_KEY`                 | app's Claude calls (summaries/review/Q&A)                                                                                                   | ✅ provided (`.env.orchestrator`)         |
 | `DIGITALOCEAN_TOKEN`                | `pulumi up` the droplet                                                                                                                     | ✅ provided (`.env.orchestrator`)         |
 | GitHub OAuth app (client id/secret) | "Sign in with GitHub"                                                                                                                       | ⚙️ register at Phase 7                    |
@@ -29,8 +29,9 @@ preview URL from the PR (Vercel bot comment / `gh pr view`). **Build env** = the
 (`docker compose up`, schema applied). Prod updates on **squash-merge to `main`** (Vercel
 auto-deploys); the orchestrator merges with `gh pr merge --squash`.
 
-**Background jobs:** **Vercel Workflows** (zero infra, app's on Vercel) for most async work;
-**Temporal OSS** on the droplet for heavy/long-running orchestration.
+**Background jobs:** **Vercel `after()` / the Workflow tool** (zero infra, app's on Vercel)
+for all async work. _(The droplet that was earmarked for heavy/long-running Temporal OSS was
+decommissioned 2026-06-14 as unused; recreate from `infra/` via `pulumi up` only if ever needed.)_
 
 ### GitHub OAuth app (Phase 7 — end-user sign-in, not a PAT)
 
@@ -51,18 +52,18 @@ auto-deploys); the orchestrator merges with `gh pr merge --squash`.
 | Email     | Resend                                                                                                                                                       | `RESEND_API_KEY`, `EMAIL_FROM`                                                                         |
 | CLI       | TypeScript, published as `orchid-cli` on npm                                                                                                                 | hooks-based capture                                                                                    |
 | Skill     | `skills/orchid-context`                                                                                                                                      | the agent-facing read interface                                                                        |
-| Infra     | Pulumi → DO droplet `orchid-deploy` (s-4vcpu-8gb, Docker, Caddy, Claude + Codex preinstalled)                                                                | currently idle; repurpose                                                                              |
+| Infra     | Pulumi project in `infra/` (DO droplet `orchid-deploy`, s-4vcpu-8gb, Docker, Caddy, Claude + Codex)                                                          | **droplet decommissioned 2026-06-14 (unused; async on Vercel)**; recreate via `pulumi up` if needed    |
 
 ## To create / set up
 
-| Item                                                | For which pillar                                         | Decision                                                                                         |
-| --------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| **Object storage** (Cloudflare R2 / DO Spaces / S3) | 8 — transcripts off the hot path                         | R2 cheapest egress; Spaces simplest if staying in DO. _Phase 2._                                 |
-| **Redis on droplet**                                | 4/6 — cache, live session status, presence               | `docker run redis` on droplet behind firewall                                                    |
-| **Background jobs**                                 | 5 — auto-summary on session end, profile builds, imports | **Vercel Workflows** for most async work; **Temporal OSS** on the droplet for heavy/long-running |
-| **OG image generation**                             | 7 — shareable profile graph                              | `@vercel/og` (edge) renders the efficiency graph as a PNG at share time                          |
-| **`claude agents --json` ingestion**                | 1/6 — live cross-machine Agent View                      | a daemon/hook reads local Agent View state + streams to Orchid                                   |
-| **Domain/DNS**                                      | already `orchidkeep.com`                                 | confirm Vercel + any droplet subdomain (e.g. `rt.orchidkeep.com` for realtime)                   |
+| Item                                                | For which pillar                                         | Decision                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| **Object storage** (Cloudflare R2 / DO Spaces / S3) | 8 — transcripts off the hot path                         | R2 cheapest egress; Spaces simplest if staying in DO. _Phase 2._                                |
+| **Redis on droplet**                                | 4/6 — cache, live session status, presence               | `docker run redis` on droplet behind firewall                                                   |
+| **Background jobs**                                 | 5 — auto-summary on session end, profile builds, imports | **Vercel `after()` / the Workflow tool** for all async work (droplet decommissioned 2026-06-14) |
+| **OG image generation**                             | 7 — shareable profile graph                              | `@vercel/og` (edge) renders the efficiency graph as a PNG at share time                         |
+| **`claude agents --json` ingestion**                | 1/6 — live cross-machine Agent View                      | a daemon/hook reads local Agent View state + streams to Orchid                                  |
+| **Domain/DNS**                                      | already `orchidkeep.com`                                 | confirm Vercel + any droplet subdomain (e.g. `rt.orchidkeep.com` for realtime)                  |
 
 ## Open questions for you (non-blocking — sensible defaults chosen)
 

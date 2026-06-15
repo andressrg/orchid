@@ -75,5 +75,6 @@ babysits the PR, and merges.
   **100% PR/branch driven — never run `vercel deploy` or `vercel link --yes`.** The `vercel`
   CLI is for **read-only babysitting only** (`vercel logs`, `vercel inspect`) when debugging a
   deploy. Always `gh pr merge --squash`.
-- **Droplet** (`137.184.108.61`, infra-only, services sandbox): SSH `~/.ssh/orchid-agent`.
-  Background jobs: **Vercel Workflows** or **Temporal OSS** there.
+- **Droplet** (`137.184.108.61`): **decommissioned (deleted 2026-06-14, was unused)**.
+  Background jobs run on **Vercel `after()` / the Workflow tool**. Recreate from `infra/` via
+  `pulumi up` only if heavy long-running infra is ever needed.

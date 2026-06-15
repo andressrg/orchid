@@ -182,10 +182,11 @@ thoughts into Orchid.
   on green → Vercel **auto-deploys prod** (orchidkeep.com). The orchestrator has the user's
   explicit permission to merge + deploy; the human monitors and reverts fast if a deploy
   breaks prod. **Always squash-merge** (never a merge commit).
-- **Hosting:** Vercel (web + API) + Neon (Postgres). The DO droplet (`orchid-deploy`,
-  `137.184.108.61`, 4 vCPU / 8 GB, Docker + Caddy) is **infra-only** — a services sandbox for
-  Redis, Temporal OSS, object storage, background jobs. It must be **locked down: reachable
-  only by the Vercel app and the admin/agent — nobody else** (security task).
+- **Hosting:** Vercel (web + API) + Neon (Postgres). Async/background work runs on **Vercel
+  `after()` / the Workflow tool** — no separate server needed. The DO droplet (`orchid-deploy`,
+  `137.184.108.61`, 4 vCPU / 8 GB) was a "just in case" services sandbox (Redis, Temporal OSS,
+  object storage, background jobs) but was **decommissioned 2026-06-14 as unused**; the Pulumi
+  code in `infra/` is kept so it can be recreated with `pulumi up` if heavy infra is ever needed.
 - **Storage path:** optimize Neon first (stop selecting transcript, FTS index, paginate,
   cache) → then move transcript bodies to object storage with Neon as the search index.
 - **Don't break capture.** Hooks + sync are the lifeblood; changes must keep transcripts

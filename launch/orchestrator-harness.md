@@ -83,9 +83,11 @@ context — it delegates each task to a fresh workflow.
   create previews** — just push + open the PR, then read the preview URL off the PR (Vercel
   bot comment / `gh pr view --json statusCheckRollup` / deployment status). The `vercel` CLI
   is read-only babysitting only (`vercel logs`, `vercel inspect`). Nothing to set up.
-- **Droplet (`orchid-deploy`) → the agent's services sandbox.** Where the agent freely
-  installs/runs whatever it needs: Redis (cache/presence), **Temporal OSS** / a job queue,
-  object storage (MinIO), scratch DBs. SSH via `~/.ssh/orchid-agent`. Docker + Caddy ready.
+- **Droplet (`orchid-deploy`) → was the agent's services sandbox, now decommissioned.** It was
+  a "just in case" box for Redis (cache/presence), Temporal OSS / a job queue, object storage
+  (MinIO), scratch DBs — but went unused (async runs on Vercel `after()` / the Workflow tool),
+  so it was **deleted 2026-06-14** to stop the cost. The Pulumi code in `infra/` is kept; recreate
+  with `pulumi up` if heavy long-running infra is ever needed.
 - **Prod** is updated at **promotion** — humans merge `orchestrator` → `main`, Vercel deploys.
 
 ## How `/loop` works & how we prevent overlap

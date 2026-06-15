@@ -33,6 +33,23 @@
 
 ---
 
+## 2026-06-14 — Decommissioned the unused DigitalOcean droplet (Vercel-only async)
+
+- **Deleted** the `orchid-deploy` droplet (`137.184.108.61`, s-4vcpu-8gb, $48/mo) via
+  `pulumi destroy`. It was a "just in case" services sandbox (Redis, Temporal OSS, object
+  storage, scratch DBs) that was **never used** — all async/background work runs on Vercel
+  `after()` / the Workflow tool.
+- **Confirmed unused before deleting:** the only references were its own definition in
+  `infra/index.ts` + the launch docs; **zero references from the web app / runtime**. Deleted to
+  stop the recurring cost.
+- **Kept `infra/` Pulumi code** so the droplet can be recreated with one `pulumi up` if heavy
+  long-running infra is ever needed.
+- **Docs updated** to stop pointing future readers (and the orchestrator loop) at a server that
+  no longer exists: `.claude/loop.md`, `launch/stack-and-access.md`, `launch/goals.md`,
+  `launch/tasks.md` (P3-1, P8-2), `launch/orchestrator-harness.md`.
+- **Learning:** don't pre-provision "just in case" infra — Vercel `after()` / the Workflow tool
+  covers async without a standing server; keep the IaC for one-command recreation instead.
+
 ## 2026-06-14 — T-1/T-2 secret redaction at ingest (#76) — "we never store your secrets" is real
 
 - **Shipped:** deterministic server-side secret redaction at ingest. New pure module

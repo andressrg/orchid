@@ -199,7 +199,7 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 ## Phase 3 — Fast Claude intelligence _(depends: P0)_
 
 - [x] **P3-1 · Auto-summary on session end.** When a session flips to `done`, enqueue a
-      background job (**Vercel Workflows**, or **Temporal OSS** on the droplet) that generates a
+      background job (**Vercel `after()` / the Workflow tool**) that generates a
       Claude summary + key moments and stores them on the row. _Accept:_ finished sessions have a
       summary without a click; generated in `< 2s` typical. **DONE 2026-06-14 (#70, `625d203`)** —
       server-side `after()` on `done` (idempotent) + cache-read endpoint + SSR `initialSummary`;
@@ -266,11 +266,11 @@ state, merged_at)`. Populate from the webhook (PR commits → sessions) and from
 - [ ] **P8-1 · Transcripts → object storage.** Move JSONL bodies to R2/Spaces; Neon keeps
       metadata + FTS index + a pointer. Stream/sign reads. _Accept:_ new transcripts stored in
       object storage; reads work; Neon rows shrink; migration for existing.
-- [ ] **P8-2 · Background job orchestration.** Use **Vercel Workflows** (app's already on
-      Vercel, zero infra) for most async work; stand up **Temporal OSS** on the droplet for
-      heavy/long-running orchestration (bulk imports, profile builds, the redaction pipeline).
-      _Accept:_ heavy jobs run off the request path with durability + retries; choice documented
-      per workload.
+- [ ] **P8-2 · Background job orchestration.** Use **Vercel `after()` / the Workflow tool**
+      (app's already on Vercel, zero infra) for all async work — bulk imports, profile builds,
+      the redaction pipeline. _Accept:_ heavy jobs run off the request path with durability +
+      retries; choice documented per workload. _(The droplet once earmarked for heavy/long-running
+      Temporal OSS was decommissioned 2026-06-14 as unused; recreate from `infra/` only if needed.)_
 - [x] **P8-3a · Close unneeded ports.** Firewall now allows **only 22 / 80 / 443 + ICMP**
       (port 3000 removed). Applied via `infra/index.ts` + `pulumi up`. Only necessary ports open.
 - [ ] **P8-3 · Lock down the droplet (infra-only).** It must be reachable **only by the Vercel
