@@ -920,6 +920,13 @@ nav a:hover {
   color: var(--text-secondary);
 }
 
+/* Share row — sits under the headline */
+.profile-share-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 28px;
+}
+
 /* Stats row */
 .profile-stats {
   display: grid;

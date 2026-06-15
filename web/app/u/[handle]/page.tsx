@@ -6,6 +6,7 @@ import {
   type PublicEfficiencyProfile,
 } from '@/app/lib/queries';
 import { ContributionGraph } from './contribution-graph';
+import { ShareProfile } from '@/app/components/share-profile';
 
 // Public, shareable efficiency profile. No auth — renders only aggregate,
 // public-safe stats (the Efficiency Score, a contribution heatmap, counts). It
@@ -59,6 +60,16 @@ const displayTokens = (tokens: number): string => {
 const oneDecimal = (value: number): string =>
   value.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
+// Short, postable headline for the Share row, derived per headlineMode — the
+// "{headline}" that the share text wraps ("I ship {headline} on Orchid 🌸").
+const shareHeadline = (profile: PublicEfficiencyProfile): string => {
+  if (profile.headlineMode === 'efficiency')
+    return `${oneDecimal(profile.score)} PRs / million tokens`;
+  if (profile.headlineMode === 'prs-only')
+    return `${numberFormat.format(profile.prsMerged)} PR${profile.prsMerged === 1 ? '' : 's'} merged`;
+  return `${displayTokens(profile.tokensSpent)} tokens`;
+};
+
 interface ProfilePageProps {
   readonly params: Promise<{ handle: string }>;
 }
@@ -68,10 +79,14 @@ export async function generateMetadata(props: ProfilePageProps): Promise<Metadat
   const identity = await resolveProfileUser(handle);
   if (!identity) return { title: 'Profile not found — Orchid' };
   const title = `${identity.displayName}'s Efficiency Score — Orchid`;
+  const description = `${identity.displayName} ships with Orchid. PRs merged per million tokens, with a full contribution graph.`;
+  // The opengraph-image.tsx file convention auto-populates the actual og:image
+  // and twitter:image URLs — we only declare the cards, never hardcode the URLs.
   return {
     title,
-    description: `${identity.displayName} ships with Orchid. PRs merged per million tokens, with a full contribution graph.`,
-    openGraph: { title, type: 'profile' },
+    description,
+    openGraph: { title, description, type: 'profile' },
+    twitter: { card: 'summary_large_image', title, description },
   };
 }
 
@@ -226,6 +241,11 @@ export default async function PublicProfilePage(props: ProfilePageProps) {
 
         {/* Headline — the Efficiency Score */}
         <HeadlineCard profile={profile} />
+
+        {/* Share — public profile, always shown (owner/visitor-agnostic) */}
+        <div className="profile-share-row">
+          <ShareProfile handle={profile.identity.handle} headline={shareHeadline(profile)} />
+        </div>
 
         {/* Aggregate stats */}
         <section className="profile-stats">
