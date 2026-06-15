@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { timeAgo } from '@/app/lib/api';
-import { friendlyUserName } from '@/app/lib/display';
+import { friendlyUserName, dashboardListState } from '@/app/lib/display';
 import { getServerAuth } from '@/app/lib/server-auth';
 import { listSessions, getTeamStats } from '@/app/lib/queries';
 import { LiveRefresh } from '@/app/components/live-refresh';
@@ -69,17 +69,20 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
   if (!serverAuth) return null;
 
   const sessions = await listSessions({ teamId: serverAuth.teamId, userId: serverAuth.userId });
-  let stats = await getTeamStats(serverAuth.teamId);
+  const stats = (await getTeamStats(serverAuth.teamId)) ?? {
+    total_sessions: String(sessions.length),
+    active_sessions: String(sessions.filter((s) => s.status === 'active').length),
+    unique_users: String(new Set(sessions.map((s) => s.user_email)).size),
+    first_session: '',
+    last_activity: '',
+  };
 
-  if (!stats) {
-    stats = {
-      total_sessions: String(sessions.length),
-      active_sessions: String(sessions.filter((s) => s.status === 'active').length),
-      unique_users: String(new Set(sessions.map((s) => s.user_email)).size),
-      first_session: '',
-      last_activity: '',
-    };
-  }
+  // Sessions are private by default — the scoped list can be empty even when the
+  // team is active. `listState` picks the right empty/locked/list rendering.
+  const listState = dashboardListState({
+    visibleCount: sessions.length,
+    totalTeamSessions: Number(stats.total_sessions) || 0,
+  });
 
   const activeSessions = sessions.filter((s) => s.status === 'active');
   const doneSessions = sessions.filter((s) => s.status !== 'active');
@@ -166,7 +169,38 @@ export default async function SessionsPage({ params }: { params: Promise<{ teamS
 
       {/* Session list */}
       <div className="px-6">
-        {sessions.length === 0 ? (
+        {listState === 'locked' ? (
+          <div className="text-center py-16" style={{ color: 'var(--text-secondary)' }}>
+            <div className="flex justify-center mb-3" style={{ color: 'var(--text-tertiary)' }}>
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <rect x="3" y="7" width="10" height="6.5" rx="1.5" />
+                <path d="M5 7V5a3 3 0 016 0v2" strokeLinecap="round" />
+              </svg>
+            </div>
+            <p className="text-sm mb-1" style={{ color: 'var(--text-primary)' }}>
+              Nothing shared with you yet
+            </p>
+            <p className="text-[13px]">
+              Your team has {stats.total_sessions} session{stats.total_sessions === '1' ? '' : 's'},
+              but they&apos;re private to their owners. Sessions are private by default — ask a
+              teammate to share one, or run{' '}
+              <code
+                className="font-mono px-1.5 py-0.5 rounded"
+                style={{ background: 'var(--bg-tertiary)' }}
+              >
+                orchid claude
+              </code>{' '}
+              to capture your own.
+            </p>
+          </div>
+        ) : listState === 'fresh' ? (
           <div className="text-center py-16" style={{ color: 'var(--text-secondary)' }}>
             <p className="text-sm">
               No sessions yet. Run{' '}
